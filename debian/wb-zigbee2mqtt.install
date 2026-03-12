@@ -1,1 +1,5 @@
-etc/wb-zigbee2mqtt/wb-zigbee2mqtt.conf /etc/wb-zigbee2mqtt/
+# - - Python packets - -
+# NOTE: Installed by setup.py
+#       Standart files path "/usr/lib/python3/dist-packages/wb/zigbee2mqtt/..."
+
+configs/wb-zigbee2mqtt.conf /usr/lib/wb-zigbee2mqtt/configs/

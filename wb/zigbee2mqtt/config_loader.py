@@ -3,7 +3,7 @@ import logging
 import os
 from dataclasses import dataclass
 
-CONFIG_FILEPATH = "/etc/wb-zigbee2mqtt/wb-zigbee2mqtt.conf"
+CONFIG_FILEPATH = "/usr/lib/wb-zigbee2mqtt/configs/wb-zigbee2mqtt.conf"
 
 logger = logging.getLogger(__name__)
 

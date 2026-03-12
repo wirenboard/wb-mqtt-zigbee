@@ -17,3 +17,5 @@ setup(
     scripts=["bin/wb-zigbee2mqtt"],
     license="MIT",
 )
+# Other file (configuration):
+# - Installed by debian/install file

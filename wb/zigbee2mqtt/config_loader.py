@@ -9,12 +9,12 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class Config:
+class ConfigLoader:
     broker_url: str
     zigbee2mqtt_base_topic: str
 
 
-def load_config(config_path: str) -> Config:
+def load_config(config_path: str) -> ConfigLoader:
     if not os.path.isfile(config_path):
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
@@ -25,7 +25,7 @@ def load_config(config_path: str) -> Config:
             raise ValueError(f"Configuration file is not valid JSON: {e}") from e
 
     try:
-        return Config(
+        return ConfigLoader(
             broker_url=config["broker_url"],
             zigbee2mqtt_base_topic=config["zigbee2mqtt_base_topic"],
         )

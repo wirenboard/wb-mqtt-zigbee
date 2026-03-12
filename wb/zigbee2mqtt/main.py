@@ -5,7 +5,7 @@ import sys
 
 from wb_common.mqtt_client import MQTTClient
 
-from .config import CONFIG_FILEPATH, load_config
+from .config_loader import CONFIG_FILEPATH, load_config
 
 logger = logging.getLogger(__name__)
 

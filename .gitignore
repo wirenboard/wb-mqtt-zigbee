@@ -13,3 +13,4 @@ debian/.debhelper/
 debian/tmp/
 debian/wb-zigbee2mqtt/
 .pybuild/
+tests/

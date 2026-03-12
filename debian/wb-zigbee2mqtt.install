@@ -1,2 +1,1 @@
-mnt/data/etc/wb-zigbee2mqtt.conf /mnt/data/etc/
-wb-zigbee2mqtt.schema.json /usr/share/wb-mqtt-confed/schemas/
+etc/wb-zigbee2mqtt/wb-zigbee2mqtt.conf /etc/wb-zigbee2mqtt/

@@ -3,7 +3,6 @@ import logging
 import signal
 import sys
 
-import jsonschema
 from wb_common.mqtt_client import MQTTClient
 
 from .config import CONFIG_FILEPATH, load_config
@@ -28,7 +27,7 @@ EXIT_SIGNAL = 7
 MQTT_RC_AUTH_FAILURE = 5
 
 
-class WbZigbee2Mqtt:
+class WbZigbee2Mqtt:  # pylint: disable=too-few-public-methods
     def __init__(self, broker_url: str) -> None:
         self._mqtt_was_disconnected = False
         self._exit_code = EXIT_SUCCESS
@@ -93,9 +92,6 @@ def main(argv: list) -> int:
         config = load_config(args.config)
     except (FileNotFoundError, ValueError) as e:
         logger.error("%s", e)
-        return EXIT_CONFIG_ERROR
-    except jsonschema.ValidationError as e:
-        logger.error("Configuration validation failed: %s", e.message)
         return EXIT_CONFIG_ERROR
 
     logger.info("Starting wb-zigbee2mqtt-v2, broker: %s", config.broker_url)

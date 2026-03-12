@@ -8,6 +8,6 @@ Standards-Version: 4.5.1
 
 Package: wb-zigbee2mqtt
 Architecture: all
-Depends: ${python3:Depends}, ${misc:Depends}, python3-wb-common (>= 2.1.0~~), python3-jsonschema
+Depends: ${python3:Depends}, ${misc:Depends}, python3-wb-common (>= 2.1.0~~)
 Description: Wiren Board Zigbee2MQTT bridge v2
  Translates zigbee2mqtt MQTT messages to Wiren Board MQTT Conventions.

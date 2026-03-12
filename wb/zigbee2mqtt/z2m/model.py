@@ -10,7 +10,7 @@ class BridgeInfo:
     log_level: str
 
 
-class BridgeState:  # pylint: disable=too-few-public-methods
+class BridgeState:
     ONLINE = "online"
     OFFLINE = "offline"
     ERROR = "error"

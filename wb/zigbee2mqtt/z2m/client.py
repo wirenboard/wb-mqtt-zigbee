@@ -13,7 +13,7 @@ PERMIT_JOIN_TIME_DISABLED = 0
 
 
 class Z2MClient:
-    """Subscribes to zigbee2mqtt MQTT topics and parses incoming messages into typed callbacks."""
+    """Subscribes to zigbee2mqtt MQTT topics and parses incoming messages into typed callbacks"""
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,

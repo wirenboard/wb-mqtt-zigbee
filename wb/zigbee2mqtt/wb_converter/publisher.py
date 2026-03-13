@@ -3,7 +3,7 @@ from typing import Callable
 
 from wb_common.mqtt_client import MQTTClient
 
-from .controls import BRIDGE_CONTROLS, ControlMeta
+from .controls import BRIDGE_CONTROLS, BridgeControl, ControlMeta
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,8 @@ class WbPublisher:
         on_permit_join: Callable[[bool], None],
         on_update_devices: Callable[[], None],
     ) -> None:
-        permit_join_topic = f"{DEVICES_PREFIX}/{self._device_id}/controls/permit_join/on"
-        update_devices_topic = f"{DEVICES_PREFIX}/{self._device_id}/controls/update_devices/on"
+        permit_join_topic = f"{DEVICES_PREFIX}/{self._device_id}/controls/{BridgeControl.PERMIT_JOIN}/on"
+        update_devices_topic = f"{DEVICES_PREFIX}/{self._device_id}/controls/{BridgeControl.UPDATE_DEVICES}/on"
 
         self._client.subscribe(permit_join_topic)
         self._client.subscribe(update_devices_topic)

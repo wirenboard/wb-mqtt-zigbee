@@ -2,6 +2,7 @@ import logging
 
 from wb_common.mqtt_client import MQTTClient
 
+from .wb_converter.controls import BridgeControl
 from .wb_converter.publisher import WbPublisher
 from .z2m.client import Z2MClient
 from .z2m.model import BridgeInfo
@@ -39,13 +40,13 @@ class Bridge:
 
     def _on_bridge_state(self, state: str) -> None:
         logger.info("Bridge state: %s", state)
-        self._wb.publish_bridge_control("state", state)
+        self._wb.publish_bridge_control(BridgeControl.STATE, state)
 
     def _on_bridge_info(self, info: BridgeInfo) -> None:
         logger.info("Bridge info: version=%s, permit_join=%s", info.version, info.permit_join)
-        self._wb.publish_bridge_control("version", info.version)
-        self._wb.publish_bridge_control("log_level", info.log_level)
-        self._wb.publish_bridge_control("permit_join", "1" if info.permit_join else "0")
+        self._wb.publish_bridge_control(BridgeControl.VERSION, info.version)
+        self._wb.publish_bridge_control(BridgeControl.LOG_LEVEL, info.log_level)
+        self._wb.publish_bridge_control(BridgeControl.PERMIT_JOIN, "1" if info.permit_join else "0")
 
     def _on_bridge_log(self, message: str) -> None:
-        self._wb.publish_bridge_control("log", message)
+        self._wb.publish_bridge_control(BridgeControl.LOG, message)

@@ -41,7 +41,7 @@ class WbZigbee2Mqtt:  # pylint: disable=too-few-public-methods
         self._client.on_disconnect = self._on_disconnect
 
         self._bridge = Bridge(
-            self._client, config.zigbee2mqtt_base_topic, config.device_id, config.device_name, config.log_min_level
+            self._client, config.zigbee2mqtt_base_topic, config.device_id, config.device_name, config.bridge_log_min_level
         )
 
     def _on_connect(self, _client: object, _userdata: object, _flags: dict, rc: int) -> None:

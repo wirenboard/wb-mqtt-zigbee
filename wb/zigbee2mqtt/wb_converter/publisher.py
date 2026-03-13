@@ -11,7 +11,7 @@ DEVICES_PREFIX = "/devices"
 
 
 class WbPublisher:
-    """Publishes virtual WB devices and controls according to Wiren Board MQTT Conventions."""
+    """Publishes virtual WB devices and controls according to Wiren Board MQTT Conventions"""
 
     def __init__(self, mqtt_client: MQTTClient, device_id: str, device_name: str) -> None:
         self._client = mqtt_client

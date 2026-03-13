@@ -18,7 +18,7 @@ class Bridge:
     """
 
     def __init__(
-        self, mqtt_client: MQTTClient, base_topic: str, device_id: str, device_name: str, log_min_level: str
+        self, mqtt_client: MQTTClient, base_topic: str, device_id: str, device_name: str, bridge_log_min_level: str
     ) -> None:
         self._z2m = Z2MClient(
             mqtt_client=mqtt_client,
@@ -29,12 +29,12 @@ class Bridge:
             on_devices=self._on_devices,
         )
         self._wb = WbPublisher(mqtt_client, device_id, device_name)
-        self._log_min_level = log_min_level
-        self._log_min_rank = BridgeLogLevel.RANK.get(log_min_level, BridgeLogLevel.RANK[BridgeLogLevel.WARNING])
+        self._bridge_log_min_level = bridge_log_min_level
+        self._log_min_rank = BridgeLogLevel.RANK.get(bridge_log_min_level, BridgeLogLevel.RANK[BridgeLogLevel.WARNING])
 
     def subscribe(self) -> None:
         self._wb.publish_bridge_device()
-        self._wb.publish_bridge_control(BridgeControl.LOG_LEVEL, self._log_min_level)
+        self._wb.publish_bridge_control(BridgeControl.LOG_LEVEL, self._bridge_log_min_level)
         self._z2m.subscribe()
         self._wb.subscribe_bridge_commands(
             on_permit_join=self._z2m.set_permit_join,
@@ -43,7 +43,7 @@ class Bridge:
 
     def republish(self) -> None:
         self._wb.publish_bridge_device()
-        self._wb.publish_bridge_control(BridgeControl.LOG_LEVEL, self._log_min_level)
+        self._wb.publish_bridge_control(BridgeControl.LOG_LEVEL, self._bridge_log_min_level)
 
     def _on_bridge_state(self, state: str) -> None:
         logger.info("Bridge state: %s", state)

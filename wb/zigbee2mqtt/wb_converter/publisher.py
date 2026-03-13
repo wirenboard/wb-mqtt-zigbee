@@ -57,7 +57,7 @@ class WbPublisher:
         self._publish_retain(f"{prefix}/readonly", "1" if meta.readonly else "0")
         if meta.title:
             self._publish_retain(f"{prefix}/title", meta.title)
-        if meta.order:
+        if meta.order is not None:
             self._publish_retain(f"{prefix}/order", str(meta.order))
 
     def _publish_retain(self, topic: str, value: str) -> None:

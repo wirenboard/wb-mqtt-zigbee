@@ -18,7 +18,7 @@ class ControlMeta:
     type: str
     readonly: bool
     title: Optional[str] = None
-    order: int = 0
+    order: Optional[int] = None
 
 
 # Control metadata for the zigbee2mqtt bridge virtual device

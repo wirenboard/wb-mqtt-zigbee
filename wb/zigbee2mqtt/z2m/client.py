@@ -8,8 +8,8 @@ from .model import BridgeInfo, BridgeState
 
 logger = logging.getLogger(__name__)
 
-PERMIT_JOIN_TIME = 254
-PERMIT_JOIN_TIME_DISABLED = 0
+PERMIT_JOIN_TIME_SEC = 254
+PERMIT_JOIN_TIME_SEC_DISABLED = 0
 
 
 class Z2MClient:
@@ -43,7 +43,7 @@ class Z2MClient:
         self._client.message_callback_add(log_topic, self._handle_bridge_log)
 
     def set_permit_join(self, enabled: bool) -> None:
-        time = PERMIT_JOIN_TIME if enabled else PERMIT_JOIN_TIME_DISABLED
+        time = PERMIT_JOIN_TIME_SEC if enabled else PERMIT_JOIN_TIME_SEC_DISABLED
         payload = json.dumps({"time": time})
         self._client.publish(f"{self._base_topic}/bridge/request/permit_join", payload)
 

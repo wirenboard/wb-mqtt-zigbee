@@ -152,4 +152,5 @@ def _resolve_device_name(device_data: dict) -> str:
     """Return friendly_name if meaningful, otherwise ieee_address"""
     friendly_name = device_data.get("friendly_name", "")
     ieee_address = device_data.get("ieee_address", "")
-    return friendly_name if friendly_name and friendly_name != ieee_address else ieee_address
+    has_meaningful_name = friendly_name and friendly_name != ieee_address
+    return friendly_name if has_meaningful_name else ieee_address

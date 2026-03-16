@@ -1,7 +1,12 @@
 wb-zigbee2mqtt (1.1.0) stable; urgency=medium
 
-  * Bridge device with state, version, log level, log,
-    permit join and update devices controls
+  * Add bridge device with 10 controls: state, version, log level, log,
+    permit join, device count, last joined, last left, last removed,
+    update devices
+  * Add en/ru translations for all bridge controls
+  * Add bridge log filtering by level (bridge_log_min_level config)
+  * Add device event tracking (joined, left, removed)
+  * Extract WbZigbee2Mqtt class into app.py
 
  -- Victor Fedorov <victor.fedorov@wirenboard.com>  Thu, 13 Mar 2026 00:04:00 +0300
 

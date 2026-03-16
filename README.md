@@ -4,7 +4,7 @@
 
 ## Как это работает
 
-zigbee2mqtt подключается к Zigbee-координатору, обнаруживает устройства и публикует всю информацию в MQTT-брокер в свое пространство топиков `zigbee2mqtt/`:
+zigbee2mqtt подключается к Zigbee-координатору, обнаруживает устройства и публикует всю информацию в MQTT-брокер. Пространство топиков настраивается в конфиге zigbee2mqtt (`/mnt/data/root/zigbee2mqtt/data/configuration.yaml`, параметр `base_topic`), по умолчанию — `zigbee2mqtt/`:
 
 ```
 zigbee2mqtt/bridge/state       → "online"

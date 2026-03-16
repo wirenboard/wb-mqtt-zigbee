@@ -6,7 +6,7 @@
 
 ### Назначение системы
 
-`wb-zigbee2mqtt-v2` — сервис-мост, который транслирует данные от Zigbee-устройств, публикуемые [zigbee2mqtt](https://www.zigbee2mqtt.io/), в формат [Wiren Board MQTT Conventions](https://github.com/wirenboard/conventions), и обратно — команды пользователя из WB в zigbee2mqtt.
+`wb-zigbee2mqtt-v2` — сервис-мост между [zigbee2mqtt](https://www.zigbee2mqtt.io/) и [Wiren Board MQTT Conventions](https://github.com/wirenboard/conventions). Создаёт виртуальные устройства WB на основе данных от zigbee2mqtt, транслирует состояния Zigbee-устройств в контролы WB, а команды пользователя из WB — обратно в zigbee2mqtt.
 
 ### Цели
 

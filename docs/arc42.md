@@ -182,8 +182,12 @@ zigbee2mqtt/{device_name} (входящее сообщение)
 
 ### Команда из WB
 
+По WB MQTT Conventions топик `/on` — это канал для входящих команд:
+сервис подписывается на него и реагирует на действия пользователя (веб-интерфейс, другой клиент).
+Задача сервиса — получить команду из `/on`-топика и транслировать её в соответствующий топик zigbee2mqtt.
+
 ```
-/devices/{wb_id}/controls/{control}/on (входящее сообщение)
+/devices/{wb_id}/controls/{control}/on (входящее сообщение от пользователя)
   → wb/subscriber.py получает команду
   → bridge.py маппит WB-контрол → z2m атрибут
   → mqtt_client публикует zigbee2mqtt/{device_name}/set {"attribute": value}

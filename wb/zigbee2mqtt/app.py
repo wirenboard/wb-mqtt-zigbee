@@ -31,6 +31,7 @@ class WbZigbee2Mqtt:  # pylint: disable=too-few-public-methods
 
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
+        signal.signal(signal.SIGHUP, self._signal_handler)
 
         self._client = MQTTClient("wb-zigbee2mqtt", broker_url=config.broker_url, is_threaded=False)
         self._client.on_connect = self._on_connect

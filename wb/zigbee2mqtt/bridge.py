@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 import time
@@ -198,5 +199,3 @@ def _format_last_seen(value: object) -> str:
     except (ValueError, OSError, OverflowError):
         logger.warning("Failed to parse last_seen: %s", value)
     return ""
-
-

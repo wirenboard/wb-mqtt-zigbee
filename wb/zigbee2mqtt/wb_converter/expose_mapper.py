@@ -63,11 +63,18 @@ def _map_leaf_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
     if wb_type is None:
         return []
 
+    title = _make_title(feature.property)
     meta = ControlMeta(
         type=wb_type, readonly=True,
+        title={"en": title},
         value_on=feature.value_on, value_off=feature.value_off,
     )
     return [(feature.property, meta)]
+
+
+def _make_title(property_name: str) -> str:
+    """Convert property name to human-readable title: 'noise_detect_level' → 'Noise detect level'"""
+    return property_name.replace("_", " ").capitalize()
 
 
 def _resolve_wb_type(feature: ExposeFeature) -> Optional[str]:

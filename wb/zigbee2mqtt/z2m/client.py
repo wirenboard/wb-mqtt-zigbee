@@ -22,7 +22,7 @@ class Z2MClient:
         on_bridge_state: Callable[[str], None],
         on_bridge_info: Callable[[BridgeInfo], None],
         on_bridge_log: Callable[[str, str], None],
-        on_devices: Callable[[list], None],
+        on_devices: Callable[[list[Z2MDevice]], None],
         on_device_event: Callable[[DeviceEvent], None],
         on_device_state: Callable[[str, dict], None],
     ) -> None:
@@ -163,6 +163,12 @@ class Z2MClient:
             self._on_device_event(DeviceEvent(
                 type=mapped,
                 name=_resolve_device_name(device_data),
+            ))
+        elif event_type == Z2MEventType.DEVICE_RENAMED:
+            self._on_device_event(DeviceEvent(
+                type=DeviceEventType.RENAMED,
+                name=device_data.get("to", ""),
+                old_name=device_data.get("from", ""),
             ))
 
     def _handle_device_remove_response(self, _client: object, _userdata: object, message: object) -> None:

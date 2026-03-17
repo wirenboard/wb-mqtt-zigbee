@@ -144,6 +144,7 @@ class Z2MEventType:
 
     DEVICE_JOINED = "device_joined"
     DEVICE_LEAVE = "device_leave"
+    DEVICE_RENAMED = "device_renamed"
 
 
 class DeviceEventType:
@@ -152,14 +153,16 @@ class DeviceEventType:
     JOINED = "joined"
     LEFT = "left"
     REMOVED = "removed"
+    RENAMED = "renamed"
 
 
 @dataclass
 class DeviceEvent:
-    """Device join/leave/remove event for forwarding to WB bridge controls"""
+    """Device join/leave/remove/rename event for forwarding to WB bridge controls"""
 
     type: str
     name: str
+    old_name: str = ""
 
 
 class BridgeLogLevel:

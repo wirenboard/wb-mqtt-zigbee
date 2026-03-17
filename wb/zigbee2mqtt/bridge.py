@@ -137,19 +137,33 @@ class Bridge:
                 self._z2m.unsubscribe_device(event.name)
                 self._wb.remove_device(registered.device_id, registered.controls)
                 logger.info("Removed WB device '%s'", registered.device_id)
+        elif event.type == DeviceEventType.RENAMED:
+            self._on_device_renamed(event.old_name, event.name)
         self._update_stats()
 
+    def _on_device_renamed(self, old_name: str, new_name: str) -> None:
+        registered = self._known_devices.pop(old_name, None)
+        if registered is None:
+            return
+        self._z2m.unsubscribe_device(old_name)
+        registered.z2m.friendly_name = new_name
+        self._known_devices[new_name] = registered
+        self._z2m.subscribe_device(new_name)
+        self._wb.publish_device(registered.device_id, new_name, registered.controls)
+        logger.info("Renamed device '%s' -> '%s' (device_id=%s)", old_name, new_name, registered.device_id)
 
-def _sanitize_device_id(friendly_name: str) -> str:
-    """Convert friendly_name to a valid WB device ID (alphanumeric + underscores)"""
-    return re.sub(r"[^a-zA-Z0-9_]", "_", friendly_name)
+
+def _sanitize_device_id(ieee_address: str) -> str:
+    """Convert ieee_address to a valid WB device ID (alphanumeric + underscores)"""
+    return re.sub(r"[^a-zA-Z0-9_]", "_", ieee_address)
 
 
 def _format_last_seen(value: object) -> str:
-    """Convert last_seen to formatted datetime string. Handles epoch (ms and s) and ISO strings"""
+    """Convert last_seen to formatted local datetime string. Handles epoch (ms and s) and ISO strings"""
     try:
         if isinstance(value, str):
-            return datetime.fromisoformat(value.replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M:%S")
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
         if isinstance(value, (int, float)):
             if value > 1e12:
                 value = value / 1000

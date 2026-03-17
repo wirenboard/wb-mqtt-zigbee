@@ -98,6 +98,7 @@ class Bridge:
 
     def _register_device(self, device: Z2MDevice) -> None:
         if device.friendly_name in self._known_devices:
+            logger.debug("Device '%s' already registered, skipping", device.friendly_name)
             return
         old_name = self._find_old_name(device.ieee_address)
         if old_name is not None:
@@ -121,6 +122,7 @@ class Bridge:
     def _on_device_state(self, friendly_name: str, state: dict[str, object]) -> None:
         registered = self._known_devices.get(friendly_name)
         if registered is None:
+            logger.debug("State update for unknown device '%s', skipping", friendly_name)
             return
         for prop, meta in registered.controls.items():
             if prop in state:
@@ -156,6 +158,7 @@ class Bridge:
     def _on_device_renamed(self, old_name: str, new_name: str) -> None:
         registered = self._known_devices.pop(old_name, None)
         if registered is None:
+            logger.warning("Rename event for unknown device '%s' -> '%s'", old_name, new_name)
             return
         self._z2m.unsubscribe_device(old_name)
         registered.z2m.friendly_name = new_name

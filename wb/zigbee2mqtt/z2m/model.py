@@ -94,7 +94,7 @@ class ExposeFeature:
             value_on=_str_or_none(data.get("value_on")),
             value_off=_str_or_none(data.get("value_off")),
             values=data.get("values", []),
-            features=[ExposeFeature.from_dict(f) for f in data.get("features", [])],
+            features=[ExposeFeature.from_dict(feat) for feat in data.get("features", [])],
         )
 
 
@@ -123,7 +123,7 @@ class Z2MDevice:
             model=definition.get("model", ""),
             vendor=definition.get("vendor", ""),
             description=definition.get("description", ""),
-            exposes=[ExposeFeature.from_dict(e) for e in definition.get("exposes", [])],
+            exposes=[ExposeFeature.from_dict(exp) for exp in definition.get("exposes", [])],
         )
 
 

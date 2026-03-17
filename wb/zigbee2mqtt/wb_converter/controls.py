@@ -23,6 +23,8 @@ class WbControlType:
 
 
 class BridgeControl:
+    """Control IDs for the zigbee2mqtt bridge virtual device"""
+
     STATE = "State"
     VERSION = "Version"
     LOG_LEVEL = "Log level"

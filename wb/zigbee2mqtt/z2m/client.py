@@ -24,7 +24,7 @@ class Z2MClient:
         on_bridge_log: Callable[[str, str], None],
         on_devices: Callable[[list[Z2MDevice]], None],
         on_device_event: Callable[[DeviceEvent], None],
-        on_device_state: Callable[[str, dict], None],
+        on_device_state: Callable[[str, dict[str, object]], None],  # (friendly_name, z2m state JSON)
     ) -> None:
         """
         Args:

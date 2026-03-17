@@ -118,7 +118,7 @@ class Bridge:
         self._z2m.subscribe_device(device.friendly_name)
         self._z2m.request_device_state(device.friendly_name)
 
-    def _on_device_state(self, friendly_name: str, state: dict) -> None:
+    def _on_device_state(self, friendly_name: str, state: dict[str, object]) -> None:
         registered = self._known_devices.get(friendly_name)
         if registered is None:
             return

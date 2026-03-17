@@ -5,6 +5,7 @@ from datetime import datetime
 
 from wb_common.mqtt_client import MQTTClient
 
+from .registered_device import RegisteredDevice
 from .wb_converter.controls import BridgeControl
 from .wb_converter.expose_mapper import map_exposes_to_controls
 from .wb_converter.publisher import WbPublisher
@@ -45,7 +46,7 @@ class Bridge:
         self._log_min_rank = BridgeLogLevel.RANK.get(bridge_log_min_level, BridgeLogLevel.RANK[BridgeLogLevel.WARNING])
         self._messages_received = 0
         self._last_stats_publish = 0.0
-        self._known_devices: dict[str, Z2MDevice] = {}  # friendly_name → Z2MDevice
+        self._known_devices: dict[str, RegisteredDevice] = {}  # friendly_name → RegisteredDevice
 
     def subscribe(self) -> None:
         self._wb.publish_bridge_device()
@@ -101,31 +102,28 @@ class Bridge:
             logger.info("Device '%s' has no exposes yet, skipping", device.friendly_name)
             return
         controls = map_exposes_to_controls(device.exposes)
-        device_id = _sanitize_device_id(device.friendly_name)
-        display_name = device.friendly_name
-        logger.info("Registering device '%s' as '%s' (%d controls)", display_name, device_id, len(controls))
-        self._known_devices[device.friendly_name] = device
-        self._wb.publish_device(device_id, display_name, controls)
+        if len(controls) <= 1:
+            logger.warning("Device '%s' has no mappable exposes, skipping", device.friendly_name)
+            return
+        device_id = _sanitize_device_id(device.ieee_address)
+        registered = RegisteredDevice(z2m=device, controls=controls, device_id=device_id)
+        logger.info("Registering device '%s' as '%s' (%d controls)", device.friendly_name, device_id, len(controls))
+        self._known_devices[device.friendly_name] = registered
+        self._wb.publish_device(device_id, device.friendly_name, controls)
         self._z2m.subscribe_device(device.friendly_name)
         self._z2m.request_device_state(device.friendly_name)
 
     def _on_device_state(self, friendly_name: str, state: dict) -> None:
-        device = self._known_devices.get(friendly_name)
-        if device is None:
+        registered = self._known_devices.get(friendly_name)
+        if registered is None:
             return
-        device_id = _sanitize_device_id(friendly_name)
-        controls = map_exposes_to_controls(device.exposes)
-        for prop, meta in controls.items():
+        for prop, meta in registered.controls.items():
             if prop in state:
-                value = state[prop]
-                self._wb.publish_device_control(device_id, prop, meta.format_value(value))
+                self._wb.publish_device_control(registered.device_id, prop, meta.format_value(state[prop]))
         if "last_seen" in state:
-            last_seen = state["last_seen"]
-            if isinstance(last_seen, (int, float)) and last_seen > 1e12:
-                last_seen = last_seen / 1000
-            self._wb.publish_device_control(
-                device_id, "last_seen", datetime.fromtimestamp(last_seen).strftime("%Y-%m-%d %H:%M:%S"),
-            )
+            formatted = _format_last_seen(state["last_seen"])
+            if formatted:
+                self._wb.publish_device_control(registered.device_id, "last_seen", formatted)
         self._update_stats()
 
     def _on_device_event(self, event: DeviceEvent) -> None:
@@ -134,17 +132,30 @@ class Bridge:
         if control:
             self._wb.publish_bridge_control(control, event.name)
         if event.type in (DeviceEventType.REMOVED, DeviceEventType.LEFT):
-            device = self._known_devices.pop(event.name, None)
-            if device:
-                device_id = _sanitize_device_id(event.name)
-                controls = map_exposes_to_controls(device.exposes)
-                self._wb.remove_device(device_id, controls)
-                logger.info("Removed WB device '%s'", device_id)
+            registered = self._known_devices.pop(event.name, None)
+            if registered:
+                self._z2m.unsubscribe_device(event.name)
+                self._wb.remove_device(registered.device_id, registered.controls)
+                logger.info("Removed WB device '%s'", registered.device_id)
         self._update_stats()
 
 
 def _sanitize_device_id(friendly_name: str) -> str:
     """Convert friendly_name to a valid WB device ID (alphanumeric + underscores)"""
     return re.sub(r"[^a-zA-Z0-9_]", "_", friendly_name)
+
+
+def _format_last_seen(value: object) -> str:
+    """Convert last_seen to formatted datetime string. Handles epoch (ms and s) and ISO strings"""
+    try:
+        if isinstance(value, str):
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(value, (int, float)):
+            if value > 1e12:
+                value = value / 1000
+            return datetime.fromtimestamp(value).strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, OSError, OverflowError):
+        logger.warning("Failed to parse last_seen: %s", value)
+    return ""
 
 

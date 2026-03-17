@@ -4,9 +4,14 @@ wb-zigbee2mqtt (1.2.0) stable; urgency=medium
   * Add real-time device state updates via zigbee2mqtt/{device} subscription
   * Add expose type mapping: numeric, binary, enum, text, composite
   * Add binary value conversion using value_on/value_off from exposes
-  * Add device removal: clean up WB retain topics on device remove/leave
+  * Add device removal: clean up WB retain topics and unsubscribe on remove/leave
   * Skip device registration until interview completes (exposes available)
+  * Skip devices with no mappable exposes
   * Add ControlMeta.format_value() for z2m-to-WB value conversion
+  * Add RegisteredDevice cache to avoid recomputing controls on every message
+  * Use ieee_address for WB device_id (unique, stable across renames)
+  * Handle last_seen in epoch and ISO string formats
+  * Handle SIGHUP for graceful shutdown on terminal close
 
  -- Victor Fedorov <victor.fedorov@wirenboard.com>  Mon, 17 Mar 2026 13:40:00 +0300
 

@@ -80,6 +80,15 @@ class Z2MClient:
         self._client.message_callback_add(topic, self._make_device_state_handler(friendly_name))
         self._subscribed_devices.add(friendly_name)
 
+    def unsubscribe_device(self, friendly_name: str) -> None:
+        """Unsubscribe from a device's state topic"""
+        if friendly_name not in self._subscribed_devices:
+            return
+        topic = f"{self._base_topic}/{friendly_name}"
+        self._client.unsubscribe(topic)
+        self._client.message_callback_remove(topic)
+        self._subscribed_devices.discard(friendly_name)
+
     def request_device_state(self, friendly_name: str) -> None:
         """Request current state from a device via zigbee2mqtt/{device}/get"""
         self._client.publish(f"{self._base_topic}/{friendly_name}/get", "{}")

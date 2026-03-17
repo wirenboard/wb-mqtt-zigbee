@@ -29,6 +29,13 @@ class WbPublisher:
     def publish_device(self, device_id: str, name: str, controls: dict[str, ControlMeta]) -> None:
         self._publish_device(device_id, name, controls)
 
+    def remove_device(self, device_id: str, controls: dict[str, ControlMeta]) -> None:
+        """Remove a WB device by publishing empty retain on all its topics"""
+        for control_id in controls:
+            self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta", "")
+            self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", "")
+        self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", "")
+
     def publish_device_control(self, device_id: str, control_id: str, value: str) -> None:
         topic = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}"
         self._publish_retain(topic, value)

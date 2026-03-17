@@ -2,6 +2,7 @@ import logging
 import re
 import time
 from datetime import datetime
+from typing import Optional
 
 from wb_common.mqtt_client import MQTTClient
 
@@ -98,6 +99,10 @@ class Bridge:
     def _register_device(self, device: Z2MDevice) -> None:
         if device.friendly_name in self._known_devices:
             return
+        old_name = self._find_old_name(device.ieee_address)
+        if old_name is not None:
+            self._on_device_renamed(old_name, device.friendly_name)
+            return
         if not device.exposes:
             logger.info("Device '%s' has no exposes yet, skipping", device.friendly_name)
             return
@@ -140,6 +145,13 @@ class Bridge:
         elif event.type == DeviceEventType.RENAMED:
             self._on_device_renamed(event.old_name, event.name)
         self._update_stats()
+
+    def _find_old_name(self, ieee_address: str) -> Optional[str]:
+        """Find friendly_name of a known device by ieee_address, or None"""
+        for name, registered in self._known_devices.items():
+            if registered.z2m.ieee_address == ieee_address:
+                return name
+        return None
 
     def _on_device_renamed(self, old_name: str, new_name: str) -> None:
         registered = self._known_devices.pop(old_name, None)

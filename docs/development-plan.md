@@ -126,7 +126,7 @@
 **Сделано «по пути» (из этапа 5 — жизненный цикл):**
 
 - Удаление устройств: обработка `device_removed` и `device_leave` — отписка от z2m-топика, очистка retain-сообщений WB, удаление из `_known_devices`
-- Переименование устройств: обработка `device_renamed` — переподписка на новый z2m-топик, обновление `_known_devices`, перепубликация title в WB (device_id на основе ieee_address не меняется)
+- Переименование устройств: обработка через `bridge/event` (`device_renamed`) и через `bridge/devices` (обнаружение по `ieee_address`) — переподписка на новый z2m-топик, обновление `_known_devices`, перепубликация title в WB (device_id на основе ieee_address не меняется)
 
 **Модули:**
 
@@ -138,7 +138,7 @@
 | `wb_converter/controls.py` | + `WbControlType` (14 констант), `ControlMeta.format_value()`, поля `value_on`/`value_off` |
 | `wb_converter/publisher.py` | + `publish_device()`, `publish_device_control()`, `remove_device()` |
 | `registered_device.py` | Новый модуль: `RegisteredDevice` dataclass |
-| `bridge.py` | + `_register_device`, `_on_device_state`, `_on_device_renamed`, `_format_last_seen`, `_sanitize_device_id` |
+| `bridge.py` | + `_register_device`, `_on_device_state`, `_on_device_renamed`, `_find_old_name`, `_format_last_seen`, `_sanitize_device_id` |
 | `config_loader.py` | + валидация `bridge_log_min_level` |
 
 **Результат:** все Zigbee-устройства отображаются в WB с правильными типами контролов и актуальными значениями. Удаление и переименование устройств в z2m отражается в WB без перезапуска сервиса.

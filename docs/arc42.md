@@ -220,6 +220,22 @@ zigbee2mqtt/bridge/event → {"type": "device_removed", ...}
 
 Также обрабатывается `bridge/response/device/remove` (ответ на команду удаления).
 
+### Переименование устройства
+
+Обрабатывается двумя способами (z2m может использовать любой):
+
+1. Событие `bridge/event` с `type: "device_renamed"` — содержит `from` и `to`
+2. Переопубликация `bridge/devices` — `_register_device` обнаруживает, что `ieee_address` уже известен под другим `friendly_name`
+
+```
+zigbee2mqtt/bridge/devices → устройство с новым friendly_name
+  → bridge.py находит старое имя по ieee_address (_find_old_name)
+  → z2m/client.py (unsubscribe_device) снимает подписку со старого топика
+  → z2m/client.py (subscribe_device) подписывается на новый топик
+  → wb/publisher.py (publish_device) обновляет title в WB
+  → device_id (ieee_address) не меняется — WB-устройство остаётся тем же
+```
+
 ### Известные ограничения
 
 - Если устройство обновило firmware (OTA) и exposes изменились, новые контролы не появятся до перезапуска сервиса

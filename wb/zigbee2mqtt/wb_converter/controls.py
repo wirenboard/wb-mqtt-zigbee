@@ -1,1 +1,80 @@
-# TODO(victor.fedorov): Stage 3+ — WB virtual device controls (exposes → control type mapping)
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+class BridgeControl:
+    STATE = "State"
+    VERSION = "Version"
+    LOG_LEVEL = "Log level"
+    LOG = "Log"
+    PERMIT_JOIN = "Permit join"
+    UPDATE_DEVICES = "Update devices"
+    DEVICE_COUNT = "Device count"
+    LAST_JOINED = "Last joined"
+    LAST_LEFT = "Last left"
+    LAST_REMOVED = "Last removed"
+    LAST_SEEN = "Last seen"
+    MESSAGES_RECEIVED = "Messages received"
+
+
+@dataclass
+class ControlMeta:
+    """Metadata describing a WB MQTT control (type, readonly, order, title)"""
+
+    type: str
+    readonly: bool
+    order: Optional[int] = None
+    title: dict = field(default_factory=dict)
+
+
+# Control metadata for the zigbee2mqtt bridge virtual device with translations for English and Russian
+BRIDGE_CONTROLS: dict[str, ControlMeta] = {
+    BridgeControl.STATE: ControlMeta(
+        type="text", readonly=True, order=1,
+        title={"en": "State", "ru": "Состояние"},
+    ),
+    BridgeControl.VERSION: ControlMeta(
+        type="text", readonly=True, order=2,
+        title={"en": "Version", "ru": "Версия"},
+    ),
+    BridgeControl.PERMIT_JOIN: ControlMeta(
+        type="switch", readonly=False, order=3,
+        title={"en": "Permit join", "ru": "Разрешить подключение"},
+    ),
+    BridgeControl.DEVICE_COUNT: ControlMeta(
+        type="value", readonly=True, order=4,
+        title={"en": "Device count", "ru": "Количество устройств"},
+    ),
+    BridgeControl.LAST_JOINED: ControlMeta(
+        type="text", readonly=True, order=5,
+        title={"en": "Last joined", "ru": "Последнее сопряженное"},
+    ),
+    BridgeControl.LAST_LEFT: ControlMeta(
+        type="text", readonly=True, order=6,
+        title={"en": "Last left", "ru": "Последнее вышедшее из сети"},
+    ),
+    BridgeControl.LAST_REMOVED: ControlMeta(
+        type="text", readonly=True, order=7,
+        title={"en": "Last removed", "ru": "Последнее удаленное"},
+    ),
+    BridgeControl.UPDATE_DEVICES: ControlMeta(
+        type="pushbutton", readonly=False, order=8,
+        title={"en": "Update devices", "ru": "Обновить устройства"},
+    ),
+    BridgeControl.LAST_SEEN: ControlMeta(
+        type="text", readonly=True, order=9,
+        title={"en": "Last seen", "ru": "Последняя активность"},
+    ),
+    BridgeControl.MESSAGES_RECEIVED: ControlMeta(
+        type="value", readonly=True, order=10,
+        title={"en": "Messages received", "ru": "Сообщений получено"},
+    ),
+    BridgeControl.LOG_LEVEL: ControlMeta(
+        type="text", readonly=True, order=11,
+        title={"en": "Log level", "ru": "Уровень логов"},
+    ),
+    BridgeControl.LOG: ControlMeta(
+        type="text", readonly=True, order=12,
+        title={"en": "Log", "ru": "Лог"},
+    ),
+}

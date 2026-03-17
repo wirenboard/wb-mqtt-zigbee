@@ -74,6 +74,7 @@ class Z2MClient:
     def subscribe_device(self, friendly_name: str) -> None:
         """Subscribe to a device's state topic"""
         if friendly_name in self._subscribed_devices:
+            logger.debug("Already subscribed to '%s', skipping", friendly_name)
             return
         topic = f"{self._base_topic}/{friendly_name}"
         self._client.subscribe(topic)
@@ -83,6 +84,7 @@ class Z2MClient:
     def unsubscribe_device(self, friendly_name: str) -> None:
         """Unsubscribe from a device's state topic"""
         if friendly_name not in self._subscribed_devices:
+            logger.debug("Not subscribed to '%s', skipping unsubscribe", friendly_name)
             return
         topic = f"{self._base_topic}/{friendly_name}"
         self._client.unsubscribe(topic)

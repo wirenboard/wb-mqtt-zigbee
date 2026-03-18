@@ -33,7 +33,24 @@ NESTED_TYPES = {
 
 
 def map_exposes_to_controls(exposes: list[ExposeFeature]) -> dict[str, ControlMeta]:
-    """Convert a list of z2m expose features into a flat dict of WB controls"""
+    """Convert a list of z2m expose features into a flat dict of WB controls.
+
+    Recursively flattens all exposes, deduplicates by property name,
+    assigns sequential order, and appends a "last_seen" text control.
+
+    Example:
+
+        exposes = [
+            ExposeFeature(type="numeric", name="temperature", property="temperature"),
+            ExposeFeature(type="numeric", name="humidity", property="humidity"),
+        ]
+        controls = map_exposes_to_controls(exposes)
+        # {
+        #     "temperature": ControlMeta(type="temperature", order=1, ...),
+        #     "humidity": ControlMeta(type="rel_humidity", order=2, ...),
+        #     "last_seen": ControlMeta(type="text", order=3, ...),
+        # }
+    """
     controls: dict[str, ControlMeta] = {}
     order = 1
     for expose in exposes:
@@ -55,7 +72,7 @@ def _flatten_expose(expose: ExposeFeature) -> list[tuple[str, ControlMeta]]:
     Leaf features are mapped directly. Composite types (light, switch, climate, etc.)
     are unwrapped and their nested features are flattened recursively.
 
-    Example::
+    Example:
 
         # Leaf expose — returned as-is via _map_leaf_feature
         expose = ExposeFeature(type="numeric", name="temperature", property="temperature")
@@ -83,7 +100,7 @@ def _flatten_expose(expose: ExposeFeature) -> list[tuple[str, ControlMeta]]:
 def _map_leaf_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
     """Map a single leaf ExposeFeature to a (property, ControlMeta) pair.
 
-    Example::
+    Example:
 
         feature = ExposeFeature(type="numeric", name="temperature", property="temperature")
         result = _map_leaf_feature(feature)

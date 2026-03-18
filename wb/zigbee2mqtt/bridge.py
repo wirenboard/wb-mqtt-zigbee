@@ -16,6 +16,12 @@ from .z2m.model import BridgeInfo, BridgeLogLevel, DeviceEvent, DeviceEventType,
 
 logger = logging.getLogger(__name__)
 
+_DEVICE_TYPE_RU: dict[str, str] = {
+    "Router": "Маршрутизатор",
+    "EndDevice": "Оконечное устройство",
+    "Coordinator": "Координатор",
+}
+
 _EVENT_TYPE_TO_CONTROL = {
     DeviceEventType.JOINED: BridgeControl.LAST_JOINED,
     DeviceEventType.LEFT: BridgeControl.LAST_LEFT,
@@ -118,7 +124,7 @@ class Bridge:
         if not device.exposes:
             logger.info("Device '%s' has no exposes yet, skipping", device.friendly_name)
             return
-        controls = map_exposes_to_controls(device.exposes)
+        controls = map_exposes_to_controls(device.exposes, device_type=device.type)
         if len(controls) <= 1:
             logger.warning("Device '%s' has no mappable exposes, skipping", device.friendly_name)
             return
@@ -127,6 +133,8 @@ class Bridge:
         logger.info("Registering device '%s' as '%s' (%d controls)", device.friendly_name, device_id, len(controls))
         self._known_devices[device.friendly_name] = registered
         self._wb.publish_device(device_id, device.friendly_name, controls)
+        if device.type:
+            self._wb.publish_device_control(device_id, "device_type", _DEVICE_TYPE_RU.get(device.type, device.type))
         self._wb.subscribe_device_commands(
             device_id, controls, self._make_device_command_handler(registered),
         )

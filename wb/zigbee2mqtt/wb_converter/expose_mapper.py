@@ -32,11 +32,11 @@ NESTED_TYPES = {
 }
 
 
-def map_exposes_to_controls(exposes: list[ExposeFeature]) -> dict[str, ControlMeta]:
+def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "") -> dict[str, ControlMeta]:
     """Convert a list of z2m expose features into a flat dict of WB controls.
 
     Recursively flattens all exposes, deduplicates by property name,
-    assigns sequential order, and appends a "last_seen" text control.
+    assigns sequential order, and appends service controls (device_type, last_seen).
 
     Example:
 
@@ -44,11 +44,12 @@ def map_exposes_to_controls(exposes: list[ExposeFeature]) -> dict[str, ControlMe
             ExposeFeature(type="numeric", name="temperature", property="temperature"),
             ExposeFeature(type="numeric", name="humidity", property="humidity"),
         ]
-        controls = map_exposes_to_controls(exposes)
+        controls = map_exposes_to_controls(exposes, device_type="Router")
         # {
         #     "temperature": ControlMeta(type="temperature", order=1, ...),
         #     "humidity": ControlMeta(type="rel_humidity", order=2, ...),
-        #     "last_seen": ControlMeta(type="text", order=3, ...),
+        #     "device_type": ControlMeta(type="text", order=3, ...),
+        #     "last_seen": ControlMeta(type="text", order=4, ...),
         # }
     """
     controls: dict[str, ControlMeta] = {}
@@ -59,6 +60,12 @@ def map_exposes_to_controls(exposes: list[ExposeFeature]) -> dict[str, ControlMe
                 meta.order = order
                 controls[prop] = meta
                 order += 1
+    if device_type:
+        controls["device_type"] = ControlMeta(
+            type=WbControlType.TEXT, readonly=True, order=order,
+            title={"en": "Device type", "ru": "Тип устройства"},
+        )
+        order += 1
     controls["last_seen"] = ControlMeta(
         type=WbControlType.TEXT, readonly=True, order=order,
         title={"en": "Last seen", "ru": "Последняя активность"},

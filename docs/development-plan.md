@@ -235,7 +235,7 @@ wb-zigbee2mqtt-v2/
 │           ├── publisher.py     — WbPublisher: публикация/удаление WB-устройств и JSON /meta
 │           ├── controls.py      — WbControlType, BridgeControl, ControlMeta (с format_value)
 │           ├── expose_mapper.py — маппинг z2m exposes → WB ControlMeta
-│           └── subscriber.py    — зарезервировано (TODO: этап 4+)
+│           (subscriber.py удалён — подписка на команды в publisher.py)
 ├── bin/
 │   └── wb-zigbee2mqtt           — точка входа → /usr/bin/wb-zigbee2mqtt
 ├── configs/
@@ -300,7 +300,7 @@ wb-zigbee2mqtt-v2/
 | `wb_converter/controls.py` | `WbControlType` (15 типов, вкл. RGB), `BridgeControl`, `ControlMeta` (с `format_value` и HS→RGB), `BRIDGE_CONTROLS` (12 контролов с en/ru) | ✅ |
 | `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (10 numeric типов, binary, enum, text, rgb для color) | ✅ |
 | `wb_converter/publisher.py` | `WbPublisher`: публикация/удаление WB-устройств, JSON `/meta`, подписка на команды | ✅ |
-| `wb_converter/subscriber.py` | Подписка на `/on`-топики, передача команд в bridge | зарезервировано |
+| ~~`wb_converter/subscriber.py`~~ | Удалён — подписка на команды реализована в `publisher.py` | — |
 
 ## Конфигурация
 

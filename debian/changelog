@@ -1,20 +1,11 @@
 wb-zigbee2mqtt (1.2.0) stable; urgency=medium
 
-  * Add device discovery: parse bridge/devices exposes, create WB devices
-  * Add real-time device state updates via zigbee2mqtt/{device} subscription
+  * Add device discovery and real-time state updates from z2m exposes
   * Add expose type mapping: numeric (10 types), binary, enum, text, composite, rgb
-  * Add type constants: ExposeType, ExposeProperty, WbControlType
-  * Add binary value conversion using value_on/value_off from exposes
-  * Add RGB color picker for color lights (HS→RGB conversion via colorsys)
-  * Add device removal: clean up WB retain topics and unsubscribe on remove/leave
-  * Add device rename detection via bridge/event and bridge/devices republish
-  * Add human-readable control titles from property names
-  * Skip device registration until interview completes (exposes available)
-  * Skip devices with no mappable exposes
-  * Add ControlMeta.format_value() for z2m-to-WB value conversion
-  * Add RegisteredDevice cache to avoid recomputing controls on every message
-  * Use ieee_address for WB device_id (unique, stable across renames)
-  * Handle last_seen in epoch and ISO string formats
+  * Add RGB color picker for color lights (HS→RGB via colorsys)
+  * Add device removal and rename handling
+  * Add MQTT reconnect with full resubscription and device republish
+  * Use ieee_address as stable WB device_id
 
  -- Victor Fedorov <victor.fedorov@wirenboard.com>  Mon, 17 Mar 2026 13:40:00 +0300
 

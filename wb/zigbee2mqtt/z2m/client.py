@@ -48,7 +48,12 @@ class Z2MClient:
         self._subscribed_devices: set[str] = set()
 
     def subscribe(self) -> None:
-        """Subscribe to all zigbee2mqtt bridge topics and register message handlers"""
+        """Subscribe to all zigbee2mqtt bridge topics and register message handlers.
+
+        Safe to call on reconnect: re-subscribes to broker (which forgets subscriptions
+        after clean session reconnect) and clears _subscribed_devices so device topics
+        can be re-subscribed.
+        """
         subscriptions = [
             (f"{self._base_topic}/bridge/state", self._handle_bridge_state),
             (f"{self._base_topic}/bridge/info", self._handle_bridge_info),
@@ -60,6 +65,7 @@ class Z2MClient:
         for topic, handler in subscriptions:
             self._client.subscribe(topic)
             self._client.message_callback_add(topic, handler)
+        self._subscribed_devices.clear()
 
     def set_permit_join(self, enabled: bool) -> None:
         """Send permit_join request to zigbee2mqtt. Enables for PERMIT_JOIN_TIME_SEC or disables immediately"""

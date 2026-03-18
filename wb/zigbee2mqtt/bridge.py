@@ -61,6 +61,16 @@ class Bridge:
     def republish(self) -> None:
         self._wb.publish_bridge_device()
         self._wb.publish_bridge_control(BridgeControl.LOG_LEVEL, self._bridge_log_min_level)
+        self._z2m.subscribe()
+        self._wb.subscribe_bridge_commands(
+            on_permit_join=self._z2m.set_permit_join,
+            on_update_devices=self._z2m.request_devices_update,
+        )
+        for friendly_name, registered in self._known_devices.items():
+            self._wb.publish_device(registered.device_id, friendly_name, registered.controls)
+            self._z2m.subscribe_device(friendly_name)
+            self._z2m.request_device_state(friendly_name)
+        self._z2m.request_devices_update()
 
     def _update_stats(self) -> None:
         self._messages_received += 1

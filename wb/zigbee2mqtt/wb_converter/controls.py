@@ -1,3 +1,4 @@
+import colorsys
 import json
 from dataclasses import dataclass, field
 from typing import Optional
@@ -20,6 +21,7 @@ class WbControlType:
     CURRENT = "current"
     POWER_CONSUMPTION = "power_consumption"
     ILLUMINANCE = "illuminance"
+    RGB = "rgb"
 
 
 class BridgeControl:
@@ -58,9 +60,31 @@ class ControlMeta:
             return "1" if value else "0"
         if self.type == WbControlType.SWITCH and self.value_on is not None:
             return "1" if str(value) == self.value_on else "0"
+        if self.type == WbControlType.RGB and isinstance(value, dict):
+            return _hs_dict_to_wb_rgb(value)
         if isinstance(value, dict):
             return json.dumps(value)
         return str(value)
+
+
+def _hs_dict_to_wb_rgb(color: dict) -> str:
+    """Convert z2m color dict to WB RGB format "R;G;B".
+
+    z2m always provides both representations in the color dict:
+        {"hue": 240, "saturation": 100, "x": 0.13, "y": 0.04}
+
+    We use hue (0-360) and saturation (0-100) with value=1.0 (brightness is a separate control).
+
+    Example:
+        >>> _hs_dict_to_wb_rgb({"hue": 0, "saturation": 100})
+        "255;0;0"
+        >>> _hs_dict_to_wb_rgb({"hue": 240, "saturation": 100})
+        "0;0;255"
+    """
+    hue = float(color.get("hue", 0))
+    saturation = float(color.get("saturation", 0))
+    r, g, b = colorsys.hsv_to_rgb(hue / 360, saturation / 100, 1.0)
+    return f"{int(r * 255)};{int(g * 255)};{int(b * 255)}"
 
 
 # Control metadata for the zigbee2mqtt bridge virtual device with translations for English and Russian

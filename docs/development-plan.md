@@ -111,11 +111,11 @@
 **Что сделали:**
 
 - Парсинг `bridge/devices`: `Z2MDevice.from_dict()` с `ExposeFeature` (рекурсивный парсинг вложенных features)
-- Маппинг `exposes` → WB-контролы: `expose_mapper.py` с 10 numeric-маппингами, binary, enum, text
+- Маппинг `exposes` → WB-контролы: `expose_mapper.py` с 10 numeric-маппингами, binary, enum, text, rgb (color picker)
 - Динамическое создание WB-устройств с JSON `/meta` и en/ru переводами
 - Запрос актуального состояния через `{device}/get` при регистрации
 - Подписка на `zigbee2mqtt/{friendly_name}` для обновления состояния в реальном времени
-- Конвертация значений z2m → WB: `ControlMeta.format_value()` (bool, binary value_on/value_off, dict→JSON)
+- Конвертация значений z2m → WB: `ControlMeta.format_value()` (bool, binary value_on/value_off, HS→RGB для цветных ламп, dict→JSON)
 - Обработка `last_seen` в трёх форматах: epoch ms, epoch s, ISO строка (конвертация в локальное время)
 - Идентификация: `ieee_address` для WB `device_id` (уникальный, стабильный), `friendly_name` для отображения и подписок z2m
 - Кеширование: `RegisteredDevice` (z2m device + controls + device_id) — избегаем пересчёта на каждое сообщение
@@ -134,8 +134,8 @@
 |---|---|
 | `z2m/model.py` | + `ExposeFeature`, `ExposeAccess`, `ExposeType`, `ExposeProperty`, `Z2MDevice`, `Z2MEventType.DEVICE_RENAMED`, `DeviceEventType.RENAMED`, поле `old_name` в `DeviceEvent` |
 | `z2m/client.py` | + `subscribe_device`, `unsubscribe_device`, `request_device_state`, обработка `device_renamed` |
-| `wb_converter/expose_mapper.py` | Новый модуль: `map_exposes_to_controls()`, `NUMERIC_TYPE_MAP` (10 типов), `NESTED_TYPES`, `_resolve_wb_type` |
-| `wb_converter/controls.py` | + `WbControlType` (14 констант), `ControlMeta.format_value()`, поля `value_on`/`value_off` |
+| `wb_converter/expose_mapper.py` | Новый модуль: `map_exposes_to_controls()`, `NUMERIC_TYPE_MAP` (10 типов), `NESTED_TYPES`, `_resolve_wb_type`, `_map_color_feature` (composite color → rgb) |
+| `wb_converter/controls.py` | + `WbControlType` (15 констант, вкл. RGB), `ControlMeta.format_value()` (вкл. HS→RGB через `colorsys`), поля `value_on`/`value_off` |
 | `wb_converter/publisher.py` | + `publish_device()`, `publish_device_control()`, `remove_device()` |
 | `registered_device.py` | Новый модуль: `RegisteredDevice` dataclass |
 | `bridge.py` | + `_register_device`, `_on_device_state`, `_on_device_renamed`, `_find_old_name`, `_format_last_seen`, `_sanitize_device_id` |
@@ -297,8 +297,8 @@ wb-zigbee2mqtt-v2/
 | `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty`, `ExposeAccess` | ✅ |
 | `mqtt_client.py` | Зарезервировано для расширения MQTT-клиента | зарезервировано |
 | `z2m/ota.py` | OTA: запрос проверки и запуск обновления | зарезервировано |
-| `wb_converter/controls.py` | `WbControlType` (14 типов), `BridgeControl`, `ControlMeta` (с `format_value`), `BRIDGE_CONTROLS` (12 контролов с en/ru) | ✅ |
-| `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (10 numeric типов, binary, enum, text) | ✅ |
+| `wb_converter/controls.py` | `WbControlType` (15 типов, вкл. RGB), `BridgeControl`, `ControlMeta` (с `format_value` и HS→RGB), `BRIDGE_CONTROLS` (12 контролов с en/ru) | ✅ |
+| `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (10 numeric типов, binary, enum, text, rgb для color) | ✅ |
 | `wb_converter/publisher.py` | `WbPublisher`: публикация/удаление WB-устройств, JSON `/meta`, подписка на команды | ✅ |
 | `wb_converter/subscriber.py` | Подписка на `/on`-топики, передача команд в bridge | зарезервировано |
 
@@ -335,6 +335,18 @@ wb-zigbee2mqtt-v2/
 Контролы WB строятся динамически из `exposes` — управление устройствами появляется автоматически без захардкоженных маппингов.
 
 Отображаемое имя контрола (title) генерируется из имени property: `noise_detect_level` → `"Noise detect level"` (`property.replace("_", " ").capitalize()`).
+
+### Цветные лампы (RGB)
+
+Цветные лампы в z2m имеют composite expose `color` с вложенными `x`/`y` (CIE XY) или `hue`/`saturation` (HS). В state z2m всегда отдаёт оба представления одновременно:
+
+```json
+{"color": {"x": 0.4066, "y": 0.1643, "hue": 308, "saturation": 100}, "color_mode": "xy"}
+```
+
+Вместо разворачивания composite в отдельные контролы `x`, `y`, `hue`, `saturation` (что бесполезно для пользователя), composite `color` маппится в один WB-контрол типа `rgb`. Конвертация через HS→RGB (`colorsys.hsv_to_rgb`), brightness вынесен в отдельный контрол (V=1.0). Результат — формат WB `"R;G;B"`, homeui отображает color picker.
+
+В v1 цвет отображался как JSON-строка `{"x":0.3,"y":0.4}` — бесполезно для пользователя.
 
 ## Синхронизация состояния при старте
 

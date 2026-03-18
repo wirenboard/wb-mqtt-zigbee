@@ -90,6 +90,9 @@ def _flatten_expose(expose: ExposeFeature) -> list[tuple[str, ControlMeta]]:
         #  ("brightness", ControlMeta(type="value", ...))]
     """
     if expose.type in NESTED_TYPES and expose.features:
+        # Composite "color" expose (color_xy/color_hs) → single RGB control
+        if expose.type == ExposeType.COMPOSITE and expose.property == "color":
+            return _map_color_feature(expose)
         result = []
         for sub in expose.features:
             result.extend(_flatten_expose(sub))
@@ -124,6 +127,29 @@ def _map_leaf_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
         type=wb_type, readonly=True,
         title={"en": title},
         value_on=feature.value_on, value_off=feature.value_off,
+    )
+    return [(feature.property, meta)]
+
+
+def _map_color_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
+    """Map a composite color expose (color_xy or color_hs) to a single RGB control.
+
+    z2m exposes color as composite with property "color" and nested x/y or hue/saturation.
+    We map it to a single WB "rgb" control. The state dict key is "color",
+    and format_value handles HS→RGB conversion.
+
+    Example:
+
+        feature = ExposeFeature(type="composite", name="color_hs", property="color", features=[
+            ExposeFeature(type="numeric", name="hue", property=""),
+            ExposeFeature(type="numeric", name="saturation", property=""),
+        ])
+        _map_color_feature(feature)
+        # [("color", ControlMeta(type="rgb", readonly=True, title={"en": "Color"}))]
+    """
+    meta = ControlMeta(
+        type=WbControlType.RGB, readonly=True,
+        title={"en": "Color", "ru": "Цвет"},
     )
     return [(feature.property, meta)]
 

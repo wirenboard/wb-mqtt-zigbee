@@ -3,6 +3,8 @@ import logging
 import os
 from dataclasses import dataclass
 
+from .z2m.model import BridgeLogLevel
+
 CONFIG_FILEPATH = "/usr/lib/wb-zigbee2mqtt/configs/wb-zigbee2mqtt.conf"
 
 logger = logging.getLogger(__name__)
@@ -10,7 +12,9 @@ logger = logging.getLogger(__name__)
 
 BRIDGE_DEVICE_ID_DEFAULT = "zigbee2mqtt"
 BRIDGE_DEVICE_NAME_DEFAULT = "Zigbee2MQTT"
-BRIDGE_LOG_MIN_LEVEL_DEFAULT = "warning"
+BRIDGE_LOG_MIN_LEVEL_DEFAULT = BridgeLogLevel.WARNING
+
+_VALID_LOG_LEVELS = set(BridgeLogLevel.RANK.keys())
 
 
 @dataclass
@@ -38,7 +42,14 @@ def load_config(config_path: str) -> ConfigLoader:
             zigbee2mqtt_base_topic=config["zigbee2mqtt_base_topic"],
             device_id=config.get("device_id", BRIDGE_DEVICE_ID_DEFAULT),
             device_name=config.get("device_name", BRIDGE_DEVICE_NAME_DEFAULT),
-            bridge_log_min_level=config.get("bridge_log_min_level", BRIDGE_LOG_MIN_LEVEL_DEFAULT),
+            bridge_log_min_level=_validate_log_level(config.get("bridge_log_min_level", BRIDGE_LOG_MIN_LEVEL_DEFAULT)),
         )
     except KeyError as e:
         raise ValueError(f"Missing required configuration key: {e}") from e
+
+
+def _validate_log_level(level: str) -> str:
+    if level not in _VALID_LOG_LEVELS:
+        logger.warning("Unknown bridge_log_min_level '%s', using '%s'", level, BRIDGE_LOG_MIN_LEVEL_DEFAULT)
+        return BRIDGE_LOG_MIN_LEVEL_DEFAULT
+    return level

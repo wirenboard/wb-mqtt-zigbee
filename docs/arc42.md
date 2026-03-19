@@ -106,7 +106,8 @@
 
 ## 4. Стратегия решения
 
-- **Динамическое построение контролов из `exposes`** вместо захардкоженных маппингов v1. Это автоматически даёт поддержку управления и новых типов устройств без изменения кода.
+- **Динамическое построение контролов из `exposes`** вместо захардкоженных маппингов v1. Это автоматически даёт поддержку управления и новых типов устройств без изменения кода. Отображаемое имя контрола генерируется из имени property: `noise_detect_level` → `"Noise detect level"`.
+- **Поддержка цветных ламп**: composite expose `color` (color_xy / color_hs) маппится в единый WB-контрол типа `rgb`. z2m всегда отдаёт оба представления цвета (`hue`/`saturation` и `x`/`y`), используем HS→RGB через `colorsys.hsv_to_rgb()`. Результат — WB формат `"R;G;B"`, homeui показывает color picker. Brightness выделен в отдельный контрол (V=1.0 в HSV).
 - **Event-driven внутри сервиса**: `z2m/client.py` парсит входящие MQTT-сообщения и генерирует события, `bridge.py` реагирует на них и вызывает `wb/publisher.py`. Обратный путь: `wb/subscriber.py` получает команды из WB и передаёт в `bridge.py`, который публикует в z2m.
 - **Минимум зависимостей**: только `paho-mqtt`, никаких фреймворков.
 
@@ -138,14 +139,16 @@
 | `main.py` | Точка входа: `setup_logging()`, парсинг CLI, загрузка конфига | ✅ |
 | `app.py` | `WbZigbee2Mqtt`: MQTT-клиент, сигналы, жизненный цикл, коды выхода | ✅ |
 | `config_loader.py` | Загрузка и валидация JSON-конфига (dataclass `ConfigLoader`) | ✅ |
-| `bridge.py` | Оркестратор: z2m-события → WB-контролы, фильтрация логов | ✅ |
+| `bridge.py` | Оркестратор: z2m-события → WB-контролы, регистрация/удаление устройств | ✅ |
+| `registered_device.py` | `RegisteredDevice`: кеш z2m-устройства с WB controls и device_id | ✅ |
 | `z2m/client.py` | `Z2MClient`: подписка на z2m-топики, парсинг → коллбэки | ✅ |
-| `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel` | ✅ |
+| `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty` | ✅ |
 | `mqtt_client.py` | Зарезервировано для расширения MQTT-клиента | зарезервировано |
 | `z2m/ota.py` | OTA: проверка и запуск обновлений | зарезервировано |
-| `wb_converter/publisher.py` | `WbPublisher`: публикация устройств, JSON `/meta`, команды | ✅ |
+| `wb_converter/publisher.py` | `WbPublisher`: публикация/удаление устройств, JSON `/meta`, команды | ✅ |
+| `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (10 numeric типов, binary, enum, text) | ✅ |
 | `wb_converter/subscriber.py` | Подписка на `/on`-топики WB, передача команд в bridge | зарезервировано |
-| `wb_converter/controls.py` | `BridgeControl`, `ControlMeta`, `BRIDGE_CONTROLS` (10 контролов) | ✅ |
+| `wb_converter/controls.py` | `WbControlType`, `BridgeControl`, `ControlMeta` (с `format_value`), `BRIDGE_CONTROLS` | ✅ |
 
 ---
 
@@ -173,11 +176,22 @@ on_connect (реконнект):
 
 ### Обновление состояния устройства
 
+#### Идентификация устройств: `ieee_address` vs `friendly_name`
+
+WB `device_id` формируется из `ieee_address` (не `friendly_name`), потому что:
+- `ieee_address` гарантированно уникален (аппаратный адрес)
+- не меняется при переименовании устройства в z2m
+- исключает коллизии (например `"sensor-1"` и `"sensor.1"` дали бы одинаковый `device_id`)
+
+Где что используется:
+- `ieee_address` → WB `device_id`, MQTT-топики WB (`/devices/{ieee_address}/controls/...`)
+- `friendly_name` → отображаемое имя (title) в WB UI, подписка на z2m топики (`zigbee2mqtt/{friendly_name}`), ключ в `_known_devices`
+
 ```
-zigbee2mqtt/{device_name} (входящее сообщение)
+zigbee2mqtt/{friendly_name} (входящее сообщение)
   → z2m/client.py парсит JSON
   → bridge.py получает событие device_state_changed
-  → wb/publisher.py публикует /devices/{wb_id}/controls/{control}
+  → wb/publisher.py публикует /devices/{ieee_address}/controls/{control}
 ```
 
 ### Команда из WB
@@ -187,19 +201,46 @@ zigbee2mqtt/{device_name} (входящее сообщение)
 Задача сервиса — получить команду из `/on`-топика и транслировать её в соответствующий топик zigbee2mqtt.
 
 ```
-/devices/{wb_id}/controls/{control}/on (входящее сообщение от пользователя)
+/devices/{ieee_address}/controls/{control}/on (входящее сообщение от пользователя)
   → wb/subscriber.py получает команду
   → bridge.py маппит WB-контрол → z2m атрибут
-  → mqtt_client публикует zigbee2mqtt/{device_name}/set {"attribute": value}
+  → mqtt_client публикует zigbee2mqtt/{friendly_name}/set {"attribute": value}
 ```
 
 ### Удаление устройства
 
+Обрабатывается при событиях `device_removed` и `device_leave`:
+
 ```
 zigbee2mqtt/bridge/event → {"type": "device_removed", ...}
-  → bridge.py снимает подписку с zigbee2mqtt/{device_name}
-  → wb/publisher.py публикует пустые retain "" на все топики WB-устройства
+  → bridge.py удаляет устройство из _known_devices
+  → z2m/client.py (unsubscribe_device) снимает подписку с zigbee2mqtt/{friendly_name}
+  → wb/publisher.py (remove_device) публикует пустые retain "" на все топики WB-устройства
+  → устройство исчезает из WB UI
 ```
+
+Также обрабатывается `bridge/response/device/remove` (ответ на команду удаления).
+
+### Переименование устройства
+
+Обрабатывается двумя способами (z2m может использовать любой):
+
+1. Событие `bridge/event` с `type: "device_renamed"` — содержит `from` и `to`
+2. Переопубликация `bridge/devices` — `_register_device` обнаруживает, что `ieee_address` уже известен под другим `friendly_name`
+
+```
+zigbee2mqtt/bridge/devices → устройство с новым friendly_name
+  → bridge.py находит старое имя по ieee_address (_find_old_name)
+  → z2m/client.py (unsubscribe_device) снимает подписку со старого топика
+  → z2m/client.py (subscribe_device) подписывается на новый топик
+  → wb/publisher.py (publish_device) обновляет title в WB
+  → device_id (ieee_address) не меняется — WB-устройство остаётся тем же
+```
+
+### Известные ограничения
+
+- Если устройство обновило firmware (OTA) и exposes изменились, новые контролы не появятся до перезапуска сервиса
+- Устройства, у которых все exposes неизвестного типа, не регистрируются (только `last_seen` недостаточно)
 
 ---
 

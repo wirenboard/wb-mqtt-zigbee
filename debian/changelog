@@ -1,3 +1,14 @@
+wb-zigbee2mqtt (1.2.0) stable; urgency=medium
+
+  * Add device discovery and real-time state updates from z2m exposes
+  * Add expose type mapping: numeric (10 types), binary, enum, text, composite, rgb
+  * Add RGB color picker for color lights (HS→RGB via colorsys)
+  * Add device removal and rename handling
+  * Add MQTT reconnect with full resubscription and device republish
+  * Use ieee_address as stable WB device_id
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Mon, 17 Mar 2026 13:40:00 +0300
+
 wb-zigbee2mqtt (1.1.0) stable; urgency=medium
 
   * Add bridge device with 10 controls: state, version, log level, log,

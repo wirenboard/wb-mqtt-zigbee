@@ -115,6 +115,10 @@ class Bridge:
         if old_name is not None:
             self._on_device_renamed(old_name, device.friendly_name)
             return
+        old_name = self._find_old_name(device.ieee_address)
+        if old_name is not None:
+            self._on_device_renamed(old_name, device.friendly_name)
+            return
         if not device.exposes:
             logger.info("Device '%s' has no exposes yet, skipping", device.friendly_name)
             return

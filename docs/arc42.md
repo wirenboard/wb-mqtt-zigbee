@@ -108,6 +108,7 @@
 
 - **Динамическое построение контролов из `exposes`** вместо захардкоженных маппингов v1. Это автоматически даёт поддержку управления и новых типов устройств без изменения кода. Отображаемое имя контрола генерируется из имени property: `noise_detect_level` → `"Noise detect level"`.
 - **Поддержка цветных ламп**: composite expose `color` (color_xy / color_hs) маппится в единый WB-контрол типа `rgb`. z2m всегда отдаёт оба представления цвета (`hue`/`saturation` и `x`/`y`), используем HS→RGB через `colorsys.hsv_to_rgb()`. Результат — WB формат `"R;G;B"`, homeui показывает color picker. Brightness выделен в отдельный контрол (V=1.0 в HSV).
+- **Сервисные контролы устройств**: к каждому устройству автоматически добавляются контролы `device_type` (тип в z2m сети: Router/EndDevice/Coordinator с русской локализацией) и `last_seen` (время последней активности, конвертация из epoch/ISO в локальное время).
 - **Event-driven внутри сервиса**: `z2m/client.py` парсит входящие MQTT-сообщения и генерирует события, `bridge.py` реагирует на них и вызывает `wb/publisher.py`. Обратный путь: `publisher.py` подписывается на `/on`-топики WB, команды передаются в `bridge.py`, который публикует в z2m.
 - **Минимум зависимостей**: только `paho-mqtt`, никаких фреймворков.
 
@@ -147,7 +148,7 @@
 | `z2m/ota.py` | OTA: проверка и запуск обновлений | зарезервировано |
 | `wb_converter/publisher.py` | `WbPublisher`: публикация/удаление устройств, JSON `/meta`, команды | ✅ |
 | `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (10 numeric типов, binary, enum, text, range для writable с min/max) | ✅ |
-| `wb_converter/controls.py` | `WbControlType` (16 констант, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`), `BRIDGE_CONTROLS` | ✅ |
+| `wb_converter/controls.py` | `WbControlType` (16 констант, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` | ✅ |
 
 ---
 

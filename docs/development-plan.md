@@ -31,7 +31,7 @@
 
 ### Этап 2 — Устройство моста (1–2 дня) ✅
 
-**Что сделали:** подписка на `bridge/state`, `bridge/info`, `bridge/logging`, `bridge/devices`, `bridge/event`, `bridge/response/device/remove`; виртуальное WB-устройство `zigbee2mqtt` с 10 контролами; фильтрация логов по уровню; JSON `/meta` с en/ru переводами.
+**Что сделали:** подписка на `bridge/state`, `bridge/info`, `bridge/logging`, `bridge/devices`, `bridge/event`, `bridge/response/device/remove`; виртуальное WB-устройство `zigbee2mqtt` с 12 контролами; фильтрация логов по уровню; JSON `/meta` с en/ru переводами.
 
 **Контролы устройства моста:**
 
@@ -39,14 +39,16 @@
 |---|---|---|---|
 | State | text | R | Состояние моста (online/offline/error) |
 | Version | text | R | Версия zigbee2mqtt |
-| Log level | text | R | Минимальный уровень логов (из конфига) |
-| Log | text | R | Последнее лог-сообщение (фильтруется по уровню) |
 | Permit join | switch | W | Разрешить подключение устройств (254 сек) |
 | Device count | value | R | Количество устройств (без координатора) |
 | Last joined | text | R | Последнее подключенное устройство |
 | Last left | text | R | Последнее вышедшее из сети устройство |
 | Last removed | text | R | Последнее удалённое устройство |
 | Update devices | pushbutton | W | Запросить обновление списка устройств |
+| Last seen | text | R | Последняя активность (время последнего сообщения от z2m) |
+| Messages received | value | R | Количество полученных сообщений от z2m |
+| Log level | text | R | Минимальный уровень логов (из конфига) |
+| Log | text | R | Последнее лог-сообщение (фильтруется по уровню) |
 
 **Результат:** в WB появляется устройство `Zigbee2MQTT`, все контролы обновляются в реальном времени, permit_join работает, логи фильтруются по настроенному уровню.
 
@@ -156,9 +158,12 @@
 
 ### Этап 4 — Управление устройствами (1–2 дня) ✅
 
-**Что сделали:** подписка на `/on`-топики WB при регистрации устройства, маппинг команд через `parse_wb_value()` → публикация в `zigbee2mqtt/{device}/set`. Отписка от команд при удалении устройства.
+**Что сделали:** подписка на `/on`-топики WB при регистрации устройства, маппинг команд через `parse_wb_value()` → публикация в `zigbee2mqtt/{device}/set`. Отписка от команд при удалении устройства. Добавлены сервисные контролы к каждому устройству:
 
-**Результат:** writable-контролы в WB отправляют команды на устройства.
+- `device_type` (text, readonly) — тип устройства в z2m сети (Router → Маршрутизатор, EndDevice → Оконечное устройство, Coordinator → Координатор)
+- `last_seen` (text, readonly) — время последней активности устройства (конвертация из epoch ms/s/ISO → локальное время)
+
+**Результат:** writable-контролы в WB отправляют команды на устройства. Каждое устройство показывает свой тип и время последней активности.
 
 **Проверка:**
 - Переключение реле из WB → физическое устройство реагирует
@@ -180,8 +185,8 @@
 - Удалить устройство в z2m UI → устройство исчезает из WB ✅
 - Переименовать устройство в z2m UI → в WB появляется новое имя, device_id не меняется ✅
 
-**Проверка (не пройдена):**
-- После переименования управление устройством из WB продолжает работать (Stage 4 ещё не реализован)
+**Проверка (пройдена после реализации Stage 4):**
+- После переименования управление устройством из WB продолжает работать ✅
 
 ---
 
@@ -296,7 +301,7 @@ wb-mqtt-zigbee/
 | `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty`, `ExposeAccess` | ✅ |
 | `mqtt_client.py` | Зарезервировано для расширения MQTT-клиента | зарезервировано |
 | `z2m/ota.py` | OTA: запрос проверки и запуск обновления | зарезервировано |
-| `wb_converter/controls.py` | `WbControlType` (15 типов, вкл. RGB), `BridgeControl`, `ControlMeta` (с `format_value` и HS→RGB), `BRIDGE_CONTROLS` (12 контролов с en/ru) | ✅ |
+| `wb_converter/controls.py` | `WbControlType` (16 типов, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` (12 контролов с en/ru) | ✅ |
 | `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (10 numeric типов, binary, enum, text, rgb для color) | ✅ |
 | `wb_converter/publisher.py` | `WbPublisher`: публикация/удаление WB-устройств, JSON `/meta`, подписка на команды | ✅ |
 | ~~`wb_converter/subscriber.py`~~ | Удалён — подписка на команды реализована в `publisher.py` | — |

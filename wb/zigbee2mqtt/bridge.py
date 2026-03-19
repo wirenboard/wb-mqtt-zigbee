@@ -55,6 +55,7 @@ class Bridge:
         self._messages_received = 0
         self._last_stats_publish = 0.0
         self._known_devices: dict[str, RegisteredDevice] = {}  # friendly_name → RegisteredDevice
+        self._ieee_to_name: dict[str, str] = {}  # ieee_address → friendly_name
 
     def subscribe(self) -> None:
         self._wb.publish_bridge_device()
@@ -132,6 +133,7 @@ class Bridge:
         registered = RegisteredDevice(z2m=device, controls=controls, device_id=device_id)
         logger.info("Registering device '%s' as '%s' (%d controls)", device.friendly_name, device_id, len(controls))
         self._known_devices[device.friendly_name] = registered
+        self._ieee_to_name[device.ieee_address] = device.friendly_name
         self._wb.publish_device(device_id, device.friendly_name, controls)
         if device.type:
             self._wb.publish_device_control(device_id, "device_type", _DEVICE_TYPE_RU.get(device.type, device.type))
@@ -182,6 +184,7 @@ class Bridge:
         if event.type in (DeviceEventType.REMOVED, DeviceEventType.LEFT):
             registered = self._known_devices.pop(event.name, None)
             if registered:
+                self._ieee_to_name.pop(registered.z2m.ieee_address, None)
                 self._z2m.unsubscribe_device(event.name)
                 self._wb.unsubscribe_device_commands(registered.device_id, registered.controls)
                 self._wb.remove_device(registered.device_id, registered.controls)
@@ -191,11 +194,8 @@ class Bridge:
         self._update_stats()
 
     def _find_old_name(self, ieee_address: str) -> Optional[str]:
-        """Find friendly_name of a known device by ieee_address, or None"""
-        for name, registered in self._known_devices.items():
-            if registered.z2m.ieee_address == ieee_address:
-                return name
-        return None
+        """Find friendly_name of a known device by ieee_address, or None. O(1) lookup."""
+        return self._ieee_to_name.get(ieee_address)
 
     def _on_device_renamed(self, old_name: str, new_name: str) -> None:
         registered = self._known_devices.pop(old_name, None)
@@ -205,6 +205,7 @@ class Bridge:
         self._z2m.unsubscribe_device(old_name)
         registered.z2m.friendly_name = new_name
         self._known_devices[new_name] = registered
+        self._ieee_to_name[registered.z2m.ieee_address] = new_name
         self._z2m.subscribe_device(new_name)
         self._wb.publish_device(registered.device_id, new_name, registered.controls)
         logger.info("Renamed device '%s' -> '%s' (device_id=%s)", old_name, new_name, registered.device_id)

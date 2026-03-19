@@ -178,7 +178,6 @@ class Bridge:
         self._wb.publish_device(registered.device_id, new_name, registered.controls)
         logger.info("Renamed device '%s' -> '%s' (device_id=%s)", old_name, new_name, registered.device_id)
 
-
 def _sanitize_device_id(ieee_address: str) -> str:
     """Convert ieee_address to a valid WB device ID (alphanumeric + underscores)"""
     return re.sub(r"[^a-zA-Z0-9_]", "_", ieee_address)

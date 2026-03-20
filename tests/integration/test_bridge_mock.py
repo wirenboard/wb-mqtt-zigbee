@@ -7,10 +7,13 @@ import pytest
 # conftest.py is auto-loaded by pytest; import data constants directly
 from conftest import (
     COLOR_LAMP_DEVICE,
+    MockMQTTClient,
     RELAY_DEVICE,
     TEMP_SENSOR_DEVICE,
     make_bridge_devices_payload,
 )
+
+from wb.zigbee2mqtt.bridge import Bridge
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +206,17 @@ class TestDeviceLifecycle:
         )
         assert mock_mqtt.retained["/devices/0x00158d0001234567/meta"] == ""
 
+    def test_stale_device_removed_on_devices_update(self, bridge, mock_mqtt):
+        """When a device disappears from bridge/devices, its MQTT topics are cleaned."""
+        register_device(mock_mqtt, RELAY_DEVICE)
+        assert mock_mqtt.retained.get("/devices/0x00158d0001234567/meta")
+        # Re-publish bridge/devices without the relay
+        mock_mqtt.inject_message(
+            "zigbee2mqtt/bridge/devices",
+            make_bridge_devices_payload([TEMP_SENSOR_DEVICE]),
+        )
+        assert mock_mqtt.retained["/devices/0x00158d0001234567/meta"] == ""
+
     def test_control_commands_work_after_rename(self, bridge, mock_mqtt):
         """After rename, commands should go to the new z2m topic."""
         register_device(mock_mqtt, RELAY_DEVICE)
@@ -292,3 +306,81 @@ class TestBridgeDevice:
         mock_mqtt.inject_message("/devices/zigbee2mqtt/controls/Update devices/on", "1")
         payloads = mock_mqtt.find_published("zigbee2mqtt/bridge/request/devices/get")
         assert len(payloads) >= 1
+
+
+# ---------------------------------------------------------------------------
+# 3.5 Ghost device cleanup
+# ---------------------------------------------------------------------------
+
+class TestGhostDeviceCleanup:
+
+    def test_ghost_device_removed_on_startup(self):
+        """Retained topics from a previous run are cleaned up when bridge starts."""
+        mock_mqtt = MockMQTTClient()
+        # Simulate ghost device retained from a previous run
+        ghost_id = "0xdeadbeef12345678"
+        ghost_meta = json.dumps({"driver": "wb-zigbee2mqtt", "title": {"en": "ghost"}})
+        ctrl_meta = json.dumps({"type": "switch", "readonly": False})
+        mock_mqtt.retained[f"/devices/{ghost_id}/meta"] = ghost_meta
+        mock_mqtt.retained[f"/devices/{ghost_id}/controls/state/meta"] = ctrl_meta
+        mock_mqtt.retained[f"/devices/{ghost_id}/controls/state"] = "1"
+
+        # Create bridge — subscribe() starts retained scan
+        bridge = Bridge(mock_mqtt, "zigbee2mqtt", "zigbee2mqtt", "Zigbee2MQTT", "warning")
+        bridge.subscribe()
+
+        # Deliver retained messages to wildcard subscribers
+        mock_mqtt.inject_retained()
+
+        # First bridge/devices arrives with only the relay — ghost not in list
+        mock_mqtt.inject_message(
+            "zigbee2mqtt/bridge/devices",
+            make_bridge_devices_payload([RELAY_DEVICE]),
+        )
+
+        # Ghost device topics should be cleared
+        assert mock_mqtt.retained[f"/devices/{ghost_id}/meta"] == ""
+        assert mock_mqtt.retained[f"/devices/{ghost_id}/controls/state/meta"] == ""
+        assert mock_mqtt.retained[f"/devices/{ghost_id}/controls/state"] == ""
+
+    def test_active_device_not_removed_as_ghost(self):
+        """Devices present in z2m list should NOT be cleaned up by ghost scan."""
+        mock_mqtt = MockMQTTClient()
+        # Retained from previous run for a device that still exists
+        device_id = "0x00158d0001234567"
+        device_meta = json.dumps({"driver": "wb-zigbee2mqtt", "title": {"en": "test_relay"}})
+        mock_mqtt.retained[f"/devices/{device_id}/meta"] = device_meta
+        mock_mqtt.retained[f"/devices/{device_id}/controls/state/meta"] = json.dumps({"type": "switch"})
+
+        bridge = Bridge(mock_mqtt, "zigbee2mqtt", "zigbee2mqtt", "Zigbee2MQTT", "warning")
+        bridge.subscribe()
+        mock_mqtt.inject_retained()
+
+        # Device IS in the z2m list — should not be removed
+        mock_mqtt.inject_message(
+            "zigbee2mqtt/bridge/devices",
+            make_bridge_devices_payload([RELAY_DEVICE]),
+        )
+
+        # Device meta should NOT be empty (it gets re-published by register_device)
+        assert mock_mqtt.retained[f"/devices/{device_id}/meta"] != ""
+
+    def test_non_our_device_not_removed(self):
+        """Devices without our driver marker should not be touched."""
+        mock_mqtt = MockMQTTClient()
+        # Some other driver's device
+        other_meta = json.dumps({"driver": "wb-modbus", "title": {"en": "modbus device"}})
+        mock_mqtt.retained["/devices/wb-modbus-123/meta"] = other_meta
+        mock_mqtt.retained["/devices/wb-modbus-123/controls/temp/meta"] = json.dumps({"type": "temperature"})
+
+        bridge = Bridge(mock_mqtt, "zigbee2mqtt", "zigbee2mqtt", "Zigbee2MQTT", "warning")
+        bridge.subscribe()
+        mock_mqtt.inject_retained()
+
+        mock_mqtt.inject_message(
+            "zigbee2mqtt/bridge/devices",
+            make_bridge_devices_payload([RELAY_DEVICE]),
+        )
+
+        # Other driver's device should be untouched
+        assert mock_mqtt.retained["/devices/wb-modbus-123/meta"] == other_meta

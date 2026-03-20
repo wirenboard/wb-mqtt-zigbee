@@ -178,12 +178,22 @@
 - ✅ Удаление устройств (`device_removed`, `device_leave`) — отписка, очистка retain, удаление из `_known_devices`
 - ✅ Переименование устройств (`device_renamed`) — переподписка на новый топик, обновление title в WB
 
+**Добавлено:**
+- ✅ Очистка stale-устройств — при каждом `bridge/devices` удаляются устройства из `_known_devices`, которых нет в актуальном списке z2m
+- ✅ Очистка ghost-устройств при старте — wildcard-сканирование retained `/devices/+/meta` по маркеру `"driver": "wb-zigbee2mqtt"`, сравнение с первым `bridge/devices`, удаление отсутствующих
+- ✅ Маркер `driver` в device meta — все WB-устройства публикуются с `"driver": "wb-zigbee2mqtt"` для идентификации
+- ✅ Очистка legacy meta sub-topics при удалении (`meta/type`, `meta/order`, `meta/readonly`, `meta/name`, `meta/driver`)
+- ✅ `postinst` — автоматическое удаление v1 wb-rules скрипта (`wb-zigbee2mqtt.js` / `.disabled`) при установке пакета
+
 **Осталось:**
 - Обновление `exposes` после OTA-обновления прошивки (edge case, можно отложить)
 
 **Проверка (пройдена):**
 - Удалить устройство в z2m UI → устройство исчезает из WB ✅
 - Переименовать устройство в z2m UI → в WB появляется новое имя, device_id не меняется ✅
+- Удалить устройства, перезапустить сервис → ghost-устройства очищаются при старте ✅
+- Устройства других драйверов не затрагиваются ghost-сканированием ✅
+- Установка пакета на систему с v1 скриптом → скрипт удаляется, wb-rules перезапускается ✅
 
 **Проверка (пройдена после реализации Stage 4):**
 - После переименования управление устройством из WB продолжает работать ✅
@@ -253,6 +263,7 @@ wb-mqtt-zigbee/
 │   ├── changelog                — источник версии пакета
 │   ├── rules
 │   ├── copyright
+│   ├── wb-mqtt-zigbee.postinst  — удаление v1 wb-rules скрипта при установке
 │   ├── wb-mqtt-zigbee.service   — systemd unit
 │   └── wb-mqtt-zigbee.install   — раскладка не-Python файлов
 ├── setup.py
@@ -303,7 +314,7 @@ wb-mqtt-zigbee/
 | `z2m/ota.py` | OTA: запрос проверки и запуск обновления | зарезервировано |
 | `wb_converter/controls.py` | `WbControlType` (16 типов, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` (12 контролов с en/ru) | ✅ |
 | `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, rgb для color) | ✅ |
-| `wb_converter/publisher.py` | `WbPublisher`: публикация/удаление WB-устройств, JSON `/meta`, подписка на команды | ✅ |
+| `wb_converter/publisher.py` | `WbPublisher`: публикация/удаление WB-устройств, JSON `/meta` с driver-маркером, подписка на команды, retained-сканирование ghost-устройств | ✅ |
 | ~~`wb_converter/subscriber.py`~~ | Удалён — подписка на команды реализована в `publisher.py` | — |
 
 ## Конфигурация

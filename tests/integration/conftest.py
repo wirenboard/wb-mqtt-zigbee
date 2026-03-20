@@ -1,6 +1,7 @@
 """Integration test fixtures: MockMQTTClient and Bridge setup."""
 
 import json
+import re
 from dataclasses import dataclass, field
 
 import pytest
@@ -18,6 +19,7 @@ from wb.zigbee2mqtt.bridge import Bridge
 class FakeMessage:
     """Minimal MQTT message compatible with paho-mqtt interface."""
     payload: bytes
+    topic: str = ""
 
 
 class MockMQTTClient:
@@ -51,12 +53,39 @@ class MockMQTTClient:
         self.callbacks.pop(topic, None)
 
     def inject_message(self, topic: str, payload: str) -> None:
-        """Simulate an incoming MQTT message by calling the registered callback."""
+        """Simulate an incoming MQTT message by calling the registered callback.
+
+        Supports MQTT wildcard matching: '+' matches a single level, '#' matches
+        the rest of the topic. Exact matches are tried first.
+        """
+        msg = FakeMessage(payload=payload.encode("utf-8"), topic=topic)
         cb = self.callbacks.get(topic)
-        if cb is None:
-            raise KeyError(f"No callback registered for topic '{topic}'. "
-                           f"Registered: {sorted(self.callbacks.keys())}")
-        cb(None, None, FakeMessage(payload=payload.encode("utf-8")))
+        if cb is not None:
+            cb(None, None, msg)
+            return
+        # Try wildcard match
+        for pattern, cb in self.callbacks.items():
+            if "+" not in pattern and "#" not in pattern:
+                continue
+            regex = re.escape(pattern).replace(r"\+", "[^/]+").replace(r"\#", ".*")
+            if re.fullmatch(regex, topic):
+                cb(None, None, msg)
+                return
+        raise KeyError(f"No callback registered for topic '{topic}'. "
+                       f"Registered: {sorted(self.callbacks.keys())}")
+
+    def inject_retained(self) -> None:
+        """Deliver all retained messages to matching wildcard subscribers."""
+        for topic, payload in list(self.retained.items()):
+            if not payload:
+                continue
+            msg = FakeMessage(payload=payload.encode("utf-8"), topic=topic)
+            for pattern, cb in self.callbacks.items():
+                if "+" not in pattern and "#" not in pattern:
+                    continue
+                regex = re.escape(pattern).replace(r"\+", "[^/]+").replace(r"\#", ".*")
+                if re.fullmatch(regex, topic):
+                    cb(None, None, msg)
 
     def find_published(self, topic: str) -> list[str]:
         """Return all payloads published to a given topic (any retain)."""

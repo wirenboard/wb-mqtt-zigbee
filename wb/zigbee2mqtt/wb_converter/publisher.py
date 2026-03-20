@@ -9,6 +9,10 @@ from .controls import BRIDGE_CONTROLS, BridgeControl, ControlMeta
 logger = logging.getLogger(__name__)
 
 DEVICES_PREFIX = "/devices"
+DRIVER_NAME = "wb-zigbee2mqtt"
+
+_DEVICE_META_WILDCARD = f"{DEVICES_PREFIX}/+/meta"
+_CONTROL_META_WILDCARD = f"{DEVICES_PREFIX}/+/controls/+/meta"
 
 
 class WbPublisher:
@@ -18,6 +22,8 @@ class WbPublisher:
         self._client = mqtt_client
         self._device_id = device_id
         self._device_name = device_name
+        self._scanned_our_ids: set[str] = set()  # device_ids with our driver
+        self._scanned_controls: dict[str, set[str]] = {}  # device_id → set of control_ids (all)
 
     def publish_bridge_device(self) -> None:
         self._publish_device(self._device_id, self._device_name, BRIDGE_CONTROLS)
@@ -34,11 +40,83 @@ class WbPublisher:
         for control_id in controls:
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta", "")
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", "")
+            self._clear_legacy_control_meta(device_id, control_id)
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", "")
+        self._clear_legacy_device_meta(device_id)
+
+    def remove_retained_device(self, device_id: str, control_ids: set[str]) -> None:
+        """Remove a ghost device discovered via retained scan (no ControlMeta needed)"""
+        for control_id in control_ids:
+            self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta", "")
+            self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", "")
+            self._clear_legacy_control_meta(device_id, control_id)
+        self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", "")
+        self._clear_legacy_device_meta(device_id)
 
     def publish_device_control(self, device_id: str, control_id: str, value: str) -> None:
         topic = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}"
         self._publish_retain(topic, value)
+
+    # -- Retained device scan (ghost cleanup) ----------------------------------
+
+    def start_retained_scan(self) -> None:
+        """Subscribe to wildcard topics to discover retained devices with our driver."""
+        self._scanned_our_ids.clear()
+        self._scanned_controls.clear()
+        self._client.subscribe(_DEVICE_META_WILDCARD)
+        self._client.subscribe(_CONTROL_META_WILDCARD)
+        self._client.message_callback_add(_DEVICE_META_WILDCARD, self._on_retained_device_meta)
+        self._client.message_callback_add(_CONTROL_META_WILDCARD, self._on_retained_control_meta)
+
+    def stop_retained_scan(self) -> None:
+        """Unsubscribe from wildcard scan topics."""
+        self._client.unsubscribe(_DEVICE_META_WILDCARD)
+        self._client.unsubscribe(_CONTROL_META_WILDCARD)
+        self._client.message_callback_remove(_DEVICE_META_WILDCARD)
+        self._client.message_callback_remove(_CONTROL_META_WILDCARD)
+
+    def get_scanned_device_ids(self) -> set[str]:
+        """Return device_ids discovered during retained scan that have our driver.
+
+        Excludes the bridge device itself (it is not a zigbee device).
+        """
+        return self._scanned_our_ids - {self._device_id}
+
+    def get_scanned_controls(self, device_id: str) -> set[str]:
+        """Return control_ids discovered for a given device_id."""
+        return self._scanned_controls.get(device_id, set())
+
+    def _on_retained_device_meta(self, _client: object, _userdata: object, message: object) -> None:
+        """Callback for /devices/+/meta: collect device_ids with our driver."""
+        payload = message.payload.decode("utf-8").strip()
+        if not payload:
+            return
+        try:
+            meta = json.loads(payload)
+        except (json.JSONDecodeError, ValueError):
+            return
+        if meta.get("driver") != DRIVER_NAME:
+            return
+        # topic: /devices/{device_id}/meta
+        parts = message.topic.split("/")
+        if len(parts) >= 3:
+            self._scanned_our_ids.add(parts[2])
+
+    def _on_retained_control_meta(self, _client: object, _userdata: object, message: object) -> None:
+        """Callback for /devices/+/controls/+/meta: collect control_ids per device."""
+        payload = message.payload.decode("utf-8").strip()
+        if not payload:
+            return
+        # topic: /devices/{device_id}/controls/{control_id}/meta
+        parts = message.topic.split("/")
+        if len(parts) >= 5:
+            device_id = parts[2]
+            control_id = parts[4]
+            if device_id not in self._scanned_controls:
+                self._scanned_controls[device_id] = set()
+            self._scanned_controls[device_id].add(control_id)
+
+    # -- Bridge commands -------------------------------------------------------
 
     def subscribe_bridge_commands(
         self,
@@ -92,9 +170,11 @@ class WbPublisher:
             self._client.message_callback_remove(topic)
 
     def _publish_device(self, device_id: str, name: str, controls: dict[str, ControlMeta]) -> None:
-        device_meta = {"title": {"en": name, "ru": name}}
+        device_meta = {"driver": DRIVER_NAME, "title": {"en": name, "ru": name}}
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", json.dumps(device_meta))
+        self._clear_legacy_device_meta(device_id)
         for control_id, meta in controls.items():
+            self._clear_legacy_control_meta(device_id, control_id)
             self._publish_control_meta(device_id, control_id, meta)
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", " ")
 
@@ -112,6 +192,18 @@ class WbPublisher:
             payload["min"] = meta.min
         topic = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
         self._publish_retain(topic, json.dumps(payload))
+
+    def _clear_legacy_device_meta(self, device_id: str) -> None:
+        """Clear old wb-rules style device meta sub-topics (name, driver)"""
+        prefix = f"{DEVICES_PREFIX}/{device_id}/meta"
+        for sub in ("name", "driver"):
+            self._publish_retain(f"{prefix}/{sub}", "")
+
+    def _clear_legacy_control_meta(self, device_id: str, control_id: str) -> None:
+        """Clear old wb-rules style control meta sub-topics (type, order, readonly)"""
+        prefix = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
+        for sub in ("type", "order", "readonly"):
+            self._publish_retain(f"{prefix}/{sub}", "")
 
     def _publish_retain(self, topic: str, value: str) -> None:
         self._client.publish(topic, value, retain=True, qos=1)

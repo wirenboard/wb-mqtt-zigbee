@@ -56,8 +56,11 @@ class Bridge:
         self._last_stats_publish = 0.0
         self._known_devices: dict[str, RegisteredDevice] = {}  # friendly_name → RegisteredDevice
         self._ieee_to_name: dict[str, str] = {}  # ieee_address → friendly_name
+        self._retained_scan_active = False
 
     def subscribe(self) -> None:
+        self._wb.start_retained_scan()
+        self._retained_scan_active = True
         self._publish_bridge()
 
     def republish(self) -> None:
@@ -110,6 +113,11 @@ class Bridge:
         self._update_stats()
         for device in devices:
             self._register_device(device)
+        self._remove_stale_devices(devices)
+        if self._retained_scan_active:
+            self._remove_ghost_devices(devices)
+            self._wb.stop_retained_scan()
+            self._retained_scan_active = False
 
     def _register_device(self, device: Z2MDevice) -> None:
         if device.friendly_name in self._known_devices:
@@ -146,7 +154,7 @@ class Bridge:
             logger.debug("State update for unknown device '%s', skipping", friendly_name)
             return
         for prop, meta in registered.controls.items():
-            if prop in state:
+            if prop in state and prop != "last_seen":
                 self._wb.publish_device_control(registered.device_id, prop, meta.format_value(state[prop]))
         if "last_seen" in state:
             formatted = _format_last_seen(state["last_seen"])
@@ -189,6 +197,28 @@ class Bridge:
         elif event.type == DeviceEventType.RENAMED:
             self._on_device_renamed(event.old_name, event.name)
         self._update_stats()
+
+    def _remove_stale_devices(self, devices: list[Z2MDevice]) -> None:
+        """Remove devices that are registered locally but no longer present in zigbee2mqtt."""
+        current_names = {d.friendly_name for d in devices}
+        stale_names = [name for name in self._known_devices if name not in current_names]
+        for name in stale_names:
+            registered = self._known_devices.pop(name)
+            self._ieee_to_name.pop(registered.z2m.ieee_address, None)
+            self._z2m.unsubscribe_device(name)
+            self._wb.unsubscribe_device_commands(registered.device_id, registered.controls)
+            self._wb.remove_device(registered.device_id, registered.controls)
+            logger.info("Removed stale WB device '%s' (%s)", name, registered.device_id)
+
+    def _remove_ghost_devices(self, devices: list[Z2MDevice]) -> None:
+        """Remove retained WB devices from previous runs that are no longer in zigbee2mqtt."""
+        current_device_ids = {_sanitize_device_id(d.ieee_address) for d in devices}
+        scanned_ids = self._wb.get_scanned_device_ids()
+        ghost_ids = scanned_ids - current_device_ids
+        for device_id in ghost_ids:
+            control_ids = self._wb.get_scanned_controls(device_id)
+            self._wb.remove_retained_device(device_id, control_ids)
+            logger.info("Removed ghost WB device '%s' (%d controls)", device_id, len(control_ids))
 
     def _find_old_name(self, ieee_address: str) -> Optional[str]:
         """Find friendly_name of a known device by ieee_address, or None. O(1) lookup."""

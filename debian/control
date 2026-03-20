@@ -13,5 +13,7 @@ Architecture: all
 Depends: ${python3:Depends},
          ${misc:Depends},
          python3-wb-common (>= 2.1.0~~)
+Conflicts: wb-zigbee2mqtt
+Replaces: wb-zigbee2mqtt
 Description: Wiren Board Zigbee2MQTT bridge v2
  Translates zigbee2mqtt MQTT messages to Wiren Board MQTT Conventions.

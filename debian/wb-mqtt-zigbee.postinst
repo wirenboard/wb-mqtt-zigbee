@@ -1,0 +1,22 @@
+#!/bin/sh
+set -e
+
+V1_RULES_DIR="/usr/share/wb-rules-system/rules"
+V1_SCRIPT="wb-zigbee2mqtt.js"
+NEED_RESTART_WBRULES=false
+
+# Remove v1 wb-rules script (active or disabled) to avoid conflicts
+for suffix in "" ".disabled"; do
+    path="${V1_RULES_DIR}/${V1_SCRIPT}${suffix}"
+    if [ -f "$path" ]; then
+        rm -f "$path"
+        NEED_RESTART_WBRULES=true
+        echo "Removed legacy v1 script: $path"
+    fi
+done
+
+if [ "$NEED_RESTART_WBRULES" = true ] && [ -d /run/systemd/system ]; then
+    systemctl restart wb-rules 2>/dev/null || true
+fi
+
+#DEBHELPER#

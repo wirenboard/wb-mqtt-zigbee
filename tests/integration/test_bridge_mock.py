@@ -303,9 +303,10 @@ class TestBridgeDevice:
         assert mock_mqtt.get_control_value("zigbee2mqtt", "Device count") == "2"
 
     def test_update_devices_command(self, bridge, mock_mqtt):
+        """Pressing 'Update devices' re-subscribes to bridge/devices and gets retained list."""
         mock_mqtt.inject_message("/devices/zigbee2mqtt/controls/Update devices/on", "1")
-        payloads = mock_mqtt.find_published("zigbee2mqtt/bridge/request/devices/get")
-        assert len(payloads) >= 1
+        # Re-subscribe triggers retained message delivery
+        assert "zigbee2mqtt/bridge/devices" in mock_mqtt.subscriptions
 
 
 # ---------------------------------------------------------------------------

@@ -74,8 +74,10 @@ class Z2MClient:
         self._client.publish(f"{self._base_topic}/bridge/request/permit_join", payload)
 
     def request_devices_update(self) -> None:
-        """Request zigbee2mqtt to republish the devices list"""
-        self._client.publish(f"{self._base_topic}/bridge/request/devices/get", "{}")
+        """Re-subscribe to bridge/devices to receive the retained device list again."""
+        topic = f"{self._base_topic}/bridge/devices"
+        self._client.unsubscribe(topic)
+        self._client.subscribe(topic)
 
     def subscribe_device(self, friendly_name: str) -> None:
         """Subscribe to a device's state topic"""

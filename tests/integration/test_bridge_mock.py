@@ -7,19 +7,19 @@ import pytest
 # conftest.py is auto-loaded by pytest; import data constants directly
 from conftest import (
     COLOR_LAMP_DEVICE,
-    MockMQTTClient,
     RELAY_DEVICE,
     TEMP_SENSOR_DEVICE,
+    MockMQTTClient,
     make_bridge_devices_payload,
 )
 
 from wb.zigbee2mqtt.bridge import Bridge
 from wb.zigbee2mqtt.z2m.client import _is_safe_topic_segment
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def register_device(mock_mqtt, device_dict):
     """Inject bridge/devices with a single device to trigger registration."""
@@ -30,6 +30,7 @@ def register_device(mock_mqtt, device_dict):
 # ---------------------------------------------------------------------------
 # 3.1 Reading device state (z2m → WB)
 # ---------------------------------------------------------------------------
+
 
 class TestReadState:
 
@@ -115,6 +116,7 @@ class TestReadState:
 # 3.2 Device control (WB → z2m)
 # ---------------------------------------------------------------------------
 
+
 class TestDeviceControl:
 
     def test_relay_switch_on(self, bridge, mock_mqtt):
@@ -151,6 +153,7 @@ class TestDeviceControl:
 # ---------------------------------------------------------------------------
 # 3.3 Device lifecycle
 # ---------------------------------------------------------------------------
+
 
 class TestDeviceLifecycle:
 
@@ -203,10 +206,12 @@ class TestDeviceLifecycle:
         register_device(mock_mqtt, RELAY_DEVICE)
         mock_mqtt.inject_message(
             "zigbee2mqtt/bridge/event",
-            json.dumps({
-                "type": "device_leave",
-                "data": {"friendly_name": "test_relay", "ieee_address": "test_relay"},
-            }),
+            json.dumps(
+                {
+                    "type": "device_leave",
+                    "data": {"friendly_name": "test_relay", "ieee_address": "test_relay"},
+                }
+            ),
         )
         assert mock_mqtt.retained["/devices/test_relay/meta"] == ""
 
@@ -247,6 +252,7 @@ class TestDeviceLifecycle:
 # ---------------------------------------------------------------------------
 # 3.4 Bridge device
 # ---------------------------------------------------------------------------
+
 
 class TestBridgeDevice:
 
@@ -316,6 +322,7 @@ class TestBridgeDevice:
 # ---------------------------------------------------------------------------
 # 3.5 Ghost device cleanup
 # ---------------------------------------------------------------------------
+
 
 class TestGhostDeviceCleanup:
 
@@ -395,17 +402,21 @@ class TestGhostDeviceCleanup:
 # 3.6 Topic safety validation
 # ---------------------------------------------------------------------------
 
+
 class TestTopicSafety:
 
-    @pytest.mark.parametrize("name,expected", [
-        ("normal_device", True),
-        ("living room lamp", True),
-        ("device+wildcard", False),
-        ("device#hash", False),
-        ("#", False),
-        ("+", False),
-        ("", False),
-    ])
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            ("normal_device", True),
+            ("living room lamp", True),
+            ("device+wildcard", False),
+            ("device#hash", False),
+            ("#", False),
+            ("+", False),
+            ("", False),
+        ],
+    )
     def test_is_safe_topic_segment(self, name, expected):
         assert _is_safe_topic_segment(name) == expected
 
@@ -420,8 +431,14 @@ class TestTopicSafety:
                 "vendor": "Test",
                 "description": "Test",
                 "exposes": [
-                    {"type": "binary", "name": "state", "property": "state",
-                     "access": 7, "value_on": "ON", "value_off": "OFF"},
+                    {
+                        "type": "binary",
+                        "name": "state",
+                        "property": "state",
+                        "access": 7,
+                        "value_on": "ON",
+                        "value_off": "OFF",
+                    },
                 ],
             },
         }
@@ -433,14 +450,17 @@ class TestTopicSafety:
 # 3.7 Callback resilience
 # ---------------------------------------------------------------------------
 
+
 class TestCallbackResilience:
 
     def test_malformed_device_does_not_block_others(self, bridge, mock_mqtt):
         """A broken device dict should not prevent parsing of valid devices."""
-        devices_payload = json.dumps([
-            {"type": "EndDevice"},  # missing required fields — will fail from_dict gracefully
-            RELAY_DEVICE,
-        ])
+        devices_payload = json.dumps(
+            [
+                {"type": "EndDevice"},  # missing required fields — will fail from_dict gracefully
+                RELAY_DEVICE,
+            ]
+        )
         mock_mqtt.inject_message("zigbee2mqtt/bridge/devices", devices_payload)
         # Relay should still be registered
         assert mock_mqtt.retained.get("/devices/test_relay/meta")
@@ -449,6 +469,7 @@ class TestCallbackResilience:
 # ---------------------------------------------------------------------------
 # 3.8 Exposes update for already-registered device
 # ---------------------------------------------------------------------------
+
 
 class TestExposesUpdate:
 
@@ -464,7 +485,13 @@ class TestExposesUpdate:
                 **TEMP_SENSOR_DEVICE["definition"],
                 "exposes": [
                     *TEMP_SENSOR_DEVICE["definition"]["exposes"],
-                    {"type": "numeric", "name": "pressure", "property": "pressure", "access": 1, "unit": "hPa"},
+                    {
+                        "type": "numeric",
+                        "name": "pressure",
+                        "property": "pressure",
+                        "access": 1,
+                        "unit": "hPa",
+                    },
                 ],
             },
         }

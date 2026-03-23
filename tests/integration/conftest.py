@@ -8,16 +8,15 @@ import pytest
 
 from wb.zigbee2mqtt.bridge import Bridge
 
-
-
-
 # ---------------------------------------------------------------------------
 # Mock MQTT client
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FakeMessage:
     """Minimal MQTT message compatible with paho-mqtt interface."""
+
     payload: bytes
     topic: str = ""
 
@@ -71,8 +70,9 @@ class MockMQTTClient:
             if re.fullmatch(regex, topic):
                 cb(None, None, msg)
                 return
-        raise KeyError(f"No callback registered for topic '{topic}'. "
-                       f"Registered: {sorted(self.callbacks.keys())}")
+        raise KeyError(
+            f"No callback registered for topic '{topic}'. " f"Registered: {sorted(self.callbacks.keys())}"
+        )
 
     def inject_retained(self) -> None:
         """Deliver all retained messages to matching wildcard subscribers."""
@@ -103,6 +103,7 @@ class MockMQTTClient:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_mqtt():
     return MockMQTTClient()
@@ -124,6 +125,7 @@ def bridge(mock_mqtt):
 # ---------------------------------------------------------------------------
 # Test data helpers
 # ---------------------------------------------------------------------------
+
 
 def make_bridge_devices_payload(devices: list[dict]) -> str:
     """Build a bridge/devices JSON string from a list of device dicts."""
@@ -183,8 +185,22 @@ COLOR_LAMP_DEVICE = {
             {
                 "type": "light",
                 "features": [
-                    {"type": "binary", "name": "state", "property": "state", "access": 7, "value_on": "ON", "value_off": "OFF"},
-                    {"type": "numeric", "name": "brightness", "property": "brightness", "access": 7, "value_min": 0, "value_max": 254},
+                    {
+                        "type": "binary",
+                        "name": "state",
+                        "property": "state",
+                        "access": 7,
+                        "value_on": "ON",
+                        "value_off": "OFF",
+                    },
+                    {
+                        "type": "numeric",
+                        "name": "brightness",
+                        "property": "brightness",
+                        "access": 7,
+                        "value_min": 0,
+                        "value_max": 254,
+                    },
                     {
                         "type": "composite",
                         "name": "color_hs",

@@ -21,11 +21,13 @@ pytestmark = pytest.mark.teststand
 # MQTT helper
 # ---------------------------------------------------------------------------
 
+
 class MQTTReader:
     """Subscribes to topics and collects retained messages."""
 
     def __init__(self, host: str, port: int = 1883):
         import paho.mqtt.client as mqtt
+
         self._messages: dict[str, str] = {}
         self._client = mqtt.Client()
         self._client.on_message = self._on_message
@@ -45,6 +47,7 @@ class MQTTReader:
         time.sleep(timeout)
         # Return only topics matching this subscription (filter by pattern)
         import re
+
         regex = re.compile("^" + topic.replace("+", "[^/]+").replace("#", ".*") + "$")
         return {t: v for t, v in self._messages.items() if regex.match(t)}
 
@@ -102,6 +105,7 @@ def zigbee_devices(mqtt_reader, zigbee_device_ids):
 # Bridge device tests
 # ---------------------------------------------------------------------------
 
+
 class TestBridgeDevice:
 
     def test_bridge_meta_exists(self, mqtt_reader):
@@ -113,9 +117,18 @@ class TestBridgeDevice:
 
     def test_bridge_has_all_controls(self, bridge_controls):
         expected = {
-            "State", "Version", "Permit join", "Device count",
-            "Last joined", "Last left", "Last removed", "Update devices",
-            "Last seen", "Messages received", "Log level", "Log",
+            "State",
+            "Version",
+            "Permit join",
+            "Device count",
+            "Last joined",
+            "Last left",
+            "Last removed",
+            "Update devices",
+            "Last seen",
+            "Messages received",
+            "Log level",
+            "Log",
         }
         found = set()
         for topic in bridge_controls["values"]:
@@ -159,8 +172,9 @@ class TestBridgeDevice:
             meta_topic = f"/devices/zigbee2mqtt/controls/{control_id}/meta"
             raw = bridge_controls["meta"].get(meta_topic, "{}")
             data = json.loads(raw)
-            assert data.get("type") == expected_type, \
-                f"{control_id}: expected type '{expected_type}', got '{data.get('type')}'"
+            assert (
+                data.get("type") == expected_type
+            ), f"{control_id}: expected type '{expected_type}', got '{data.get('type')}'"
 
     def test_bridge_permit_join_is_writable(self, bridge_controls):
         raw = bridge_controls["meta"].get("/devices/zigbee2mqtt/controls/Permit join/meta", "{}")
@@ -171,6 +185,7 @@ class TestBridgeDevice:
 # ---------------------------------------------------------------------------
 # Zigbee device tests
 # ---------------------------------------------------------------------------
+
 
 class TestZigbeeDevices:
 
@@ -203,17 +218,28 @@ class TestZigbeeDevices:
 
     def test_control_types_are_valid(self, zigbee_devices):
         valid_types = {
-            "value", "switch", "text", "pushbutton", "temperature",
-            "rel_humidity", "atmospheric_pressure", "concentration",
-            "sound_level", "power", "voltage", "current",
-            "power_consumption", "illuminance", "range", "rgb",
+            "value",
+            "switch",
+            "text",
+            "pushbutton",
+            "temperature",
+            "rel_humidity",
+            "atmospheric_pressure",
+            "concentration",
+            "sound_level",
+            "power",
+            "voltage",
+            "current",
+            "power_consumption",
+            "illuminance",
+            "range",
+            "rgb",
         }
         for device_id, data in zigbee_devices.items():
             for topic, raw in data["meta"].items():
                 meta = json.loads(raw)
                 ctrl_type = meta.get("type", "")
-                assert ctrl_type in valid_types, \
-                    f"Unknown type '{ctrl_type}' in {topic}"
+                assert ctrl_type in valid_types, f"Unknown type '{ctrl_type}' in {topic}"
 
     def test_each_device_has_last_seen(self, zigbee_devices):
         for device_id, data in zigbee_devices.items():
@@ -229,8 +255,7 @@ class TestZigbeeDevices:
         valid_types = {"Маршрутизатор", "Оконечное устройство", "Координатор", ""}
         for device_id, data in zigbee_devices.items():
             val = data["values"].get(f"/devices/{device_id}/controls/device_type", "")
-            assert val in valid_types, \
-                f"Device {device_id}: unexpected device_type '{val}'"
+            assert val in valid_types, f"Device {device_id}: unexpected device_type '{val}'"
 
     def test_range_controls_have_min_or_max(self, zigbee_devices):
         for device_id, data in zigbee_devices.items():
@@ -253,5 +278,4 @@ class TestZigbeeDevices:
                     # We can't easily check subscriptions, but we can verify
                     # the control value topic exists (it should for all controls)
                     val_topic = f"/devices/{device_id}/controls/{control_id}"
-                    assert val_topic in data["values"], \
-                        f"Control {control_id} has meta but no value topic"
+                    assert val_topic in data["values"], f"Control {control_id} has meta but no value topic"

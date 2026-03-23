@@ -121,6 +121,7 @@ class Z2MClient:
             data = _parse_json_payload(message, friendly_name)
             if data is not None:
                 self._on_device_state(friendly_name, data)
+
         return handler
 
     def _handle_bridge_state(self, _client: object, _userdata: object, message: object) -> None:
@@ -170,7 +171,9 @@ class Z2MClient:
                 try:
                     devices.append(Z2MDevice.from_dict(device_data))
                 except Exception:  # pylint: disable=broad-except
-                    logger.exception("Failed to parse device: %s", device_data.get("friendly_name", device_data))
+                    logger.exception(
+                        "Failed to parse device: %s", device_data.get("friendly_name", device_data)
+                    )
         self._on_devices(devices)
 
     def _handle_bridge_event(self, _client: object, _userdata: object, message: object) -> None:
@@ -186,16 +189,20 @@ class Z2MClient:
         }
         mapped = event_map.get(event_type)
         if mapped:
-            self._on_device_event(DeviceEvent(
-                type=mapped,
-                name=_resolve_device_name(device_data),
-            ))
+            self._on_device_event(
+                DeviceEvent(
+                    type=mapped,
+                    name=_resolve_device_name(device_data),
+                )
+            )
         elif event_type == Z2MEventType.DEVICE_RENAMED:
-            self._on_device_event(DeviceEvent(
-                type=DeviceEventType.RENAMED,
-                name=device_data.get("to", ""),
-                old_name=device_data.get("from", ""),
-            ))
+            self._on_device_event(
+                DeviceEvent(
+                    type=DeviceEventType.RENAMED,
+                    name=device_data.get("to", ""),
+                    old_name=device_data.get("from", ""),
+                )
+            )
 
     def _handle_device_remove_response(self, _client: object, _userdata: object, message: object) -> None:
         """Parse bridge/response/device/remove, emit REMOVED event on success"""

@@ -124,7 +124,9 @@ class WbPublisher:
         on_update_devices: Callable[[], None],
     ) -> None:
         permit_join_topic = f"{DEVICES_PREFIX}/{self._device_id}/controls/{BridgeControl.PERMIT_JOIN}/on"
-        update_devices_topic = f"{DEVICES_PREFIX}/{self._device_id}/controls/{BridgeControl.UPDATE_DEVICES}/on"
+        update_devices_topic = (
+            f"{DEVICES_PREFIX}/{self._device_id}/controls/{BridgeControl.UPDATE_DEVICES}/on"
+        )
 
         self._client.subscribe(permit_join_topic)
         self._client.subscribe(update_devices_topic)
@@ -211,7 +213,9 @@ class WbPublisher:
 
 def _make_command_handler(control_id: str, on_command: Callable[[str, str], None]):
     """Create MQTT message handler that extracts payload and calls on_command(control_id, value)"""
+
     def handler(_client: object, _userdata: object, message: object) -> None:
         value = message.payload.decode("utf-8").strip()
         on_command(control_id, value)
+
     return handler

@@ -2,35 +2,42 @@
 
 import pytest
 
-from wb.zigbee2mqtt.z2m.model import ExposeAccess, ExposeFeature
 from wb.zigbee2mqtt.wb_converter.controls import WbControlType
 from wb.zigbee2mqtt.wb_converter.expose_mapper import map_exposes_to_controls
-
+from wb.zigbee2mqtt.z2m.model import ExposeAccess, ExposeFeature
 
 # ---------------------------------------------------------------------------
 # 2.1 Leaf features
 # ---------------------------------------------------------------------------
 
+
 class TestLeafFeatures:
 
     def test_temperature_readonly(self):
-        feature = ExposeFeature(type="numeric", name="temperature", property="temperature", access=ExposeAccess.READ)
+        feature = ExposeFeature(
+            type="numeric", name="temperature", property="temperature", access=ExposeAccess.READ
+        )
         controls = map_exposes_to_controls([feature])
         assert "temperature" in controls
         assert controls["temperature"].type == WbControlType.TEMPERATURE
         assert controls["temperature"].readonly is True
 
     def test_humidity_readonly(self):
-        feature = ExposeFeature(type="numeric", name="humidity", property="humidity", access=ExposeAccess.READ)
+        feature = ExposeFeature(
+            type="numeric", name="humidity", property="humidity", access=ExposeAccess.READ
+        )
         controls = map_exposes_to_controls([feature])
         assert controls["humidity"].type == WbControlType.REL_HUMIDITY
         assert controls["humidity"].readonly is True
 
     def test_brightness_writable_with_min_max_becomes_range(self):
         feature = ExposeFeature(
-            type="numeric", name="brightness", property="brightness",
+            type="numeric",
+            name="brightness",
+            property="brightness",
             access=ExposeAccess.READ | ExposeAccess.WRITE,
-            value_min=0, value_max=254,
+            value_min=0,
+            value_max=254,
         )
         controls = map_exposes_to_controls([feature])
         assert controls["brightness"].type == WbControlType.RANGE
@@ -40,7 +47,9 @@ class TestLeafFeatures:
 
     def test_brightness_writable_without_min_max_stays_value(self):
         feature = ExposeFeature(
-            type="numeric", name="brightness", property="brightness",
+            type="numeric",
+            name="brightness",
+            property="brightness",
             access=ExposeAccess.READ | ExposeAccess.WRITE,
         )
         controls = map_exposes_to_controls([feature])
@@ -48,15 +57,20 @@ class TestLeafFeatures:
         assert controls["brightness"].readonly is False
 
     def test_unknown_numeric_becomes_value(self):
-        feature = ExposeFeature(type="numeric", name="something", property="something", access=ExposeAccess.READ)
+        feature = ExposeFeature(
+            type="numeric", name="something", property="something", access=ExposeAccess.READ
+        )
         controls = map_exposes_to_controls([feature])
         assert controls["something"].type == WbControlType.VALUE
 
     def test_binary_becomes_switch(self):
         feature = ExposeFeature(
-            type="binary", name="state", property="state",
+            type="binary",
+            name="state",
+            property="state",
             access=ExposeAccess.READ | ExposeAccess.WRITE | ExposeAccess.GET,
-            value_on="ON", value_off="OFF",
+            value_on="ON",
+            value_off="OFF",
         )
         controls = map_exposes_to_controls([feature])
         assert controls["state"].type == WbControlType.SWITCH
@@ -66,9 +80,12 @@ class TestLeafFeatures:
 
     def test_binary_readonly(self):
         feature = ExposeFeature(
-            type="binary", name="occupancy", property="occupancy",
+            type="binary",
+            name="occupancy",
+            property="occupancy",
             access=ExposeAccess.READ,
-            value_on="true", value_off="false",
+            value_on="true",
+            value_off="false",
         )
         controls = map_exposes_to_controls([feature])
         assert controls["occupancy"].type == WbControlType.SWITCH
@@ -76,7 +93,9 @@ class TestLeafFeatures:
 
     def test_enum(self):
         feature = ExposeFeature(
-            type="enum", name="mode", property="mode",
+            type="enum",
+            name="mode",
+            property="mode",
             access=ExposeAccess.READ | ExposeAccess.WRITE,
             values=["off", "auto", "heat"],
         )
@@ -121,6 +140,7 @@ class TestLeafFeatures:
 # ---------------------------------------------------------------------------
 # 2.2 Composite features
 # ---------------------------------------------------------------------------
+
 
 class TestCompositeFeatures:
 
@@ -208,6 +228,7 @@ class TestCompositeFeatures:
 # 2.3 Service controls
 # ---------------------------------------------------------------------------
 
+
 class TestServiceControls:
 
     def test_device_type_added_when_present(self, relay_exposes):
@@ -233,6 +254,7 @@ class TestServiceControls:
 # 2.4 Order and deduplication
 # ---------------------------------------------------------------------------
 
+
 class TestOrderAndDedup:
 
     def test_sequential_order(self, temp_sensor_exposes):
@@ -243,7 +265,12 @@ class TestOrderAndDedup:
     def test_duplicate_property_ignored(self):
         """Second expose with same property is ignored."""
         f1 = ExposeFeature(type="numeric", name="temp", property="temperature", access=ExposeAccess.READ)
-        f2 = ExposeFeature(type="numeric", name="temp2", property="temperature", access=ExposeAccess.READ | ExposeAccess.WRITE)
+        f2 = ExposeFeature(
+            type="numeric",
+            name="temp2",
+            property="temperature",
+            access=ExposeAccess.READ | ExposeAccess.WRITE,
+        )
         controls = map_exposes_to_controls([f1, f2])
         # First one wins — readonly
         assert controls["temperature"].readonly is True
@@ -252,6 +279,7 @@ class TestOrderAndDedup:
 # ---------------------------------------------------------------------------
 # 2.5 Full device fixtures
 # ---------------------------------------------------------------------------
+
 
 class TestFullDevices:
 
@@ -279,9 +307,12 @@ class TestFullDevices:
     def test_climate_full(self, climate_exposes):
         controls = map_exposes_to_controls(climate_exposes, device_type="Router")
         expected_keys = {
-            "occupied_heating_setpoint", "local_temperature",
-            "system_mode", "running_state",
-            "device_type", "last_seen",
+            "occupied_heating_setpoint",
+            "local_temperature",
+            "system_mode",
+            "running_state",
+            "device_type",
+            "last_seen",
         }
         assert set(controls.keys()) == expected_keys
 

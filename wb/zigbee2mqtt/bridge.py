@@ -1,8 +1,7 @@
 import logging
 import re
 import time
-from datetime import datetime
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from wb_common.mqtt_client import MQTTClient
@@ -37,7 +36,12 @@ class Bridge:
     """
 
     def __init__(
-        self, mqtt_client: MQTTClient, base_topic: str, device_id: str, device_name: str, bridge_log_min_level: str
+        self,
+        mqtt_client: MQTTClient,
+        base_topic: str,
+        device_id: str,
+        device_name: str,
+        bridge_log_min_level: str,
     ) -> None:
         self._z2m = Z2MClient(
             mqtt_client=mqtt_client,
@@ -51,7 +55,9 @@ class Bridge:
         )
         self._wb = WbPublisher(mqtt_client, device_id, device_name)
         self._bridge_log_min_level = bridge_log_min_level
-        self._log_min_rank = BridgeLogLevel.RANK.get(bridge_log_min_level, BridgeLogLevel.RANK[BridgeLogLevel.WARNING])
+        self._log_min_rank = BridgeLogLevel.RANK.get(
+            bridge_log_min_level, BridgeLogLevel.RANK[BridgeLogLevel.WARNING]
+        )
         self._messages_received = 0
         self._last_stats_publish = 0.0
         self._known_devices: dict[str, RegisteredDevice] = {}  # friendly_name → RegisteredDevice
@@ -88,7 +94,8 @@ class Bridge:
         self._last_stats_publish = now
         self._wb.publish_bridge_control(BridgeControl.MESSAGES_RECEIVED, str(self._messages_received))
         self._wb.publish_bridge_control(
-            BridgeControl.LAST_SEEN, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            BridgeControl.LAST_SEEN,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
 
     def _on_bridge_state(self, state: str) -> None:
@@ -136,14 +143,20 @@ class Bridge:
             return
         device_id = _sanitize_device_id(device.friendly_name)
         registered = RegisteredDevice(z2m=device, controls=controls, device_id=device_id)
-        logger.info("Registering device '%s' as '%s' (%d controls)", device.friendly_name, device_id, len(controls))
+        logger.info(
+            "Registering device '%s' as '%s' (%d controls)", device.friendly_name, device_id, len(controls)
+        )
         self._known_devices[device.friendly_name] = registered
         self._ieee_to_name[device.ieee_address] = device.friendly_name
         self._wb.publish_device(device_id, device.friendly_name, controls)
         if device.type:
-            self._wb.publish_device_control(device_id, "device_type", _DEVICE_TYPE_RU.get(device.type, device.type))
+            self._wb.publish_device_control(
+                device_id, "device_type", _DEVICE_TYPE_RU.get(device.type, device.type)
+            )
         self._wb.subscribe_device_commands(
-            device_id, controls, self._make_device_command_handler(registered),
+            device_id,
+            controls,
+            self._make_device_command_handler(registered),
         )
         self._z2m.subscribe_device(device.friendly_name)
         self._z2m.request_device_state(device.friendly_name)
@@ -163,7 +176,9 @@ class Bridge:
             if set(new_controls.keys()) != set(registered.controls.keys()):
                 logger.info(
                     "Device '%s' exposes changed (%d → %d controls), re-registering",
-                    device.friendly_name, len(registered.controls), len(new_controls),
+                    device.friendly_name,
+                    len(registered.controls),
+                    len(new_controls),
                 )
                 self._wb.unsubscribe_device_commands(registered.device_id, registered.controls)
                 self._wb.remove_device(registered.device_id, registered.controls)
@@ -171,7 +186,9 @@ class Bridge:
                 registered.z2m = device
                 self._wb.publish_device(registered.device_id, device.friendly_name, new_controls)
                 self._wb.subscribe_device_commands(
-                    registered.device_id, new_controls, self._make_device_command_handler(registered),
+                    registered.device_id,
+                    new_controls,
+                    self._make_device_command_handler(registered),
                 )
                 self._z2m.request_device_state(device.friendly_name)
 
@@ -195,6 +212,7 @@ class Bridge:
         The closure captures `registered` (same object as in _known_devices),
         so friendly_name stays current after renames.
         """
+
         def on_command(control_id: str, wb_value: str) -> None:
             meta = registered.controls.get(control_id)
             if meta is None:
@@ -203,9 +221,13 @@ class Bridge:
             payload = {control_id: z2m_value}
             logger.info(
                 "Device command: %s/%s = %s → %s",
-                registered.z2m.friendly_name, control_id, wb_value, z2m_value,
+                registered.z2m.friendly_name,
+                control_id,
+                wb_value,
+                z2m_value,
             )
             self._z2m.set_device_state(registered.z2m.friendly_name, payload)
+
         return on_command
 
     def _on_device_event(self, event: DeviceEvent) -> None:
@@ -272,9 +294,18 @@ class Bridge:
                 new_device_id, "device_type", _DEVICE_TYPE_RU.get(registered.z2m.type, registered.z2m.type)
             )
         self._wb.subscribe_device_commands(
-            new_device_id, registered.controls, self._make_device_command_handler(registered),
+            new_device_id,
+            registered.controls,
+            self._make_device_command_handler(registered),
         )
-        logger.info("Renamed device '%s' -> '%s' (device_id: %s -> %s)", old_name, new_name, old_device_id, new_device_id)
+        logger.info(
+            "Renamed device '%s' -> '%s' (device_id: %s -> %s)",
+            old_name,
+            new_name,
+            old_device_id,
+            new_device_id,
+        )
+
 
 def _sanitize_device_id(name: str) -> str:
     """Convert a device name to a valid WB device ID.

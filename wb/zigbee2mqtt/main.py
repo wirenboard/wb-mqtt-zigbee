@@ -2,8 +2,8 @@ import argparse
 import logging
 import sys
 
-from .config_loader import CONFIG_FILEPATH, load_config
 from .app import EXIT_CONFIG_ERROR, WbZigbee2Mqtt
+from .config_loader import CONFIG_FILEPATH, load_config
 
 logger = logging.getLogger(__name__)
 

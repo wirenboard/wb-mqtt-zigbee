@@ -13,14 +13,15 @@ import pytest
 
 from wb.zigbee2mqtt.z2m.model import ExposeAccess, ExposeFeature
 
-
 # ---------------------------------------------------------------------------
 # Teststand option (must be in root conftest for pytest_addoption)
 # ---------------------------------------------------------------------------
 
+
 def pytest_addoption(parser):
     parser.addoption(
-        "--teststand-host", default=None,
+        "--teststand-host",
+        default=None,
         help="IP/hostname of the test stand with MQTT broker",
     )
 
@@ -32,6 +33,7 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "teststand" in item.keywords:
             item.add_marker(skip)
+
 
 # ---------------------------------------------------------------------------
 # Raw expose dicts — reusable as both ExposeFeature.from_dict() input
@@ -53,7 +55,13 @@ RELAY_EXPOSE = {
 }
 
 TEMP_SENSOR_EXPOSES = [
-    {"type": "numeric", "name": "temperature", "property": "temperature", "access": ExposeAccess.READ, "unit": "°C"},
+    {
+        "type": "numeric",
+        "name": "temperature",
+        "property": "temperature",
+        "access": ExposeAccess.READ,
+        "unit": "°C",
+    },
     {"type": "numeric", "name": "humidity", "property": "humidity", "access": ExposeAccess.READ, "unit": "%"},
     {"type": "numeric", "name": "battery", "property": "battery", "access": ExposeAccess.READ, "unit": "%"},
 ]
@@ -92,8 +100,18 @@ COLOR_LAMP_EXPOSES = [
                 "name": "color_hs",
                 "property": "color",
                 "features": [
-                    {"type": "numeric", "name": "hue", "property": "", "access": ExposeAccess.READ | ExposeAccess.WRITE},
-                    {"type": "numeric", "name": "saturation", "property": "", "access": ExposeAccess.READ | ExposeAccess.WRITE},
+                    {
+                        "type": "numeric",
+                        "name": "hue",
+                        "property": "",
+                        "access": ExposeAccess.READ | ExposeAccess.WRITE,
+                    },
+                    {
+                        "type": "numeric",
+                        "name": "saturation",
+                        "property": "",
+                        "access": ExposeAccess.READ | ExposeAccess.WRITE,
+                    },
                 ],
             },
         ],
@@ -109,9 +127,21 @@ ENUM_EXPOSE = {
 }
 
 MULTISENSOR_EXPOSES = [
-    {"type": "numeric", "name": "temperature", "property": "temperature", "access": ExposeAccess.READ, "unit": "°C"},
+    {
+        "type": "numeric",
+        "name": "temperature",
+        "property": "temperature",
+        "access": ExposeAccess.READ,
+        "unit": "°C",
+    },
     {"type": "numeric", "name": "humidity", "property": "humidity", "access": ExposeAccess.READ, "unit": "%"},
-    {"type": "numeric", "name": "illuminance_lux", "property": "illuminance_lux", "access": ExposeAccess.READ, "unit": "lx"},
+    {
+        "type": "numeric",
+        "name": "illuminance_lux",
+        "property": "illuminance_lux",
+        "access": ExposeAccess.READ,
+        "unit": "lx",
+    },
     {
         "type": "binary",
         "name": "occupancy",
@@ -219,6 +249,7 @@ FAN_EXPOSES = [
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def relay_exposes():

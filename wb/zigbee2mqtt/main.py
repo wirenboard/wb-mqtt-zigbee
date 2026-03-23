@@ -19,7 +19,7 @@ def setup_logging() -> None:
 def main(argv: list) -> int:
     setup_logging()
 
-    parser = argparse.ArgumentParser(description="Wiren Board Zigbee2MQTT bridge v2")
+    parser = argparse.ArgumentParser(description="Wiren Board Zigbee2MQTT bridge")
     parser.add_argument(
         "-c",
         "--config",

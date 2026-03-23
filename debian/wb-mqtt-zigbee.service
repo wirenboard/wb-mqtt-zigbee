@@ -1,5 +1,5 @@
 [Unit]
-Description=Wiren Board Zigbee2MQTT bridge v2
+Description=Wiren Board Zigbee2MQTT bridge
 After=NetworkManager.service mosquitto.service
 
 [Service]

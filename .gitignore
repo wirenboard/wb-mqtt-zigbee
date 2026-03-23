@@ -6,7 +6,6 @@ __pycache__/
 .pytest_cache/
 htmlcov/
 .coverage
-pyproject.toml
 
 # Debian build artifacts
 debian/.debhelper/

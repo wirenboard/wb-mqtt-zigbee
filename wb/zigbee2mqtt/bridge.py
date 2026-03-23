@@ -11,7 +11,13 @@ from .wb_converter.controls import BridgeControl
 from .wb_converter.expose_mapper import map_exposes_to_controls
 from .wb_converter.publisher import WbPublisher
 from .z2m.client import Z2MClient
-from .z2m.model import BridgeInfo, BridgeLogLevel, DeviceEvent, DeviceEventType, Z2MDevice
+from .z2m.model import (
+    BridgeInfo,
+    BridgeLogLevel,
+    DeviceEvent,
+    DeviceEventType,
+    Z2MDevice,
+)
 
 logger = logging.getLogger(__name__)
 

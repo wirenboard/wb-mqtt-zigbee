@@ -4,7 +4,14 @@ from typing import Callable, Optional, Union
 
 from wb_common.mqtt_client import MQTTClient
 
-from .model import BridgeInfo, BridgeState, DeviceEvent, DeviceEventType, Z2MDevice, Z2MEventType
+from .model import (
+    BridgeInfo,
+    BridgeState,
+    DeviceEvent,
+    DeviceEventType,
+    Z2MDevice,
+    Z2MEventType,
+)
 
 logger = logging.getLogger(__name__)
 

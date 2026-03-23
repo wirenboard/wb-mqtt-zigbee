@@ -1,13 +1,13 @@
 #!/bin/sh
 set -e
 
+# The old wb-zigbee2mqtt package is removed automatically via Conflicts/Replaces.
+# But if the user disabled/renamed the script via UI, a renamed file may remain
+# outside the package's control. Clean it up and restart wb-rules.
 V1_RULES_DIR="/usr/share/wb-rules-system/rules"
-V1_SCRIPT="wb-zigbee2mqtt.js"
 NEED_RESTART_WBRULES=false
 
-# Remove v1 wb-rules script (active or disabled) to avoid conflicts
-for suffix in "" ".disabled"; do
-    path="${V1_RULES_DIR}/${V1_SCRIPT}${suffix}"
+for path in "$V1_RULES_DIR"/wb-zigbee2mqtt.js*; do
     if [ -f "$path" ]; then
         rm -f "$path"
         NEED_RESTART_WBRULES=true

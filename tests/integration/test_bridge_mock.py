@@ -36,12 +36,12 @@ class TestReadState:
     def test_relay_state_on(self, bridge, mock_mqtt):
         register_device(mock_mqtt, RELAY_DEVICE)
         mock_mqtt.inject_message("zigbee2mqtt/test_relay", json.dumps({"state": "ON"}))
-        assert mock_mqtt.get_control_value("0x00158d0001234567", "state") == "1"
+        assert mock_mqtt.get_control_value("test_relay", "state") == "1"
 
     def test_relay_state_off(self, bridge, mock_mqtt):
         register_device(mock_mqtt, RELAY_DEVICE)
         mock_mqtt.inject_message("zigbee2mqtt/test_relay", json.dumps({"state": "OFF"}))
-        assert mock_mqtt.get_control_value("0x00158d0001234567", "state") == "0"
+        assert mock_mqtt.get_control_value("test_relay", "state") == "0"
 
     def test_temp_sensor_values(self, bridge, mock_mqtt):
         register_device(mock_mqtt, TEMP_SENSOR_DEVICE)
@@ -49,16 +49,16 @@ class TestReadState:
             "zigbee2mqtt/temp_sensor",
             json.dumps({"temperature": 23.5, "humidity": 65}),
         )
-        assert mock_mqtt.get_control_value("0xa4c1381b020a8ced", "temperature") == "23.5"
-        assert mock_mqtt.get_control_value("0xa4c1381b020a8ced", "humidity") == "65"
+        assert mock_mqtt.get_control_value("temp_sensor", "temperature") == "23.5"
+        assert mock_mqtt.get_control_value("temp_sensor", "humidity") == "65"
 
     def test_device_type_published(self, bridge, mock_mqtt):
         register_device(mock_mqtt, RELAY_DEVICE)
-        assert mock_mqtt.get_control_value("0x00158d0001234567", "device_type") == "Маршрутизатор"
+        assert mock_mqtt.get_control_value("test_relay", "device_type") == "Маршрутизатор"
 
     def test_end_device_type(self, bridge, mock_mqtt):
         register_device(mock_mqtt, TEMP_SENSOR_DEVICE)
-        assert mock_mqtt.get_control_value("0xa4c1381b020a8ced", "device_type") == "Оконечное устройство"
+        assert mock_mqtt.get_control_value("temp_sensor", "device_type") == "Оконечное устройство"
 
     def test_color_lamp_rgb(self, bridge, mock_mqtt):
         register_device(mock_mqtt, COLOR_LAMP_DEVICE)
@@ -66,9 +66,9 @@ class TestReadState:
             "zigbee2mqtt/color_lamp",
             json.dumps({"state": "ON", "brightness": 200, "color": {"hue": 0, "saturation": 100}}),
         )
-        assert mock_mqtt.get_control_value("0x001788010badf00d", "color") == "255;0;0"
-        assert mock_mqtt.get_control_value("0x001788010badf00d", "brightness") == "200"
-        assert mock_mqtt.get_control_value("0x001788010badf00d", "state") == "1"
+        assert mock_mqtt.get_control_value("color_lamp", "color") == "255;0;0"
+        assert mock_mqtt.get_control_value("color_lamp", "brightness") == "200"
+        assert mock_mqtt.get_control_value("color_lamp", "state") == "1"
 
     def test_last_seen_epoch_ms(self, bridge, mock_mqtt):
         register_device(mock_mqtt, RELAY_DEVICE)
@@ -76,7 +76,7 @@ class TestReadState:
             "zigbee2mqtt/test_relay",
             json.dumps({"state": "ON", "last_seen": 1700000000000}),
         )
-        value = mock_mqtt.get_control_value("0x00158d0001234567", "last_seen")
+        value = mock_mqtt.get_control_value("test_relay", "last_seen")
         assert value  # non-empty formatted datetime
         assert "2023" in value  # epoch 1700000000 = Nov 2023
 
@@ -99,13 +99,13 @@ class TestReadState:
 
     def test_control_meta_published(self, bridge, mock_mqtt):
         register_device(mock_mqtt, RELAY_DEVICE)
-        meta = mock_mqtt.get_control_meta("0x00158d0001234567", "state")
+        meta = mock_mqtt.get_control_meta("test_relay", "state")
         assert meta["type"] == "switch"
         assert meta["readonly"] is False
 
     def test_range_meta_has_min_max(self, bridge, mock_mqtt):
         register_device(mock_mqtt, COLOR_LAMP_DEVICE)
-        meta = mock_mqtt.get_control_meta("0x001788010badf00d", "brightness")
+        meta = mock_mqtt.get_control_meta("color_lamp", "brightness")
         assert meta["type"] == "range"
         assert meta["min"] == 0
         assert meta["max"] == 254
@@ -119,33 +119,33 @@ class TestDeviceControl:
 
     def test_relay_switch_on(self, bridge, mock_mqtt):
         register_device(mock_mqtt, RELAY_DEVICE)
-        mock_mqtt.inject_message("/devices/0x00158d0001234567/controls/state/on", "1")
+        mock_mqtt.inject_message("/devices/test_relay/controls/state/on", "1")
         payloads = mock_mqtt.find_published("zigbee2mqtt/test_relay/set")
         assert len(payloads) >= 1
         assert json.loads(payloads[-1]) == {"state": "ON"}
 
     def test_relay_switch_off(self, bridge, mock_mqtt):
         register_device(mock_mqtt, RELAY_DEVICE)
-        mock_mqtt.inject_message("/devices/0x00158d0001234567/controls/state/on", "0")
+        mock_mqtt.inject_message("/devices/test_relay/controls/state/on", "0")
         payloads = mock_mqtt.find_published("zigbee2mqtt/test_relay/set")
         assert json.loads(payloads[-1]) == {"state": "OFF"}
 
     def test_brightness_numeric(self, bridge, mock_mqtt):
         register_device(mock_mqtt, COLOR_LAMP_DEVICE)
-        mock_mqtt.inject_message("/devices/0x001788010badf00d/controls/brightness/on", "200")
+        mock_mqtt.inject_message("/devices/color_lamp/controls/brightness/on", "200")
         payloads = mock_mqtt.find_published("zigbee2mqtt/color_lamp/set")
         assert json.loads(payloads[-1]) == {"brightness": 200}
 
     def test_color_rgb_command(self, bridge, mock_mqtt):
         register_device(mock_mqtt, COLOR_LAMP_DEVICE)
-        mock_mqtt.inject_message("/devices/0x001788010badf00d/controls/color/on", "255;0;0")
+        mock_mqtt.inject_message("/devices/color_lamp/controls/color/on", "255;0;0")
         payloads = mock_mqtt.find_published("zigbee2mqtt/color_lamp/set")
         assert json.loads(payloads[-1]) == {"color": {"hue": 0, "saturation": 100}}
 
     def test_readonly_controls_not_subscribed(self, bridge, mock_mqtt):
         register_device(mock_mqtt, TEMP_SENSOR_DEVICE)
         # temperature is readonly — no /on subscription
-        assert "/devices/0xa4c1381b020a8ced/controls/temperature/on" not in mock_mqtt.callbacks
+        assert "/devices/temp_sensor/controls/temperature/on" not in mock_mqtt.callbacks
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +156,7 @@ class TestDeviceLifecycle:
 
     def test_device_registration_creates_meta(self, bridge, mock_mqtt):
         register_device(mock_mqtt, RELAY_DEVICE)
-        device_meta_raw = mock_mqtt.retained.get("/devices/0x00158d0001234567/meta", "")
+        device_meta_raw = mock_mqtt.retained.get("/devices/test_relay/meta", "")
         device_meta = json.loads(device_meta_raw)
         assert device_meta["title"]["en"] == "test_relay"
 
@@ -168,8 +168,9 @@ class TestDeviceLifecycle:
         )
         # Old topic unsubscribed, new subscribed
         assert "zigbee2mqtt/new_name" in mock_mqtt.subscriptions
-        # Device meta updated with new title
-        device_meta = json.loads(mock_mqtt.retained["/devices/0x00158d0001234567/meta"])
+        # Old WB device removed, new created
+        assert mock_mqtt.retained["/devices/test_relay/meta"] == ""
+        device_meta = json.loads(mock_mqtt.retained["/devices/new_name/meta"])
         assert device_meta["title"]["en"] == "new_name"
 
     def test_device_rename_via_devices(self, bridge, mock_mqtt):
@@ -181,20 +182,22 @@ class TestDeviceLifecycle:
             make_bridge_devices_payload([renamed]),
         )
         assert "zigbee2mqtt/renamed_relay" in mock_mqtt.subscriptions
-        device_meta = json.loads(mock_mqtt.retained["/devices/0x00158d0001234567/meta"])
+        # Old device removed, new created with new device_id
+        assert mock_mqtt.retained["/devices/test_relay/meta"] == ""
+        device_meta = json.loads(mock_mqtt.retained["/devices/renamed_relay/meta"])
         assert device_meta["title"]["en"] == "renamed_relay"
 
     def test_device_removal_clears_retain(self, bridge, mock_mqtt):
         register_device(mock_mqtt, RELAY_DEVICE)
         # Verify device exists
-        assert mock_mqtt.retained.get("/devices/0x00158d0001234567/meta")
+        assert mock_mqtt.retained.get("/devices/test_relay/meta")
         # Remove device
         mock_mqtt.inject_message(
             "zigbee2mqtt/bridge/response/device/remove",
             json.dumps({"status": "ok", "data": {"id": "test_relay"}}),
         )
         # All retain topics should be empty
-        assert mock_mqtt.retained["/devices/0x00158d0001234567/meta"] == ""
+        assert mock_mqtt.retained["/devices/test_relay/meta"] == ""
 
     def test_device_leave_removes(self, bridge, mock_mqtt):
         register_device(mock_mqtt, RELAY_DEVICE)
@@ -202,21 +205,21 @@ class TestDeviceLifecycle:
             "zigbee2mqtt/bridge/event",
             json.dumps({
                 "type": "device_leave",
-                "data": {"friendly_name": "test_relay", "ieee_address": "0x00158d0001234567"},
+                "data": {"friendly_name": "test_relay", "ieee_address": "test_relay"},
             }),
         )
-        assert mock_mqtt.retained["/devices/0x00158d0001234567/meta"] == ""
+        assert mock_mqtt.retained["/devices/test_relay/meta"] == ""
 
     def test_stale_device_removed_on_devices_update(self, bridge, mock_mqtt):
         """When a device disappears from bridge/devices, its MQTT topics are cleaned."""
         register_device(mock_mqtt, RELAY_DEVICE)
-        assert mock_mqtt.retained.get("/devices/0x00158d0001234567/meta")
+        assert mock_mqtt.retained.get("/devices/test_relay/meta")
         # Re-publish bridge/devices without the relay
         mock_mqtt.inject_message(
             "zigbee2mqtt/bridge/devices",
             make_bridge_devices_payload([TEMP_SENSOR_DEVICE]),
         )
-        assert mock_mqtt.retained["/devices/0x00158d0001234567/meta"] == ""
+        assert mock_mqtt.retained["/devices/test_relay/meta"] == ""
 
     def test_control_commands_work_after_rename(self, bridge, mock_mqtt):
         """After rename, commands should go to the new z2m topic."""
@@ -225,7 +228,7 @@ class TestDeviceLifecycle:
             "zigbee2mqtt/bridge/event",
             json.dumps({"type": "device_renamed", "data": {"from": "test_relay", "to": "renamed"}}),
         )
-        mock_mqtt.inject_message("/devices/0x00158d0001234567/controls/state/on", "1")
+        mock_mqtt.inject_message("/devices/renamed/controls/state/on", "1")
         payloads = mock_mqtt.find_published("zigbee2mqtt/renamed/set")
         assert len(payloads) >= 1
         assert json.loads(payloads[-1]) == {"state": "ON"}
@@ -237,8 +240,8 @@ class TestDeviceLifecycle:
         )
         mock_mqtt.inject_message("zigbee2mqtt/test_relay", json.dumps({"state": "ON"}))
         mock_mqtt.inject_message("zigbee2mqtt/temp_sensor", json.dumps({"temperature": 20.0}))
-        assert mock_mqtt.get_control_value("0x00158d0001234567", "state") == "1"
-        assert mock_mqtt.get_control_value("0xa4c1381b020a8ced", "temperature") == "20.0"
+        assert mock_mqtt.get_control_value("test_relay", "state") == "1"
+        assert mock_mqtt.get_control_value("temp_sensor", "temperature") == "20.0"
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +352,7 @@ class TestGhostDeviceCleanup:
         """Devices present in z2m list should NOT be cleaned up by ghost scan."""
         mock_mqtt = MockMQTTClient()
         # Retained from previous run for a device that still exists
-        device_id = "0x00158d0001234567"
+        device_id = "test_relay"
         device_meta = json.dumps({"driver": "wb-zigbee2mqtt", "title": {"en": "test_relay"}})
         mock_mqtt.retained[f"/devices/{device_id}/meta"] = device_meta
         mock_mqtt.retained[f"/devices/{device_id}/controls/state/meta"] = json.dumps({"type": "switch"})
@@ -440,7 +443,7 @@ class TestCallbackResilience:
         ])
         mock_mqtt.inject_message("zigbee2mqtt/bridge/devices", devices_payload)
         # Relay should still be registered
-        assert mock_mqtt.retained.get("/devices/0x00158d0001234567/meta")
+        assert mock_mqtt.retained.get("/devices/test_relay/meta")
 
 
 # ---------------------------------------------------------------------------
@@ -452,7 +455,7 @@ class TestExposesUpdate:
     def test_new_expose_triggers_reregistration(self, bridge, mock_mqtt):
         """When device exposes change, controls should be re-registered."""
         register_device(mock_mqtt, TEMP_SENSOR_DEVICE)
-        assert mock_mqtt.get_control_value("0xa4c1381b020a8ced", "temperature") == " "
+        assert mock_mqtt.get_control_value("temp_sensor", "temperature") == " "
 
         # Same device with an extra expose
         updated = {
@@ -470,7 +473,7 @@ class TestExposesUpdate:
             make_bridge_devices_payload([updated]),
         )
         # New control should exist
-        meta = mock_mqtt.get_control_meta("0xa4c1381b020a8ced", "pressure")
+        meta = mock_mqtt.get_control_meta("temp_sensor", "pressure")
         assert meta["type"] == "atmospheric_pressure"
 
     def test_same_exposes_no_reregistration(self, bridge, mock_mqtt):
@@ -485,5 +488,5 @@ class TestExposesUpdate:
         )
         # Only device_type update should be published, not full re-registration
         new_publishes = mock_mqtt.published[publish_count_before:]
-        device_meta_publishes = [t for t, _ in new_publishes if t == "/devices/0x00158d0001234567/meta"]
+        device_meta_publishes = [t for t, _ in new_publishes if t == "/devices/test_relay/meta"]
         assert len(device_meta_publishes) == 0

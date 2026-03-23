@@ -81,15 +81,12 @@
 | Топик | Содержимое |
 |---|---|
 | `zigbee2mqtt/bridge/state` | Состояние моста (`online`/`offline`) |
-| `zigbee2mqtt/bridge/info` | Версия, permit_join (z2m 1.21+) |
-| `zigbee2mqtt/bridge/config` | Версия, log_level (z2m 1.18.x) |
-| `zigbee2mqtt/bridge/logging` | Лог-сообщения (z2m 1.21+) |
-| `zigbee2mqtt/bridge/devices` | Список устройств с `exposes`-схемой |
-| `zigbee2mqtt/bridge/groups` | Список групп |
-| `zigbee2mqtt/bridge/event` | События: `device_removed`, `device_renamed` |
+| `zigbee2mqtt/bridge/info` | Версия, permit_join |
+| `zigbee2mqtt/bridge/logging` | Лог-сообщения |
+| `zigbee2mqtt/bridge/devices` | Список устройств с `exposes`-схемой (retained) |
+| `zigbee2mqtt/bridge/event` | События: `device_joined`, `device_leave`, `device_renamed` |
+| `zigbee2mqtt/bridge/response/device/remove` | Ответ на команду удаления устройства |
 | `zigbee2mqtt/{device_name}` | Состояние устройства |
-| `zigbee2mqtt/bridge/response/permit_join` | Подтверждение смены permit_join |
-| `zigbee2mqtt/bridge/response/device/ota_update/check` | Результат проверки OTA |
 
 ### MQTT-топики: выход (команды в zigbee2mqtt)
 
@@ -99,8 +96,6 @@
 | `zigbee2mqtt/bridge/request/permit_join` | Включить/выключить сопряжение |
 | `zigbee2mqtt/{device_name}/set` | Отправить команду устройству |
 | `zigbee2mqtt/{device_name}/get` | Запросить текущее состояние устройства |
-| `zigbee2mqtt/bridge/request/device/ota_update/check` | Проверить наличие OTA |
-| `zigbee2mqtt/bridge/request/device/ota_update/update` | Запустить OTA-обновление |
 
 ---
 
@@ -109,7 +104,7 @@
 - **Динамическое построение контролов из `exposes`** вместо захардкоженных маппингов v1. Это автоматически даёт поддержку управления и новых типов устройств без изменения кода. Отображаемое имя контрола генерируется из имени property: `noise_detect_level` → `"Noise detect level"`.
 - **Поддержка цветных ламп**: composite expose `color` (color_xy / color_hs) маппится в единый WB-контрол типа `rgb`. z2m всегда отдаёт оба представления цвета (`hue`/`saturation` и `x`/`y`), используем HS→RGB через `colorsys.hsv_to_rgb()`. Результат — WB формат `"R;G;B"`, homeui показывает color picker. Brightness выделен в отдельный контрол (V=1.0 в HSV).
 - **Сервисные контролы устройств**: к каждому устройству автоматически добавляются контролы `device_type` (тип в z2m сети: Router/EndDevice/Coordinator с русской локализацией) и `last_seen` (время последней активности, конвертация из epoch/ISO в локальное время).
-- **Event-driven внутри сервиса**: `z2m/client.py` парсит входящие MQTT-сообщения и генерирует события, `bridge.py` реагирует на них и вызывает `wb/publisher.py`. Обратный путь: `publisher.py` подписывается на `/on`-топики WB, команды передаются в `bridge.py`, который публикует в z2m.
+- **Event-driven внутри сервиса**: `z2m/client.py` парсит входящие MQTT-сообщения и генерирует события, `bridge.py` реагирует на них и вызывает `wb_converter/publisher.py`. Обратный путь: `publisher.py` подписывается на `/on`-топики WB, команды через callback передаются в `bridge.py`, который публикует в z2m.
 - **Минимум зависимостей**: только `paho-mqtt`, никаких фреймворков.
 
 ---
@@ -165,7 +160,7 @@ main.py
 
 on_connect (первое подключение):
   → bridge.subscribe()
-    → публикует WB-устройство моста (meta + начальные значения 10 контролов)
+    → публикует WB-устройство моста (meta + начальные значения 12 контролов)
     → z2m_client подписывается на 6 топиков (state, info, logging, devices, event, response/device/remove)
     → подписывается на WB-команды (permit_join, update_devices)
 
@@ -176,22 +171,19 @@ on_connect (реконнект):
 
 ### Обновление состояния устройства
 
-#### Идентификация устройств: `ieee_address` vs `friendly_name`
+#### Идентификация устройств: `friendly_name` как `device_id`
 
-WB `device_id` формируется из `ieee_address` (не `friendly_name`), потому что:
-- `ieee_address` гарантированно уникален (аппаратный адрес)
-- не меняется при переименовании устройства в z2m
-- исключает коллизии (например `"sensor-1"` и `"sensor.1"` дали бы одинаковый `device_id`)
+WB `device_id` формируется из `friendly_name` (sanitized: спецсимволы заменяются на `_`). Уникальность `friendly_name` гарантируется zigbee2mqtt.
 
-Где что используется:
-- `ieee_address` → WB `device_id`, MQTT-топики WB (`/devices/{ieee_address}/controls/...`)
-- `friendly_name` → отображаемое имя (title) в WB UI, подписка на z2m топики (`zigbee2mqtt/{friendly_name}`), ключ в `_known_devices`
+Это обеспечивает совместимость с v1 (wb-rules), который также использовал `friendly_name` как device_id, и позволяет пользователям видеть понятные имена в MQTT-топиках.
+
+При переименовании устройства в z2m `device_id` меняется — старое WB-устройство удаляется, новое создаётся. `ieee_address` используется внутри для обнаружения переименования (по индексу `_ieee_to_name`).
 
 ```
 zigbee2mqtt/{friendly_name} (входящее сообщение)
   → z2m/client.py парсит JSON
   → bridge.py получает событие device_state_changed
-  → wb/publisher.py публикует /devices/{ieee_address}/controls/{control}
+  → wb_converter/publisher.py публикует /devices/{friendly_name}/controls/{control}
 ```
 
 ### Команда из WB
@@ -201,7 +193,7 @@ zigbee2mqtt/{friendly_name} (входящее сообщение)
 Задача сервиса — получить команду из `/on`-топика и транслировать её в соответствующий топик zigbee2mqtt.
 
 ```
-/devices/{ieee_address}/controls/{control}/on (входящее сообщение от пользователя)
+/devices/{friendly_name}/controls/{control}/on (входящее сообщение от пользователя)
   → publisher.py получает команду через /on-подписку
   → bridge.py маппит WB-контрол → z2m атрибут
   → mqtt_client публикует zigbee2mqtt/{friendly_name}/set {"attribute": value}
@@ -209,17 +201,20 @@ zigbee2mqtt/{friendly_name} (входящее сообщение)
 
 ### Удаление устройства
 
-Обрабатывается при событиях `device_removed` и `device_leave`:
+Обрабатывается двумя способами:
+
+1. Событие `bridge/event` с `type: "device_leave"` — устройство покинуло сеть
+2. Ответ `bridge/response/device/remove` — пользователь удалил устройство через z2m
 
 ```
-zigbee2mqtt/bridge/event → {"type": "device_removed", ...}
+zigbee2mqtt/bridge/event → {"type": "device_leave", ...}
+или
+zigbee2mqtt/bridge/response/device/remove → {"status": "ok", "data": {"id": "..."}}
   → bridge.py удаляет устройство из _known_devices
   → z2m/client.py (unsubscribe_device) снимает подписку с zigbee2mqtt/{friendly_name}
-  → wb/publisher.py (remove_device) публикует пустые retain "" на все топики WB-устройства
+  → wb_converter/publisher.py (remove_device) публикует пустые retain "" на все топики WB-устройства
   → устройство исчезает из WB UI
 ```
-
-Также обрабатывается `bridge/response/device/remove` (ответ на команду удаления).
 
 ### Очистка stale и ghost устройств
 
@@ -252,19 +247,31 @@ zigbee2mqtt/bridge/event → {"type": "device_removed", ...}
 zigbee2mqtt/bridge/devices → устройство с новым friendly_name
   → bridge.py находит старое имя по ieee_address (_find_old_name)
   → z2m/client.py (unsubscribe_device) снимает подписку со старого топика
+  → wb_converter/publisher.py (remove_device) удаляет старое WB-устройство
+  → wb_converter/publisher.py (publish_device) создаёт новое WB-устройство с новым device_id
   → z2m/client.py (subscribe_device) подписывается на новый топик
-  → wb/publisher.py (publish_device) обновляет title в WB
-  → device_id (ieee_address) не меняется — WB-устройство остаётся тем же
 ```
 
-### Обновление метаданных зарегистрированных устройств
+### Обновление метаданных и контролов зарегистрированных устройств
 
-При повторном получении `bridge/devices` (автоматически или по кнопке «Обновить устройства») для уже зарегистрированных устройств обновляются служебные контролы (`device_type`). Это гарантирует актуальность данных без перезапуска сервиса.
+При повторном получении `bridge/devices` (автоматически или по кнопке «Обновить устройства») для уже зарегистрированных устройств:
+
+- Обновляется служебный контрол `device_type`
+- Если набор exposes изменился (например, после OTA-обновления прошивки) — контролы перерегистрируются: старые удаляются, новые публикуются, подписки обновляются
+
+### Валидация MQTT-топиков
+
+Имена устройств (`friendly_name`) используются как сегменты MQTT-топиков. Для защиты от подписки на wildcard-топики проверяется отсутствие символов `+` и `#` в `friendly_name`. Устройства с небезопасными именами пропускаются с предупреждением в лог.
+
+### Устойчивость к ошибкам
+
+При парсинге списка устройств из `bridge/devices` ошибка в одном устройстве (невалидный JSON, отсутствие полей) не блокирует обработку остальных. Ошибка логируется, остальные устройства регистрируются нормально.
 
 ### Известные ограничения
 
-- Если устройство обновило firmware (OTA) и exposes изменились, новые контролы не появятся до перезапуска сервиса
 - Устройства, у которых все exposes неизвестного типа, не регистрируются (только `last_seen` недостаточно)
+- OTA-обновление прошивок через WB UI не реализовано (зарезервировано в `z2m/ota.py`)
+- Группы zigbee2mqtt не поддерживаются
 
 ---
 
@@ -299,12 +306,12 @@ Wiren Board (ARM Linux)
 
 WB MQTT Conventions позволяют добавлять и удалять контролы в runtime через retain-сообщения на мета-топики. Это используется для:
 - создания контролов при обнаружении устройства
-- показа/скрытия OTA-контролов в зависимости от состояния
+- перерегистрации контролов при изменении exposes
 - удаления всех контролов при удалении устройства
 
 ### Совместимость z2m v1.x / v2.x
 
-Версия z2m определяется из `bridge/info` или `bridge/config`. Поведение, зависящее от версии (permit_join payload), инкапсулировано в `z2m/client.py`.
+Версия z2m определяется из `bridge/info`. Permit join использует формат `{"time": N}`, совместимый с z2m 1.21+ и v2.x.
 
 ### Логирование
 

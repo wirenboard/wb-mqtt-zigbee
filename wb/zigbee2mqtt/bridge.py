@@ -134,7 +134,7 @@ class Bridge:
         if len(controls) <= 1:
             logger.warning("Device '%s' has no mappable exposes, skipping", device.friendly_name)
             return
-        device_id = _sanitize_device_id(device.ieee_address)
+        device_id = _sanitize_device_id(device.friendly_name)
         registered = RegisteredDevice(z2m=device, controls=controls, device_id=device_id)
         logger.info("Registering device '%s' as '%s' (%d controls)", device.friendly_name, device_id, len(controls))
         self._known_devices[device.friendly_name] = registered
@@ -239,7 +239,7 @@ class Bridge:
 
     def _remove_ghost_devices(self, devices: list[Z2MDevice]) -> None:
         """Remove retained WB devices from previous runs that are no longer in zigbee2mqtt."""
-        current_device_ids = {_sanitize_device_id(d.ieee_address) for d in devices}
+        current_device_ids = {_sanitize_device_id(d.friendly_name) for d in devices}
         scanned_ids = self._wb.get_scanned_device_ids()
         ghost_ids = scanned_ids - current_device_ids
         for device_id in ghost_ids:
@@ -256,17 +256,33 @@ class Bridge:
         if registered is None:
             logger.warning("Rename event for unknown device '%s' -> '%s'", old_name, new_name)
             return
+        old_device_id = registered.device_id
+        new_device_id = _sanitize_device_id(new_name)
         self._z2m.unsubscribe_device(old_name)
+        self._wb.unsubscribe_device_commands(old_device_id, registered.controls)
+        self._wb.remove_device(old_device_id, registered.controls)
         registered.z2m.friendly_name = new_name
+        registered.device_id = new_device_id
         self._known_devices[new_name] = registered
         self._ieee_to_name[registered.z2m.ieee_address] = new_name
         self._z2m.subscribe_device(new_name)
-        self._wb.publish_device(registered.device_id, new_name, registered.controls)
-        logger.info("Renamed device '%s' -> '%s' (device_id=%s)", old_name, new_name, registered.device_id)
+        self._wb.publish_device(new_device_id, new_name, registered.controls)
+        if registered.z2m.type:
+            self._wb.publish_device_control(
+                new_device_id, "device_type", _DEVICE_TYPE_RU.get(registered.z2m.type, registered.z2m.type)
+            )
+        self._wb.subscribe_device_commands(
+            new_device_id, registered.controls, self._make_device_command_handler(registered),
+        )
+        logger.info("Renamed device '%s' -> '%s' (device_id: %s -> %s)", old_name, new_name, old_device_id, new_device_id)
 
-def _sanitize_device_id(ieee_address: str) -> str:
-    """Convert ieee_address to a valid WB device ID (alphanumeric + underscores)"""
-    return re.sub(r"[^a-zA-Z0-9_]", "_", ieee_address)
+def _sanitize_device_id(name: str) -> str:
+    """Convert a device name to a valid WB device ID.
+
+    Keeps Unicode letters/digits, ASCII alphanumerics, hyphens, and underscores.
+    Replaces everything else (spaces, special chars) with underscores.
+    """
+    return re.sub(r"[^\w\-]", "_", name)
 
 
 def _format_last_seen(value: object) -> str:

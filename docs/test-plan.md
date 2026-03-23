@@ -154,8 +154,8 @@
 | Сценарий | Действие | Проверка |
 |---|---|---|
 | Регистрация | `bridge/devices` | device meta с title, control meta опубликованы |
-| Переименование (event) | `bridge/event` → `device_renamed` | подписка на новый z2m-топик, title обновлён |
-| Переименование (devices) | `bridge/devices` с новым friendly_name | обнаружение по ieee_address, title обновлён |
+| Переименование (event) | `bridge/event` → `device_renamed` | подписка на новый z2m-топик, старое WB-устройство удалено, новое создано |
+| Переименование (devices) | `bridge/devices` с новым friendly_name | обнаружение по ieee_address, старое WB-устройство удалено, новое создано |
 | Удаление (response) | `bridge/response/device/remove` | retain-сообщения очищены (`""`) |
 | Удаление (leave) | `bridge/event` → `device_leave` | retain-сообщения очищены |
 | Команды после переименования | `/on` после rename | z2m/set идёт на новый friendly_name |
@@ -232,7 +232,7 @@
 
 | Проверка |
 |---|
-| Найдено хотя бы одно устройство с `device_id` начинающимся на `0x` |
+| Найдено хотя бы одно устройство с `driver: wb-zigbee2mqtt` (кроме моста) |
 | Каждое устройство имеет `/meta` с `title` |
 | У каждого устройства есть хотя бы один контрол |
 | Каждый control meta содержит `type` и `readonly` |

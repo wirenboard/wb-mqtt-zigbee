@@ -72,14 +72,18 @@ def bridge_controls(mqtt_reader):
 
 @pytest.fixture(scope="module")
 def zigbee_device_ids(mqtt_reader):
-    """Discover all zigbee device IDs (0x...) from /devices/+/meta."""
+    """Discover all zigbee device IDs (driver=wb-zigbee2mqtt) from /devices/+/meta."""
     all_meta = mqtt_reader.subscribe_and_wait("/devices/+/meta")
     ids = []
     for topic, payload in all_meta.items():
         # /devices/{id}/meta
         device_id = topic.split("/")[2]
-        if device_id.startswith("0x"):
-            ids.append(device_id)
+        try:
+            meta = json.loads(payload)
+            if meta.get("driver") == "wb-zigbee2mqtt" and device_id != "zigbee2mqtt":
+                ids.append(device_id)
+        except (json.JSONDecodeError, ValueError):
+            pass
     return ids
 
 
@@ -175,8 +179,8 @@ class TestZigbeeDevices:
 
     def test_device_ids_are_valid(self, zigbee_device_ids):
         for device_id in zigbee_device_ids:
-            assert device_id.startswith("0x"), f"Unexpected device_id format: {device_id}"
-            assert len(device_id) >= 10, f"Device ID too short: {device_id}"
+            assert len(device_id) >= 1, f"Device ID is empty"
+            assert device_id != "zigbee2mqtt", f"Bridge device should not be in zigbee device list"
 
     def test_each_device_has_meta(self, mqtt_reader, zigbee_device_ids):
         all_meta = mqtt_reader.subscribe_and_wait("/devices/+/meta")

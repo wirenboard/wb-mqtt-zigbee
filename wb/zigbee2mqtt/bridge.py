@@ -105,11 +105,20 @@ class Bridge:
         if now - self._last_stats_publish < 1.0:
             return
         self._last_stats_publish = now
+        self._cleanup_expired_pending(now)
         self._wb.publish_bridge_control(BridgeControl.MESSAGES_RECEIVED, str(self._messages_received))
         self._wb.publish_bridge_control(
             BridgeControl.LAST_SEEN,
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
+
+    def _cleanup_expired_pending(self, now: float) -> None:
+        """Remove pending commands that have expired without confirmation."""
+        cutoff = now - self._command_debounce_sec
+        for registered in self._known_devices.values():
+            expired = [k for k, v in registered.pending_commands.items() if v.timestamp < cutoff]
+            for key in expired:
+                del registered.pending_commands[key]
 
     def _on_bridge_state(self, state: str) -> None:
         logger.info("Bridge state: %s", state)
@@ -214,7 +223,11 @@ class Bridge:
         for prop, meta in registered.controls.items():
             if prop not in state or prop == "last_seen":
                 continue
-            wb_value = meta.format_value(state[prop])
+            try:
+                wb_value = meta.format_value(state[prop])
+            except Exception:  # pylint: disable=broad-except
+                logger.warning("Failed to format %s/%s: %r", friendly_name, prop, state[prop])
+                continue
             pending = registered.pending_commands.get(prop)
             if pending is not None:
                 if wb_value == pending.wb_value:

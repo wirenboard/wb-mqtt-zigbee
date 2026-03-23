@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 PERMIT_JOIN_TIME_SEC = 254
 PERMIT_JOIN_TIME_SEC_DISABLED = 0
-_MQTT_WILDCARD_CHARS = {"+", "#"}
+_MQTT_UNSAFE_CHARS = {"+", "#", "/"}
 
 
 class Z2MClient:
@@ -161,7 +161,7 @@ class Z2MClient:
         try:
             data = json.loads(message.payload.decode("utf-8"))
             log_level: str = data.get("level", "info")
-            log_message: Optional[str] = data.get("message", "")
+            log_message: str = str(data.get("message", ""))
         except json.JSONDecodeError:
             log_level = "info"
             log_message = message.payload.decode("utf-8")
@@ -238,7 +238,7 @@ def _is_safe_topic_segment(name: str) -> bool:
     """
     if not name:
         return False
-    return not any(ch in name for ch in _MQTT_WILDCARD_CHARS)
+    return not any(ch in name for ch in _MQTT_UNSAFE_CHARS)
 
 
 def _resolve_device_name(device_data: dict) -> str:

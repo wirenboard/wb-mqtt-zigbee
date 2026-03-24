@@ -2,9 +2,16 @@ import colorsys
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, TypedDict
 
 logger = logging.getLogger(__name__)
+
+
+class HueSaturationColor(TypedDict):
+    """Z2M color representation: hue (0-360) and saturation (0-100)"""
+
+    hue: int
+    saturation: int
 
 
 class WbControlType:
@@ -93,7 +100,7 @@ class ControlMeta:
         return _parse_number(wb_value)
 
 
-def _wb_rgb_to_hs_dict(wb_rgb: str) -> dict:
+def _wb_rgb_to_hs_dict(wb_rgb: str) -> HueSaturationColor:
     """Convert WB RGB format "R;G;B" to z2m color dict {"hue": H, "saturation": S}.
 
     Example:
@@ -123,7 +130,7 @@ def _parse_number(value: str) -> object:
         return value
 
 
-def _hs_dict_to_wb_rgb(color: dict) -> str:
+def _hs_dict_to_wb_rgb(color: HueSaturationColor) -> str:
     """Convert z2m color dict to WB RGB format "R;G;B".
 
     z2m always provides both representations in the color dict:

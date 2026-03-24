@@ -1,5 +1,5 @@
 # - - Python packets - -
 # NOTE: Installed by setup.py
-#       Standart files path "/usr/lib/python3/dist-packages/wb/zigbee2mqtt/..."
+#       Standart files path "/usr/lib/python3/dist-packages/wb/mqtt_zigbee/..."
 
 configs/wb-mqtt-zigbee.conf /usr/lib/wb-mqtt-zigbee/configs/

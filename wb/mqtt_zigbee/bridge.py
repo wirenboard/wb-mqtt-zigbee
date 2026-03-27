@@ -82,6 +82,12 @@ class Bridge:
         self._publish_bridge()
         for friendly_name, registered in self._known_devices.items():
             self._wb.publish_device(registered.device_id, friendly_name, registered.controls)
+            if registered.z2m.type:
+                self._wb.publish_device_control(
+                    registered.device_id,
+                    "device_type",
+                    _DEVICE_TYPE_RU.get(registered.z2m.type, registered.z2m.type),
+                )
             self._wb.subscribe_device_commands(
                 registered.device_id,
                 registered.controls,

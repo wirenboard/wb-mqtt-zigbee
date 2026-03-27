@@ -142,6 +142,13 @@ class BridgeState:
     ERROR = "error"
 
 
+class DeviceAvailability:
+    """Possible values of the device availability state"""
+
+    ONLINE = "online"
+    OFFLINE = "offline"
+
+
 class Z2MEventType:
     """Event types from zigbee2mqtt bridge/event topic"""
 

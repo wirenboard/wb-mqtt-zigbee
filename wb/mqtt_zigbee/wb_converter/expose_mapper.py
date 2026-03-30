@@ -60,6 +60,12 @@ def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "")
     """
     controls: dict[str, ControlMeta] = {}
     order = 1
+    for expose in exposes:
+        for prop, meta in _flatten_expose(expose):
+            if prop not in controls:
+                meta.order = order
+                controls[prop] = meta
+                order += 1
     controls["available"] = ControlMeta(
         type=WbControlType.SWITCH,
         readonly=True,
@@ -67,12 +73,6 @@ def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "")
         title={"en": "Available", "ru": "Доступно"},
     )
     order += 1
-    for expose in exposes:
-        for prop, meta in _flatten_expose(expose):
-            if prop not in controls:
-                meta.order = order
-                controls[prop] = meta
-                order += 1
     if device_type:
         controls["device_type"] = ControlMeta(
             type=WbControlType.TEXT,

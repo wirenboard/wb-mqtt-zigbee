@@ -80,6 +80,8 @@ class Bridge:
 
     def set_all_unavailable(self) -> None:
         """Mark all known devices as offline."""
+        if self._known_devices:
+            logger.info("Setting %d devices as unavailable", len(self._known_devices))
         for registered in self._known_devices.values():
             self._wb.publish_device_control(registered.device_id, "available", WbBoolValue.FALSE)
 

@@ -51,9 +51,9 @@ def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "")
         ]
         controls = map_exposes_to_controls(exposes, device_type="Router")
         # {
-        #     "available":    ControlMeta(type="switch", order=1, readonly=True, ...),
-        #     "temperature":  ControlMeta(type="temperature", order=2, ...),
-        #     "humidity":     ControlMeta(type="rel_humidity", order=3, ...),
+        #     "temperature":  ControlMeta(type="temperature", order=1, ...),
+        #     "humidity":     ControlMeta(type="rel_humidity", order=2, ...),
+        #     "available":    ControlMeta(type="switch", order=3, readonly=True, ...),
         #     "device_type":  ControlMeta(type="text", order=4, ...),
         #     "last_seen":    ControlMeta(type="text", order=5, ...),
         # }

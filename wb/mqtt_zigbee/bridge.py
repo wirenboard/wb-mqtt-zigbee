@@ -8,7 +8,7 @@ from wb_common.mqtt_client import MQTTClient
 
 from .registered_device import PendingCommand, RegisteredDevice
 from .wb_converter.controls import BridgeControl, WbBoolValue
-from .wb_converter.expose_mapper import map_exposes_to_controls
+from .wb_converter.expose_mapper import SERVICE_CONTROLS, map_exposes_to_controls
 from .wb_converter.publisher import WbPublisher
 from .z2m.client import Z2MClient
 from .z2m.model import (
@@ -78,10 +78,21 @@ class Bridge:
         self._retained_scan_active = True
         self._publish_bridge()
 
+    def set_all_unavailable(self) -> None:
+        """Mark all known devices as offline."""
+        for registered in self._known_devices.values():
+            self._wb.publish_device_control(registered.device_id, "available", WbBoolValue.FALSE)
+
     def republish(self) -> None:
         self._publish_bridge()
         for friendly_name, registered in self._known_devices.items():
-            self._wb.publish_device(registered.device_id, friendly_name, registered.controls)
+            registered.availability_received = False
+            self._wb.publish_device(
+                registered.device_id,
+                friendly_name,
+                registered.controls,
+                {"available": WbBoolValue.FALSE},
+            )
             if registered.z2m.type:
                 self._wb.publish_device_control(
                     registered.device_id,
@@ -173,7 +184,7 @@ class Bridge:
             logger.info("Device '%s' has no exposes yet, skipping", device.friendly_name)
             return
         controls = map_exposes_to_controls(device.exposes, device_type=device.type)
-        if len(controls) <= 1:
+        if sum(1 for _control in controls if _control not in SERVICE_CONTROLS) == 0:
             logger.warning("Device '%s' has no mappable exposes, skipping", device.friendly_name)
             return
         device_id = _sanitize_device_id(device.friendly_name)
@@ -183,7 +194,7 @@ class Bridge:
         )
         self._known_devices[device.friendly_name] = registered
         self._ieee_to_name[device.ieee_address] = device.friendly_name
-        self._wb.publish_device(device_id, device.friendly_name, controls)
+        self._wb.publish_device(device_id, device.friendly_name, controls, {"available": WbBoolValue.FALSE})
         if device.type:
             self._wb.publish_device_control(
                 device_id, "device_type", _DEVICE_TYPE_RU.get(device.type, device.type)
@@ -232,6 +243,7 @@ class Bridge:
         if registered is None:
             logger.debug("Availability update for unknown device '%s', skipping", friendly_name)
             return
+        registered.availability_received = True
         wb_value = WbBoolValue.TRUE if available else WbBoolValue.FALSE
         self._wb.publish_device_control(registered.device_id, "available", wb_value)
         logger.debug("Device availability: %s = %s", friendly_name, "online" if available else "offline")
@@ -274,7 +286,8 @@ class Bridge:
             formatted = _format_last_seen(state["last_seen"])
             if formatted:
                 self._wb.publish_device_control(registered.device_id, "last_seen", formatted)
-        self._wb.publish_device_control(registered.device_id, "available", WbBoolValue.TRUE)
+        if not registered.availability_received:
+            self._wb.publish_device_control(registered.device_id, "available", WbBoolValue.TRUE)
         self._update_stats()
 
     def _make_device_command_handler(self, registered: RegisteredDevice) -> Callable[[str, str], None]:

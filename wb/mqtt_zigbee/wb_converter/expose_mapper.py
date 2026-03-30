@@ -33,6 +33,9 @@ NESTED_TYPES = {
     ExposeType.COMPOSITE,  # generic multi-property exposes
 }
 
+# Service controls always added by map_exposes_to_controls regardless of exposes
+SERVICE_CONTROLS = {"available", "device_type", "last_seen"}
+
 
 def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "") -> dict[str, ControlMeta]:
     """Convert a list of z2m expose features into a flat dict of WB controls.
@@ -48,10 +51,11 @@ def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "")
         ]
         controls = map_exposes_to_controls(exposes, device_type="Router")
         # {
-        #     "temperature": ControlMeta(type="temperature", order=1, ...),
-        #     "humidity": ControlMeta(type="rel_humidity", order=2, ...),
-        #     "device_type": ControlMeta(type="text", order=3, ...),
-        #     "last_seen": ControlMeta(type="text", order=4, ...),
+        #     "available":    ControlMeta(type="switch", order=1, readonly=True, ...),
+        #     "temperature":  ControlMeta(type="temperature", order=2, ...),
+        #     "humidity":     ControlMeta(type="rel_humidity", order=3, ...),
+        #     "device_type":  ControlMeta(type="text", order=4, ...),
+        #     "last_seen":    ControlMeta(type="text", order=5, ...),
         # }
     """
     controls: dict[str, ControlMeta] = {}

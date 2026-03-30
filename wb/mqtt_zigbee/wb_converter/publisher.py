@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Callable
+from typing import Callable, Optional
 
 from wb_common.mqtt_client import MQTTClient
 
@@ -32,8 +32,14 @@ class WbPublisher:
         topic = f"{DEVICES_PREFIX}/{self._device_id}/controls/{control_id}"
         self._publish_retain(topic, value)
 
-    def publish_device(self, device_id: str, name: str, controls: dict[str, ControlMeta]) -> None:
-        self._publish_device(device_id, name, controls)
+    def publish_device(
+        self,
+        device_id: str,
+        name: str,
+        controls: dict[str, ControlMeta],
+        initial_values: Optional[dict[str, str]] = None,
+    ) -> None:
+        self._publish_device(device_id, name, controls, initial_values)
 
     def remove_device(self, device_id: str, controls: dict[str, ControlMeta]) -> None:
         """Remove a WB device by publishing empty retain on all its topics"""
@@ -171,14 +177,21 @@ class WbPublisher:
             self._client.unsubscribe(topic)
             self._client.message_callback_remove(topic)
 
-    def _publish_device(self, device_id: str, name: str, controls: dict[str, ControlMeta]) -> None:
+    def _publish_device(
+        self,
+        device_id: str,
+        name: str,
+        controls: dict[str, ControlMeta],
+        initial_values: Optional[dict[str, str]] = None,
+    ) -> None:
         device_meta = {"driver": DRIVER_NAME, "title": {"en": name, "ru": name}}
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", json.dumps(device_meta))
         self._clear_legacy_device_meta(device_id)
         for control_id, meta in controls.items():
             self._clear_legacy_control_meta(device_id, control_id)
             self._publish_control_meta(device_id, control_id, meta)
-            self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", " ")
+            value = initial_values.get(control_id, " ") if initial_values else " "
+            self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", value)
 
     def _publish_control_meta(self, device_id: str, control_id: str, meta: ControlMeta) -> None:
         payload: dict = {"type": meta.type, "readonly": meta.readonly}

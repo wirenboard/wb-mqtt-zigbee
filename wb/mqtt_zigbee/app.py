@@ -70,6 +70,7 @@ class WbZigbee2Mqtt:  # pylint: disable=too-few-public-methods
 
     def _on_disconnect(self, _client: object, _userdata: object, _flags: object) -> None:
         """Mark connection as lost so next connect triggers republish"""
+        self._bridge.set_all_unavailable()
         self._mqtt_was_disconnected = True
         logger.warning("MQTT disconnected")
 

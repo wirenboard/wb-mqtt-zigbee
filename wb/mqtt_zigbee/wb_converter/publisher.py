@@ -16,7 +16,7 @@ _DEVICE_META_WILDCARD = f"{DEVICES_PREFIX}/+/meta"
 _CONTROL_META_WILDCARD = f"{DEVICES_PREFIX}/+/controls/+/meta"
 
 
-class WbPublisher:
+class WbMqttDriver:
     """Publishes virtual WB devices and controls according to Wiren Board MQTT Conventions"""
 
     def __init__(self, mqtt_client: MQTTClient, device_id: str, device_name: str) -> None:

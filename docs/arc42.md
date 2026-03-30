@@ -141,7 +141,7 @@
 | `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty` | ✅ |
 | `mqtt_client.py` | Зарезервировано для расширения MQTT-клиента | зарезервировано |
 | `z2m/ota.py` | OTA: проверка и запуск обновлений | зарезервировано |
-| `wb_converter/publisher.py` | `WbPublisher`: публикация/удаление устройств, JSON `/meta`, команды | ✅ |
+| `wb_converter/publisher.py` | `WbMqttDriver`: публикация/удаление устройств, JSON `/meta`, команды | ✅ |
 | `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, range для writable с min/max) | ✅ |
 | `wb_converter/controls.py` | `WbControlType` (16 констант, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` | ✅ |
 

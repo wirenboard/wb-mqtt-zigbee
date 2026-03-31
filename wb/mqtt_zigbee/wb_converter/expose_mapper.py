@@ -33,12 +33,15 @@ NESTED_TYPES = {
     ExposeType.COMPOSITE,  # generic multi-property exposes
 }
 
+# Service controls always added by map_exposes_to_controls regardless of exposes
+SERVICE_CONTROLS = {"available", "device_type", "last_seen"}
+
 
 def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "") -> dict[str, ControlMeta]:
     """Convert a list of z2m expose features into a flat dict of WB controls.
 
     Recursively flattens all exposes, deduplicates by property name,
-    assigns sequential order, and appends service controls (device_type, last_seen).
+    assigns sequential order, and appends service controls (available, device_type, last_seen).
 
     Example:
 
@@ -48,10 +51,11 @@ def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "")
         ]
         controls = map_exposes_to_controls(exposes, device_type="Router")
         # {
-        #     "temperature": ControlMeta(type="temperature", order=1, ...),
-        #     "humidity": ControlMeta(type="rel_humidity", order=2, ...),
-        #     "device_type": ControlMeta(type="text", order=3, ...),
-        #     "last_seen": ControlMeta(type="text", order=4, ...),
+        #     "temperature":  ControlMeta(type="temperature", order=1, ...),
+        #     "humidity":     ControlMeta(type="rel_humidity", order=2, ...),
+        #     "available":    ControlMeta(type="switch", order=3, readonly=True, ...),
+        #     "device_type":  ControlMeta(type="text", order=4, ...),
+        #     "last_seen":    ControlMeta(type="text", order=5, ...),
         # }
     """
     controls: dict[str, ControlMeta] = {}
@@ -62,6 +66,13 @@ def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "")
                 meta.order = order
                 controls[prop] = meta
                 order += 1
+    controls["available"] = ControlMeta(
+        type=WbControlType.SWITCH,
+        readonly=True,
+        order=order,
+        title={"en": "Available", "ru": "Доступно"},
+    )
+    order += 1
     if device_type:
         controls["device_type"] = ControlMeta(
             type=WbControlType.TEXT,

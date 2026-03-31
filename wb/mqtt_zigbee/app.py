@@ -1,6 +1,8 @@
 import logging
 import signal
+from typing import Any
 
+from paho.mqtt.client import Client
 from wb_common.mqtt_client import MQTTClient
 
 from .bridge import Bridge
@@ -46,7 +48,7 @@ class WbZigbee2Mqtt:  # pylint: disable=too-few-public-methods
             config.command_debounce_sec,
         )
 
-    def _on_connect(self, _client: object, _userdata: object, _flags: dict, rc: int) -> None:
+    def _on_connect(self, _client: Client, _userdata: Any, _flags: dict, rc: int) -> None:
         """Handle MQTT connect: subscribe on first connect, republish on reconnect"""
         if rc == MQTT_RC_AUTH_FAILURE:
             logger.error("MQTT authentication failed, stopping")
@@ -68,8 +70,9 @@ class WbZigbee2Mqtt:  # pylint: disable=too-few-public-methods
 
         self._mqtt_was_disconnected = False
 
-    def _on_disconnect(self, _client: object, _userdata: object, _flags: object) -> None:
+    def _on_disconnect(self, _client: Client, _userdata: Any, _flags: dict) -> None:
         """Mark connection as lost so next connect triggers republish"""
+        self._bridge.set_all_unavailable()
         self._mqtt_was_disconnected = True
         logger.warning("MQTT disconnected")
 

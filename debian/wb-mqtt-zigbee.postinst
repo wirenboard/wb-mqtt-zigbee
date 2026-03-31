@@ -20,4 +20,23 @@ if [ "$NEED_RESTART_WBRULES" = true ] && [ -d /run/systemd/system ]; then
     systemctl restart wb-rules 2>/dev/null || true
 fi
 
+# Enable device availability in zigbee2mqtt if not already configured.
+# This allows our service to track online/offline status of Zigbee devices.
+Z2M_CONFIG="/mnt/data/root/zigbee2mqtt/data/configuration.yaml"
+if [ -f "$Z2M_CONFIG" ] && ! grep -q "^availability:" "$Z2M_CONFIG"; then
+    echo "" >> "$Z2M_CONFIG"
+    cat >> "$Z2M_CONFIG" << 'EOF'
+availability:
+  enabled: true
+  active:
+    timeout: 10
+    max_jitter: 30000
+    backoff: true
+EOF
+    echo "Added availability section to $Z2M_CONFIG"
+    if [ -d /run/systemd/system ]; then
+        systemctl restart zigbee2mqtt 2>/dev/null || true
+    fi
+fi
+
 #DEBHELPER#

@@ -57,6 +57,7 @@ class BridgeControl:
     LAST_REMOVED = "Last removed"
     LAST_SEEN = "Last seen"
     MESSAGES_RECEIVED = "Messages received"
+    RECONNECTS = "Reconnects"
 
 
 @dataclass
@@ -230,5 +231,11 @@ BRIDGE_CONTROLS: dict[str, ControlMeta] = {
         readonly=True,
         order=12,
         title={"en": "Log", "ru": "Лог"},
+    ),
+    BridgeControl.RECONNECTS: ControlMeta(
+        type=WbControlType.VALUE,
+        readonly=True,
+        order=13,
+        title={"en": "Reconnects", "ru": "Переподключений"},
     ),
 }

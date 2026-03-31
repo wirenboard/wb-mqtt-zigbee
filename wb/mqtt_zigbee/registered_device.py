@@ -20,3 +20,4 @@ class RegisteredDevice:
     controls: dict[str, ControlMeta]
     device_id: str
     pending_commands: dict[str, PendingCommand] = field(default_factory=dict)
+    availability_received: bool = False

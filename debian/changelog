@@ -1,3 +1,10 @@
+wb-mqtt-zigbee (1.4.0) stable; urgency=medium
+
+  * Add device availability control (online/offline status from z2m)
+  * Auto-enable availability in z2m config on package install
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Mon, 30 Mar 2026 12:30:00 +0300
+
 wb-mqtt-zigbee (1.3.0) stable; urgency=medium
 
   * Rename package wb-zigbee2mqtt -> wb-mqtt-zigbee, Python package wb.mqtt_zigbee

@@ -8,17 +8,17 @@
 
 Показывает состояние zigbee2mqtt: версию, количество устройств, управление сопряжением, логи и события.
 
-<img src="docs/pics/bridge.png" height="200">
+<img src="docs/pics/bridge.png" height="300">
 
 ### Zigbee-устройство
 
 Каждое Zigbee-устройство отображается как виртуальное WB-устройство с контролами, соответствующими его возможностям. Контролы генерируются автоматически из `exposes`-схемы zigbee2mqtt.
 
-Для примера возьмем такое zigbee реле:
+Вот такое zigbee реле:
 
 <img src="docs/pics/relay_store.jpg" height="200">
 
-Вот так это устройство будет выглядеть в нашем интерфейсе:
+так будет выглядеть в нашем интерфейсе:
 
 <img src="docs/pics/relay_on.png" height="200"> <img src="docs/pics/relay_enum.png" height="200"> 
 

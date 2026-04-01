@@ -1,3 +1,9 @@
+wb-mqtt-zigbee (1.4.1) stable; urgency=medium
+
+  * Update Readme and docs
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Tue, 31 Mar 2026 22:12:56 +0300
+
 wb-mqtt-zigbee (1.4.0) stable; urgency=medium
 
   * Add device availability control (online/offline status from z2m)

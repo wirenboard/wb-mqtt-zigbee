@@ -8,6 +8,10 @@
 
 `wb-mqtt-zigbee` — сервис-мост между [zigbee2mqtt](https://www.zigbee2mqtt.io/) и [Wiren Board MQTT Conventions](https://github.com/wirenboard/conventions). Создаёт виртуальные устройства WB на основе данных от zigbee2mqtt, транслирует состояния Zigbee-устройств в контролы WB, а команды пользователя из WB — обратно в zigbee2mqtt.
 
+### Как выглядит в WB UI
+
+<img src="pics/bridge.png" height="200"> <img src="pics/relay_on.png" height="200"> <img src="pics/relay_enum.png" height="200">
+
 ### Цели
 
 | Приоритет | Цель |
@@ -104,7 +108,7 @@
 
 - **Динамическое построение контролов из `exposes`** вместо захардкоженных маппингов v1. Это автоматически даёт поддержку управления и новых типов устройств без изменения кода. Отображаемое имя контрола генерируется из имени property: `noise_detect_level` → `"Noise detect level"`.
 - **Поддержка цветных ламп**: composite expose `color` (color_xy / color_hs) маппится в единый WB-контрол типа `rgb`. z2m всегда отдаёт оба представления цвета (`hue`/`saturation` и `x`/`y`), используем HS→RGB через `colorsys.hsv_to_rgb()`. Результат — WB формат `"R;G;B"`, homeui показывает color picker. Brightness выделен в отдельный контрол (V=1.0 в HSV).
-- **Сервисные контролы устройств**: к каждому устройству автоматически добавляются контролы `device_type` (тип в z2m сети: Router/EndDevice/Coordinator с русской локализацией) и `last_seen` (время последней активности, конвертация из epoch/ISO в локальное время).
+- **Сервисные контролы устройств**: к каждому устройству автоматически добавляются контролы `available` (онлайн/офлайн статус), `device_type` (тип в z2m сети: Router/EndDevice/Coordinator с русской локализацией) и `last_seen` (время последней активности, конвертация из epoch/ISO в локальное время).
 - **Event-driven внутри сервиса**: `z2m/client.py` парсит входящие MQTT-сообщения и генерирует события, `bridge.py` реагирует на них и вызывает `wb_converter/publisher.py`. Обратный путь: `publisher.py` подписывается на `/on`-топики WB, команды через callback передаются в `bridge.py`, который публикует в z2m.
 - **Минимум зависимостей**: только `paho-mqtt`, никаких фреймворков.
 
@@ -131,20 +135,18 @@
 
 ### Уровень 2 — модули
 
-| Модуль | Ответственность | Статус |
-|---|---|---|
-| `main.py` | Точка входа: `setup_logging()`, парсинг CLI, загрузка конфига | ✅ |
-| `app.py` | `WbZigbee2Mqtt`: MQTT-клиент, сигналы, жизненный цикл, коды выхода | ✅ |
-| `config_loader.py` | Загрузка и валидация JSON-конфига (dataclass `ConfigLoader`) | ✅ |
-| `bridge.py` | Оркестратор: z2m-события → WB-контролы, регистрация/удаление устройств | ✅ |
-| `registered_device.py` | `RegisteredDevice`: кеш z2m-устройства с WB controls и device_id | ✅ |
-| `z2m/client.py` | `Z2MClient`: подписка на z2m-топики, парсинг → коллбэки | ✅ |
-| `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty` | ✅ |
-| `mqtt_client.py` | Зарезервировано для расширения MQTT-клиента | зарезервировано |
-| `z2m/ota.py` | OTA: проверка и запуск обновлений | зарезервировано |
-| `wb_converter/publisher.py` | `WbMqttDriver`: публикация/удаление устройств, JSON `/meta`, команды | ✅ |
-| `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, range для writable с min/max) | ✅ |
-| `wb_converter/controls.py` | `WbControlType` (16 констант, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` | ✅ |
+| Модуль | Ответственность |
+|---|---|
+| `main.py` | Точка входа: `setup_logging()`, парсинг CLI, загрузка конфига |
+| `app.py` | `WbZigbee2Mqtt`: MQTT-клиент, сигналы, жизненный цикл, коды выхода |
+| `config_loader.py` | Загрузка и валидация JSON-конфига (dataclass `ConfigLoader`) |
+| `bridge.py` | Оркестратор: z2m-события → WB-контролы, регистрация/удаление устройств |
+| `registered_device.py` | `RegisteredDevice`: кеш z2m-устройства с WB controls и device_id |
+| `z2m/client.py` | `Z2MClient`: подписка на z2m-топики, парсинг → коллбэки |
+| `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty` |
+| `wb_converter/publisher.py` | `WbMqttDriver`: публикация/удаление устройств, JSON `/meta`, команды |
+| `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, range для writable с min/max) |
+| `wb_converter/controls.py` | `WbControlType` (16 констант, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` |
 
 ---
 

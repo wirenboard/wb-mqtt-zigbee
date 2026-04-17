@@ -9,8 +9,7 @@ tests/
 ├── unit/                       # pytest unit-тесты (быстрые, без I/O)
 │   └── wb_converter/
 │       └── test_expose_mapper.py
-├── integration/                # зарезервировано под будущие pytest integration-тесты
-└── scripts/                    # ручные shell-скрипты для проверок на железе (не pytest)
+└── integration/                # зарезервировано под будущие pytest integration-тесты
 ```
 
 Конфигурация — в корне репозитория, [`pytest.ini`](../pytest.ini):
@@ -22,7 +21,7 @@ testpaths = tests/unit tests/integration
 pythonpath = .
 ```
 
-- `testpaths` — pytest собирает тесты только из этих каталогов; `tests/scripts/` исключён.
+- `testpaths` — pytest собирает тесты только из этих каталогов
 - `pythonpath = .` — добавляет корень репозитория в `sys.path`, чтобы тесты могли делать `import wb.mqtt_zigbee` без установки пакета.
 
 Единственная зависимость для базового прогона — `pytest` ≥ 7.0.

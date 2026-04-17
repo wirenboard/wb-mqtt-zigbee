@@ -81,12 +81,8 @@ class TestMapExposesToControls:
 
     def test_deduplicates_by_property_first_wins(self):
         exposes = [
-            make_expose(
-                type=ExposeType.BINARY, property="state", value_on="ON", value_off="OFF"
-            ),
-            make_expose(
-                type=ExposeType.BINARY, property="state", value_on="DIFF", value_off="XXX"
-            ),
+            make_expose(type=ExposeType.BINARY, property="state", value_on="ON", value_off="OFF"),
+            make_expose(type=ExposeType.BINARY, property="state", value_on="DIFF", value_off="XXX"),
         ]
         controls = map_exposes_to_controls(exposes)
         assert controls["state"].value_on == "ON"
@@ -200,15 +196,11 @@ class TestMapLeafFeature:
         assert _map_leaf_feature(make_expose(type="weird_type", property="x")) == []
 
     def test_numeric_known_property_gets_typed_control(self):
-        [(_, meta)] = _map_leaf_feature(
-            make_expose(type=ExposeType.NUMERIC, property="temperature")
-        )
+        [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="temperature"))
         assert meta.type == WbControlType.TEMPERATURE
 
     def test_numeric_unknown_property_falls_back_to_value(self):
-        [(_, meta)] = _map_leaf_feature(
-            make_expose(type=ExposeType.NUMERIC, property="linkquality")
-        )
+        [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="linkquality"))
         assert meta.type == WbControlType.VALUE
 
     def test_writable_value_with_min_max_promoted_to_range(self):
@@ -294,9 +286,7 @@ class TestMapLeafFeature:
         assert meta.enum == {"off": 0, "heat": 1, "cool": 2}
 
     def test_text_becomes_text_without_enum(self):
-        [(_, meta)] = _map_leaf_feature(
-            make_expose(type=ExposeType.TEXT, property="description")
-        )
+        [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.TEXT, property="description"))
         assert meta.type == WbControlType.TEXT
         assert meta.enum is None
 
@@ -309,9 +299,7 @@ class TestMapLeafFeature:
         assert rw_meta.readonly is False
 
     def test_title_derived_from_property(self):
-        [(_, meta)] = _map_leaf_feature(
-            make_expose(type=ExposeType.NUMERIC, property="noise_detect_level")
-        )
+        [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="noise_detect_level"))
         assert meta.title == {"en": "Noise detect level"}
 
 
@@ -402,21 +390,14 @@ class TestResolveWbType:
         )
 
     def test_binary(self):
-        assert (
-            _resolve_wb_type(make_expose(type=ExposeType.BINARY, property="state"))
-            == WbControlType.SWITCH
-        )
+        assert _resolve_wb_type(make_expose(type=ExposeType.BINARY, property="state")) == WbControlType.SWITCH
 
     def test_enum(self):
-        assert (
-            _resolve_wb_type(make_expose(type=ExposeType.ENUM, property="mode"))
-            == WbControlType.TEXT
-        )
+        assert _resolve_wb_type(make_expose(type=ExposeType.ENUM, property="mode")) == WbControlType.TEXT
 
     def test_text(self):
         assert (
-            _resolve_wb_type(make_expose(type=ExposeType.TEXT, property="description"))
-            == WbControlType.TEXT
+            _resolve_wb_type(make_expose(type=ExposeType.TEXT, property="description")) == WbControlType.TEXT
         )
 
     def test_unknown_type_returns_none(self):

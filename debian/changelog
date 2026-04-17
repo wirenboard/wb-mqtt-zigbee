@@ -1,3 +1,9 @@
+wb-mqtt-zigbee (1.4.2) stable; urgency=medium
+
+  * Add unit tests
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Fri, 17 Apr 2026 14:16:42 +0300
+
 wb-mqtt-zigbee (1.4.1) stable; urgency=medium
 
   * Update Readme and docs

@@ -92,10 +92,6 @@ make_expose(
 
 Константы `READABLE` / `WRITABLE` оборачивают битмаску `ExposeAccess` (1 / 3) — чтобы в тестах читалось назначение, а не магические числа.
 
-## Ручные скрипты (`tests/scripts/`)
-
-Shell-сценарии для on-device проверок: пути установки и обновления пакета (`test-install.sh`) и регистрация Zigbee-устройств end-to-end (`test-devices.sh`). Это **не** pytest — они гоняются на живом контроллере Wiren Board с настроенным zigbee2mqtt. Про стенд — в [`tests/scripts/README.md`](../tests/scripts/README.md).
-
 ## Coverage
 
 Coverage снимается через [`pytest-cov`](https://pytest-cov.readthedocs.io/) (обёртка над `coverage.py`). На Debian/Ubuntu ставится из apt:

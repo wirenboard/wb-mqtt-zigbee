@@ -71,3 +71,5 @@ Zigbee-устройства
 
 - [docs/arc42.md](docs/arc42.md) — архитектура (arc42)
 - [docs/v1-analysis.md](docs/v1-analysis.md) — анализ предыдущей версии (JS/wb-rules)
+- [tests/README.md](tests/README.md) — тестовый набор, локальное окружение, запуск тестов, coverage
+

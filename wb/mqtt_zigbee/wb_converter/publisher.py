@@ -10,7 +10,7 @@ from .controls import BRIDGE_CONTROLS, BridgeControl, ControlMeta, WbBoolValue
 logger = logging.getLogger(__name__)
 
 DEVICES_PREFIX = "/devices"
-DRIVER_NAME = "wb-zigbee2mqtt"
+DRIVER_NAME = "wb-mqtt-zigbee"
 
 _DEVICE_META_WILDCARD = f"{DEVICES_PREFIX}/+/meta"
 _CONTROL_META_WILDCARD = f"{DEVICES_PREFIX}/+/controls/+/meta"

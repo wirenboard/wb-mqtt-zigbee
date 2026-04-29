@@ -34,14 +34,14 @@ class TestRegisteredDevice:
         assert rd.z2m is z2m
         assert rd.device_id == "dev_01"
         assert "temp" in rd.controls
-        assert rd.pending_commands == {}
+        assert not rd.pending_commands
         assert rd.availability_received is False
 
     def test_pending_commands_factory_isolated_per_instance(self):
         a = RegisteredDevice(z2m=make_z2m_device("0x1"), controls={}, device_id="a")
         b = RegisteredDevice(z2m=make_z2m_device("0x2"), controls={}, device_id="b")
         a.pending_commands["state"] = PendingCommand(wb_value="1", timestamp=10.0)
-        assert b.pending_commands == {}
+        assert not b.pending_commands
 
     def test_can_override_availability_and_pending(self):
         rd = RegisteredDevice(

@@ -1,7 +1,6 @@
 """Unit tests for wb.mqtt_zigbee.wb_converter.controls."""
 
 import pytest
-
 from wb.mqtt_zigbee.wb_converter.controls import (
     BRIDGE_CONTROLS,
     BridgeControl,
@@ -239,7 +238,7 @@ class TestControlMetaDefaults:
     def test_default_field_values(self):
         meta = ControlMeta(type=WbControlType.VALUE, readonly=True)
         assert meta.order is None
-        assert meta.title == {}
+        assert not meta.title
         assert meta.value_on is None
         assert meta.value_off is None
         assert meta.enum is None
@@ -251,7 +250,7 @@ class TestControlMetaDefaults:
         a = ControlMeta(type=WbControlType.TEXT, readonly=True)
         b = ControlMeta(type=WbControlType.TEXT, readonly=True)
         a.title["en"] = "X"
-        assert b.title == {}
+        assert not b.title
 
 
 class TestBridgeControls:

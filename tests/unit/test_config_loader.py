@@ -4,7 +4,6 @@ import json
 import logging
 
 import pytest
-
 from wb.mqtt_zigbee.config_loader import (
     BRIDGE_DEVICE_ID_DEFAULT,
     BRIDGE_DEVICE_NAME_DEFAULT,
@@ -165,7 +164,7 @@ class TestValidateLogLevel:
         assert _validate_log_level("ERROR") == BRIDGE_LOG_MIN_LEVEL_DEFAULT
 
 
-class TestDefaults:
+class TestDefaults:  # pylint: disable=too-few-public-methods
     def test_default_constants_are_consistent(self):
         assert BRIDGE_DEVICE_ID_DEFAULT == "zigbee2mqtt"
         assert BRIDGE_DEVICE_NAME_DEFAULT == "Zigbee2MQTT"

@@ -1,7 +1,5 @@
 """Unit tests for wb.mqtt_zigbee.z2m.model."""
 
-import pytest
-
 from wb.mqtt_zigbee.z2m.model import (
     BridgeInfo,
     BridgeLogLevel,
@@ -87,8 +85,8 @@ class TestExposeFeatureFromDict:
         assert feat.value_max == 80
         assert feat.value_on is None
         assert feat.value_off is None
-        assert feat.values == []
-        assert feat.features == []
+        assert not feat.values
+        assert not feat.features
 
     def test_empty_dict_uses_defaults(self):
         feat = ExposeFeature.from_dict({})
@@ -101,8 +99,8 @@ class TestExposeFeatureFromDict:
         assert feat.value_max is None
         assert feat.value_on is None
         assert feat.value_off is None
-        assert feat.values == []
-        assert feat.features == []
+        assert not feat.values
+        assert not feat.features
 
     def test_binary_with_value_on_off(self):
         feat = ExposeFeature.from_dict(
@@ -216,7 +214,7 @@ class TestZ2MDeviceFromDict:
         assert device.model == ""
         assert device.vendor == ""
         assert device.description == ""
-        assert device.exposes == []
+        assert not device.exposes
 
     def test_definition_none(self):
         # zigbee2mqtt uses null for unsupported devices
@@ -231,13 +229,11 @@ class TestZ2MDeviceFromDict:
         assert device.model == ""
         assert device.vendor == ""
         assert device.description == ""
-        assert device.exposes == []
+        assert not device.exposes
 
     def test_definition_missing(self):
-        device = Z2MDevice.from_dict(
-            {"ieee_address": "0x1", "friendly_name": "n", "type": "Router"}
-        )
-        assert device.exposes == []
+        device = Z2MDevice.from_dict({"ieee_address": "0x1", "friendly_name": "n", "type": "Router"})
+        assert not device.exposes
 
     def test_definition_without_exposes(self):
         device = Z2MDevice.from_dict(
@@ -250,7 +246,7 @@ class TestZ2MDeviceFromDict:
         )
         assert device.model == "M"
         assert device.vendor == "V"
-        assert device.exposes == []
+        assert not device.exposes
 
 
 class TestDataclassDefaults:
@@ -274,14 +270,14 @@ class TestDataclassDefaults:
         b = ExposeFeature(type="x", name="b", property="b")
         a.values.append("v")
         a.features.append(ExposeFeature(type="y", name="c", property="c"))
-        assert b.values == []
-        assert b.features == []
+        assert not b.values
+        assert not b.features
 
     def test_z2m_device_factory_defaults_isolated(self):
         a = Z2MDevice(ieee_address="1", friendly_name="a", type="t")
         b = Z2MDevice(ieee_address="2", friendly_name="b", type="t")
         a.exposes.append(ExposeFeature(type="x", name="x", property="x"))
-        assert b.exposes == []
+        assert not b.exposes
 
 
 class TestEnumLikeConstants:

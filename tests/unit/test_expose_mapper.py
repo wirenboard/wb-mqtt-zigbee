@@ -1,9 +1,10 @@
 """Unit tests for wb.mqtt_zigbee.wb_converter.expose_mapper."""
 
+# pylint: disable=too-many-arguments,too-many-positional-arguments,redefined-builtin,too-few-public-methods
+
 from typing import Optional
 
 import pytest
-
 from wb.mqtt_zigbee.wb_converter.controls import WbControlType
 from wb.mqtt_zigbee.wb_converter.expose_mapper import (
     _flatten_expose,
@@ -180,7 +181,7 @@ class TestFlattenExpose:
         # NESTED_TYPES check requires non-empty features — empty falls to leaf
         # mapping, which rejects because LIGHT is not a known leaf type.
         expose = make_expose(type=ExposeType.LIGHT, property="light", features=[])
-        assert _flatten_expose(expose) == []
+        assert not _flatten_expose(expose)
 
 
 # =============================================================================
@@ -190,10 +191,10 @@ class TestFlattenExpose:
 
 class TestMapLeafFeature:
     def test_no_property_returns_empty(self):
-        assert _map_leaf_feature(make_expose(property="")) == []
+        assert not _map_leaf_feature(make_expose(property=""))
 
     def test_unknown_type_returns_empty(self):
-        assert _map_leaf_feature(make_expose(type="weird_type", property="x")) == []
+        assert not _map_leaf_feature(make_expose(type="weird_type", property="x"))
 
     def test_numeric_known_property_gets_typed_control(self):
         [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="temperature"))

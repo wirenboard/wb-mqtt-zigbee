@@ -4,6 +4,7 @@ import json
 import logging
 
 import pytest
+
 from wb.mqtt_zigbee.config_loader import (
     BRIDGE_DEVICE_ID_DEFAULT,
     BRIDGE_DEVICE_NAME_DEFAULT,

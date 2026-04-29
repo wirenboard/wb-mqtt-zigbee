@@ -114,9 +114,7 @@ class TestLoadConfigErrors:
 
     def test_missing_base_topic_raises_value_error(self, tmp_path):
         path = write_config(tmp_path, {"broker_url": "tcp://localhost:1883"})
-        with pytest.raises(
-            ValueError, match="Missing required configuration key.*zigbee2mqtt_base_topic"
-        ):
+        with pytest.raises(ValueError, match="Missing required configuration key.*zigbee2mqtt_base_topic"):
             load_config(path)
 
     def test_invalid_command_debounce_sec_raises(self, tmp_path):

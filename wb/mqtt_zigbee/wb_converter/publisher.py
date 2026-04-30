@@ -10,7 +10,9 @@ from .controls import BRIDGE_CONTROLS, BridgeControl, ControlMeta, WbBoolValue
 logger = logging.getLogger(__name__)
 
 DEVICES_PREFIX = "/devices"
-DRIVER_NAME = "wb-zigbee2mqtt"
+DRIVER_NAME = "wb-mqtt-zigbee"
+LEGACY_DRIVER_NAMES: tuple[str, ...] = ("wb-zigbee2mqtt",)
+_KNOWN_DRIVER_NAMES = frozenset((DRIVER_NAME, *LEGACY_DRIVER_NAMES))
 
 _DEVICE_META_WILDCARD = f"{DEVICES_PREFIX}/+/meta"
 _CONTROL_META_WILDCARD = f"{DEVICES_PREFIX}/+/controls/+/meta"
@@ -102,7 +104,7 @@ class WbMqttDriver:
             meta = json.loads(payload)
         except (json.JSONDecodeError, ValueError):
             return
-        if meta.get("driver") != DRIVER_NAME:
+        if meta.get("driver") not in _KNOWN_DRIVER_NAMES:
             return
         # topic: /devices/{device_id}/meta
         parts = message.topic.split("/")

@@ -1,7 +1,6 @@
 """Unit tests for wb.mqtt_zigbee.wb_converter.controls."""
 
 import pytest
-
 from wb.mqtt_zigbee.wb_converter.controls import (
     BRIDGE_CONTROLS,
     BridgeControl,

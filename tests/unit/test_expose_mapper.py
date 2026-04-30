@@ -5,7 +5,6 @@
 from typing import Optional
 
 import pytest
-
 from wb.mqtt_zigbee.wb_converter.controls import WbControlType
 from wb.mqtt_zigbee.wb_converter.expose_mapper import (
     _flatten_expose,

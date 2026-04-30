@@ -23,6 +23,7 @@ if "wb_common" not in sys.modules:
 
 # pylint: disable=wrong-import-position
 from paho.mqtt.client import MQTTMessage
+
 from wb.mqtt_zigbee.wb_converter.publisher import (
     DRIVER_NAME,
     LEGACY_DRIVER_NAMES,

@@ -27,7 +27,10 @@ class TestStrOrNone:
         assert _str_or_none(1) == "1"
 
     def test_bool_converted_to_string(self):
-        # bool is a common z2m value type for value_on/value_off
+        # bool is a common z2m value type for value_on/value_off.
+        # NOTE: str(True) == "True" (not "true"!) — see docs/REFACTORING.md.
+        # If z2m starts sending bool consistently, this will silently
+        # break switch comparisons in ControlMeta.format_value.
         assert _str_or_none(True) == "True"
         assert _str_or_none(False) == "False"
 

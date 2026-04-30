@@ -49,12 +49,9 @@ def make_expose(
     )
 
 
-# =============================================================================
-# map_exposes_to_controls — public API
-# =============================================================================
-
-
 class TestMapExposesToControls:
+    """Tests for ``map_exposes_to_controls`` — the public mapping API."""
+
     def test_empty_exposes_returns_only_service_controls(self):
         controls = map_exposes_to_controls([])
         assert set(controls.keys()) == {"available", "last_seen"}
@@ -113,12 +110,9 @@ class TestMapExposesToControls:
         assert controls["last_seen"].order == 3
 
 
-# =============================================================================
-# _flatten_expose — recursion
-# =============================================================================
-
-
 class TestFlattenExpose:
+    """Tests for ``_flatten_expose`` — recursive expansion of composite exposes."""
+
     def test_leaf_returned_as_single_pair(self):
         expose = make_expose(property="temperature")
         result = _flatten_expose(expose)
@@ -185,12 +179,9 @@ class TestFlattenExpose:
         assert not _flatten_expose(expose)
 
 
-# =============================================================================
-# _map_leaf_feature
-# =============================================================================
-
-
 class TestMapLeafFeature:
+    """Tests for ``_map_leaf_feature`` — conversion of a single leaf expose into a control."""
+
     def test_no_property_returns_empty(self):
         assert not _map_leaf_feature(make_expose(property=""))
 
@@ -305,12 +296,9 @@ class TestMapLeafFeature:
         assert meta.title == {"en": "Noise detect level"}
 
 
-# =============================================================================
-# _map_color_feature
-# =============================================================================
-
-
 class TestMapColorFeature:
+    """Tests for ``_map_color_feature`` — special handling of composite color exposes."""
+
     def test_readonly_when_no_writable_subfeatures(self):
         [(_, meta)] = _map_color_feature(
             make_expose(
@@ -348,12 +336,9 @@ class TestMapColorFeature:
         assert meta.title == {"en": "Color", "ru": "Цвет"}
 
 
-# =============================================================================
-# Helpers
-# =============================================================================
-
-
 class TestMakeEnum:
+    """Tests for helper ``_make_enum`` — building enum value→index mapping."""
+
     def test_values_mapped_to_sequential_indices(self):
         assert _make_enum(make_expose(values=["off", "low", "high"])) == {
             "off": 0,
@@ -366,6 +351,8 @@ class TestMakeEnum:
 
 
 class TestMakeTitle:
+    """Tests for helper ``_make_title`` — pretty-printing snake_case property names."""
+
     @pytest.mark.parametrize(
         "prop, expected",
         [
@@ -379,6 +366,8 @@ class TestMakeTitle:
 
 
 class TestResolveWbType:
+    """Tests for helper ``_resolve_wb_type`` — picking WB control type from expose metadata."""
+
     def test_numeric_known_property(self):
         assert (
             _resolve_wb_type(make_expose(type=ExposeType.NUMERIC, property="humidity"))

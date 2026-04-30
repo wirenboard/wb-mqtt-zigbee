@@ -66,11 +66,7 @@ pytest tests/ -x --showlocals
 
 ## Coverage
 
-Coverage снимается через [`pytest-cov`](https://pytest-cov.readthedocs.io/) (обёртка над `coverage.py`). Зависимость закреплена в `dev-requirements.txt`; на Debian/Ubuntu также доступна из apt:
-
-```bash
-sudo apt install python3-pytest-cov
-```
+Coverage снимается через [`pytest-cov`](https://pytest-cov.readthedocs.io/) (обёртка над `coverage.py`). Зависимость закреплена в [`dev-requirements.txt`](../dev-requirements.txt) и устанавливается вместе с остальными dev-инструментами на этапе подготовки окружения (см. [Подготовка окружения](#подготовка-окружения)).
 
 Coverage не включён в опции pytest по умолчанию — чистый `pytest tests/` остаётся быстрым. Запускается явно, когда нужен.
 

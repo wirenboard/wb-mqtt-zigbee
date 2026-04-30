@@ -310,20 +310,15 @@ class TestEnumLikeConstants:
         assert DeviceEventType.RENAMED == "renamed"
 
     def test_expose_type_values(self):
-        # spot-check that constants are non-empty distinct strings
+        # Collect class constants via introspection so the test
+        # auto-tracks new types without duplicating the list (which
+        # also avoided pylint R0801 against expose_mapper.NESTED_TYPES).
         values = [
-            ExposeType.NUMERIC,
-            ExposeType.BINARY,
-            ExposeType.ENUM,
-            ExposeType.TEXT,
-            ExposeType.LIGHT,
-            ExposeType.SWITCH,
-            ExposeType.LOCK,
-            ExposeType.CLIMATE,
-            ExposeType.FAN,
-            ExposeType.COVER,
-            ExposeType.COMPOSITE,
+            getattr(ExposeType, name)
+            for name in dir(ExposeType)
+            if name.isupper() and not name.startswith("_")
         ]
+        assert values, "ExposeType has no UPPER_CASE constants"
         assert len(set(values)) == len(values)
         assert all(isinstance(v, str) and v for v in values)
 

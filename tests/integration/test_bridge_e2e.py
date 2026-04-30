@@ -1,0 +1,526 @@
+"""End-to-end integration tests for `wb.mqtt_zigbee.bridge.Bridge`.
+
+Exercises the full MQTT ↔ Bridge ↔ MQTT data path through a single
+`FakeMqttBroker`: zigbee2mqtt-shaped messages enter the bridge via the
+broker, get translated to Wiren Board MQTT Conventions topics, and any WB
+commands are forwarded back to the corresponding zigbee2mqtt request topic.
+
+Time-dependent paths (1Hz stats throttling, command debounce) are tested
+by monkey-patching `time.monotonic` in `wb.mqtt_zigbee.bridge`.
+"""
+
+import json
+from typing import Any
+
+import pytest
+from wb.mqtt_zigbee import bridge as bridge_module
+from wb.mqtt_zigbee.bridge import Bridge
+from wb.mqtt_zigbee.wb_converter.controls import BridgeControl, WbBoolValue
+from wb.mqtt_zigbee.wb_converter.publisher import DEVICES_PREFIX, DRIVER_NAME
+
+from .fakes.broker import FakeMqttBroker
+from .fakes.client import FakeMqttClient
+from .helpers.wb_observer import WbObserver
+from .helpers.z2m_emulator import Z2mEmulator
+
+BASE = "zigbee2mqtt"
+BRIDGE_ID = "zigbee2mqtt"
+BRIDGE_NAME = "Zigbee2MQTT bridge"
+
+
+# -- Fixtures & helpers ---------------------------------------------------------
+
+
+@pytest.fixture
+def fake_clock(monkeypatch: pytest.MonkeyPatch) -> "list[float]":
+    """A mutable list whose [0] item is returned by patched `time.monotonic`.
+
+    Tests advance time by mutating the list:
+        fake_clock[0] += 2.0
+    """
+    holder = [0.0]
+    monkeypatch.setattr(bridge_module.time, "monotonic", lambda: holder[0])
+    return holder
+
+
+@pytest.fixture
+def bridge(fake_mqtt_client: FakeMqttClient, fake_clock: "list[float]") -> Bridge:
+    """Bridge wired to fakes with a deterministic monotonic clock.
+
+    `fake_clock` is included in the dependency chain so it always patches
+    `time.monotonic` before any Bridge code runs.
+    """
+    _ = fake_clock  # Keeps clock patch active for the lifetime of the fixture.
+    return Bridge(
+        mqtt_client=fake_mqtt_client,
+        base_topic=BASE,
+        device_id=BRIDGE_ID,
+        device_name=BRIDGE_NAME,
+        bridge_log_min_level="warning",
+        command_debounce_sec=5.0,
+    )
+
+
+def _z2m_sensor(friendly_name: str, ieee: str = "0x0001") -> dict[str, Any]:
+    """Z2M-shaped device dict for a simple temperature sensor."""
+    return {
+        "ieee_address": ieee,
+        "friendly_name": friendly_name,
+        "type": "EndDevice",
+        "definition": {
+            "model": "MODEL-1",
+            "vendor": "Vendor",
+            "description": "Temp sensor",
+            "exposes": [
+                {
+                    "type": "numeric",
+                    "name": "temperature",
+                    "property": "temperature",
+                    "access": 1,
+                    "unit": "°C",
+                },
+            ],
+        },
+    }
+
+
+def _z2m_switch(friendly_name: str, ieee: str = "0x0002") -> dict[str, Any]:
+    """Z2M-shaped device dict for a writable on/off switch."""
+    return {
+        "ieee_address": ieee,
+        "friendly_name": friendly_name,
+        "type": "Router",
+        "definition": {
+            "model": "MODEL-2",
+            "vendor": "Vendor",
+            "description": "Switch",
+            "exposes": [
+                {
+                    "type": "switch",
+                    "features": [
+                        {
+                            "type": "binary",
+                            "name": "state",
+                            "property": "state",
+                            "access": 0b111,
+                            "value_on": "ON",
+                            "value_off": "OFF",
+                        },
+                    ],
+                },
+            ],
+        },
+    }
+
+
+# -- Bridge initialization ------------------------------------------------------
+
+
+def test_subscribe_publishes_bridge_device_meta(
+    bridge: Bridge,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+
+    meta = wb_observer.last_json_on(f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta")
+    assert meta == {"driver": DRIVER_NAME, "title": {"en": BRIDGE_NAME, "ru": BRIDGE_NAME}}
+
+
+def test_subscribe_publishes_log_level_control(
+    bridge: Bridge,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+
+    topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.LOG_LEVEL}"
+    assert wb_observer.retained(topic) == "warning"
+
+
+# -- bridge/state propagation ---------------------------------------------------
+
+
+def test_bridge_state_is_forwarded_to_state_control(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+
+    z2m_emu.online()
+
+    topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.STATE}"
+    assert wb_observer.retained(topic) == "online"
+
+
+def test_bridge_info_publishes_version_and_permit_join(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+
+    z2m_emu.info(version="1.42.0", permit_join=True)
+
+    version_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.VERSION}"
+    permit_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.PERMIT_JOIN}"
+    assert wb_observer.retained(version_topic) == "1.42.0"
+    assert wb_observer.retained(permit_topic) == WbBoolValue.TRUE
+
+
+# -- bridge/logging -------------------------------------------------------------
+
+
+def test_bridge_log_below_min_level_is_suppressed(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+    log_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.LOG}"
+    # `subscribe()` publishes a blank initial value to every control. The
+    # below-min-level log must NOT add another publish on the Log topic.
+    publishes_before = len(wb_observer.messages_on(log_topic))
+
+    z2m_emu.log("info", "this is below warning")
+
+    assert len(wb_observer.messages_on(log_topic)) == publishes_before
+
+
+def test_bridge_log_at_min_level_is_published(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+    log_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.LOG}"
+
+    z2m_emu.log("warning", "warn message")
+
+    assert wb_observer.retained(log_topic) == "warn message"
+
+
+# -- Device registration via bridge/devices ------------------------------------
+
+
+def test_device_from_bridge_devices_is_registered_in_wb(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+
+    z2m_emu.devices([_z2m_sensor("sensor-1")])
+
+    meta = wb_observer.last_json_on(f"{DEVICES_PREFIX}/sensor-1/meta")
+    assert isinstance(meta, dict)
+    assert meta["driver"] == DRIVER_NAME
+    temp_meta = wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/temperature/meta")
+    assert temp_meta is not None
+
+
+def test_device_count_is_published(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+
+    z2m_emu.devices([_z2m_sensor("sensor-1"), _z2m_switch("switch-1")])
+
+    topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.DEVICE_COUNT}"
+    assert wb_observer.retained(topic) == "2"
+
+
+def test_device_with_unsafe_name_is_skipped(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+
+    z2m_emu.devices([_z2m_sensor("bad/name")])
+
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/bad_name/meta") is None
+
+
+# -- Device state propagation --------------------------------------------------
+
+
+def test_device_state_is_forwarded_to_wb_control(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+    z2m_emu.devices([_z2m_sensor("sensor-1")])
+
+    z2m_emu.device_state("sensor-1", {"temperature": 21.5})
+
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/temperature") == "21.5"
+
+
+def test_device_availability_is_forwarded(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+    z2m_emu.devices([_z2m_sensor("sensor-1")])
+
+    z2m_emu.device_availability("sensor-1", online=True)
+
+    available_topic = f"{DEVICES_PREFIX}/sensor-1/controls/available"
+    assert wb_observer.retained(available_topic) == WbBoolValue.TRUE
+
+
+# -- WB → z2m command path ------------------------------------------------------
+
+
+def test_wb_command_is_forwarded_to_z2m_set_topic(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    fake_broker: FakeMqttBroker,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+    z2m_emu.devices([_z2m_switch("switch-1")])
+
+    fake_broker.inject(f"{DEVICES_PREFIX}/switch-1/controls/state/on", WbBoolValue.TRUE)
+
+    set_topic = f"{BASE}/switch-1/set"
+    last_set = wb_observer.last_payload_on(set_topic)
+    assert last_set is not None
+    assert json.loads(last_set) == {"state": "ON"}
+
+
+def test_wb_command_publishes_optimistic_value_on_control_topic(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    fake_broker: FakeMqttBroker,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+    z2m_emu.devices([_z2m_switch("switch-1")])
+
+    fake_broker.inject(f"{DEVICES_PREFIX}/switch-1/controls/state/on", WbBoolValue.TRUE)
+
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/switch-1/controls/state") == WbBoolValue.TRUE
+
+
+# -- Pending command debounce ---------------------------------------------------
+
+
+def test_stale_state_during_debounce_window_is_suppressed(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    fake_broker: FakeMqttBroker,
+    wb_observer: WbObserver,
+    fake_clock: "list[float]",
+) -> None:
+    bridge.subscribe()
+    z2m_emu.devices([_z2m_switch("switch-1")])
+    state_topic = f"{DEVICES_PREFIX}/switch-1/controls/state"
+
+    fake_clock[0] = 100.0
+    fake_broker.inject(f"{DEVICES_PREFIX}/switch-1/controls/state/on", WbBoolValue.TRUE)
+    assert wb_observer.retained(state_topic) == WbBoolValue.TRUE
+
+    # Stale "OFF" state arrives 1 second later (well within 5s debounce).
+    fake_clock[0] = 101.0
+    z2m_emu.device_state("switch-1", {"state": "OFF"})
+
+    # The optimistic TRUE must remain — stale value is suppressed.
+    assert wb_observer.retained(state_topic) == WbBoolValue.TRUE
+
+
+def test_state_after_debounce_expires_is_published(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    fake_broker: FakeMqttBroker,
+    wb_observer: WbObserver,
+    fake_clock: "list[float]",
+) -> None:
+    bridge.subscribe()
+    z2m_emu.devices([_z2m_switch("switch-1")])
+    state_topic = f"{DEVICES_PREFIX}/switch-1/controls/state"
+
+    fake_clock[0] = 100.0
+    fake_broker.inject(f"{DEVICES_PREFIX}/switch-1/controls/state/on", WbBoolValue.TRUE)
+
+    fake_clock[0] = 200.0  # well past 5s debounce
+    z2m_emu.device_state("switch-1", {"state": "OFF"})
+
+    assert wb_observer.retained(state_topic) == WbBoolValue.FALSE
+
+
+def test_confirming_state_clears_pending_command(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    fake_broker: FakeMqttBroker,
+    wb_observer: WbObserver,
+    fake_clock: "list[float]",
+) -> None:
+    bridge.subscribe()
+    z2m_emu.devices([_z2m_switch("switch-1")])
+    state_topic = f"{DEVICES_PREFIX}/switch-1/controls/state"
+
+    fake_clock[0] = 100.0
+    fake_broker.inject(f"{DEVICES_PREFIX}/switch-1/controls/state/on", WbBoolValue.TRUE)
+
+    # Confirming state arrives within debounce window with the same value.
+    fake_clock[0] = 100.5
+    z2m_emu.device_state("switch-1", {"state": "ON"})
+
+    # After confirmation, a real OFF before debounce expires must publish
+    # immediately (pending was cleared by the matching confirmation).
+    fake_clock[0] = 101.0
+    z2m_emu.device_state("switch-1", {"state": "OFF"})
+
+    assert wb_observer.retained(state_topic) == WbBoolValue.FALSE
+
+
+# -- Stats throttling -----------------------------------------------------------
+
+
+def test_messages_received_throttled_to_once_per_second(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+    fake_clock: "list[float]",
+) -> None:
+    bridge.subscribe()
+    msg_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.MESSAGES_RECEIVED}"
+
+    fake_clock[0] = 1000.0
+    z2m_emu.online()
+    first = wb_observer.retained(msg_topic)
+
+    # Three more events within the same second — no further publishes.
+    fake_clock[0] = 1000.5
+    z2m_emu.info(version="1.0", permit_join=False)
+    z2m_emu.log("warning", "x")
+    z2m_emu.log("error", "y")
+    after_burst = wb_observer.retained(msg_topic)
+
+    # One second later, stats publish again.
+    fake_clock[0] = 1002.0
+    z2m_emu.online()
+    after_window = wb_observer.retained(msg_topic)
+
+    assert first == after_burst
+    assert after_window != after_burst
+
+
+# -- Device events --------------------------------------------------------------
+
+
+def test_device_left_removes_wb_device(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+    z2m_emu.devices([_z2m_sensor("sensor-1")])
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta") is not None
+
+    z2m_emu.device_left("sensor-1", ieee_address="0x0001")
+
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta") is None
+    assert (
+        wb_observer.retained(f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.LAST_LEFT}") == "sensor-1"
+    )
+
+
+def test_device_renamed_moves_wb_device(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+    z2m_emu.devices([_z2m_sensor("old-name")])
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/old-name/meta") is not None
+
+    z2m_emu.device_renamed("old-name", "new-name")
+
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/old-name/meta") is None
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/new-name/meta") is not None
+
+
+def test_device_remove_response_removes_wb_device(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+    z2m_emu.devices([_z2m_sensor("sensor-1")])
+
+    z2m_emu.remove_response(status="ok", id_="sensor-1")
+
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta") is None
+
+
+# -- Stale device cleanup -------------------------------------------------------
+
+
+def test_devices_missing_from_new_list_are_removed(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+    z2m_emu.devices([_z2m_sensor("sensor-1"), _z2m_switch("switch-1")])
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/switch-1/meta") is not None
+
+    z2m_emu.devices([_z2m_sensor("sensor-1")])
+
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta") is not None
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/switch-1/meta") is None
+
+
+# -- Ghost cleanup via retained scan -------------------------------------------
+
+
+def test_ghost_devices_from_previous_run_are_cleaned_up(
+    bridge: Bridge,
+    fake_broker: FakeMqttBroker,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    # Simulate retained ghost device from a previous run.
+    ghost_meta = json.dumps({"driver": DRIVER_NAME, "title": {"en": "G", "ru": "G"}})
+    fake_broker.inject(f"{DEVICES_PREFIX}/ghost/meta", ghost_meta, retain=True)
+    fake_broker.inject(f"{DEVICES_PREFIX}/ghost/controls/temperature/meta", "{}", retain=True)
+
+    bridge.subscribe()
+    z2m_emu.devices([_z2m_sensor("sensor-1")])
+
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/ghost/meta") is None
+
+
+# -- Reconnect flow -------------------------------------------------------------
+
+
+def test_republish_increments_reconnect_counter(
+    bridge: Bridge,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+    reconnects_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.RECONNECTS}"
+
+    bridge.republish()
+    bridge.republish()
+
+    assert wb_observer.retained(reconnects_topic) == "2"
+
+
+def test_set_all_unavailable_marks_known_devices_offline(
+    bridge: Bridge,
+    z2m_emu: Z2mEmulator,
+    wb_observer: WbObserver,
+) -> None:
+    bridge.subscribe()
+    z2m_emu.devices([_z2m_sensor("sensor-1")])
+
+    bridge.set_all_unavailable()
+
+    assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/available") == WbBoolValue.FALSE

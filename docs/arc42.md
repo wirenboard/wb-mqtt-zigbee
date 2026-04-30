@@ -233,7 +233,7 @@ zigbee2mqtt/bridge/response/device/remove → {"status": "ok", "data": {"id": ".
 
 #### Механизм обнаружения ghost-устройств
 
-Каждое WB-устройство публикуется с маркером `"driver": "wb-zigbee2mqtt"` в JSON `/devices/{id}/meta`. При старте сервис:
+Каждое WB-устройство публикуется с маркером `"driver": "wb-mqtt-zigbee"` в JSON `/devices/{id}/meta`. При старте сервис:
 
 1. Подписывается на wildcard-топики `/devices/+/meta` и `/devices/+/controls/+/meta`
 2. Собирает `device_id` устройств с нашим driver и их control_id
@@ -343,7 +343,7 @@ WB `device_id` формируется из `friendly_name` (sanitized) — то 
 
 #### Очистка MQTT
 
-При первом запуске ghost cleanup обнаруживает retained-топики с `driver: wb-zigbee2mqtt` и удаляет устройства, которых нет в текущем списке z2m. Это очищает мусор от v1 без ручного вмешательства.
+При первом запуске ghost cleanup обнаруживает retained-топики с `driver: wb-mqtt-zigbee` (а также legacy-имя `wb-zigbee2mqtt` от v1 и ранних сборок v2 — см. `LEGACY_DRIVER_NAMES` в `wb_converter/publisher.py`) и удаляет устройства, которых нет в текущем списке z2m. Это очищает мусор от v1 и старых версий v2 без ручного вмешательства.
 
 ---
 

@@ -35,7 +35,6 @@ BRIDGE_ID = "zigbee2mqtt"
 BRIDGE_NAME = "Zigbee2MQTT bridge"
 
 
-# Fixtures
 @pytest.fixture
 def fake_clock(monkeypatch: pytest.MonkeyPatch) -> "list[float]":
     """Mutable single-element holder driving patched `time.monotonic` in Bridge."""
@@ -71,121 +70,130 @@ def app(
     return WbZigbee2Mqtt(config)
 
 
-# First connect
-def test_first_connect_publishes_bridge_meta(
-    app: WbZigbee2Mqtt,
-    fake_mqtt_client: FakeMqttClient,
-    wb_observer: WbObserver,
-) -> None:
-    fake_mqtt_client.connect(rc=0)
+class TestFirstConnect:
+    """Initial successful MQTT connection (rc == 0)."""
 
-    meta = wb_observer.last_json_on(f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta")
-    assert meta == {"driver": DRIVER_NAME, "title": {"en": BRIDGE_NAME, "ru": BRIDGE_NAME}}
+    def test_publishes_bridge_meta(
+        self,
+        app: WbZigbee2Mqtt,
+        fake_mqtt_client: FakeMqttClient,
+        wb_observer: WbObserver,
+    ) -> None:
+        fake_mqtt_client.connect(rc=0)
 
+        meta = wb_observer.last_json_on(f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta")
+        assert meta == {"driver": DRIVER_NAME, "title": {"en": BRIDGE_NAME, "ru": BRIDGE_NAME}}
 
-def test_first_connect_subscribes_to_z2m_bridge_topics(
-    app: WbZigbee2Mqtt,
-    fake_mqtt_client: FakeMqttClient,
-) -> None:
-    fake_mqtt_client.connect(rc=0)
+    def test_subscribes_to_z2m_bridge_topics(
+        self,
+        app: WbZigbee2Mqtt,
+        fake_mqtt_client: FakeMqttClient,
+    ) -> None:
+        fake_mqtt_client.connect(rc=0)
 
-    expected = {
-        f"{BASE}/bridge/state",
-        f"{BASE}/bridge/info",
-        f"{BASE}/bridge/logging",
-        f"{BASE}/bridge/devices",
-        f"{BASE}/bridge/event",
-        f"{BASE}/bridge/response/device/remove",
-        f"{BASE}/+/availability",
-    }
-    assert expected.issubset(set(fake_mqtt_client.subscriptions))
-
-
-# Reconnect
-def test_reconnect_increments_reconnect_counter(
-    app: WbZigbee2Mqtt,
-    fake_mqtt_client: FakeMqttClient,
-    wb_observer: WbObserver,
-) -> None:
-    """connect → disconnect → connect must trigger Bridge.republish (not subscribe)."""
-    fake_mqtt_client.connect(rc=0)
-    fake_mqtt_client.disconnect()
-    fake_mqtt_client.connect(rc=0)
-
-    reconnects_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.RECONNECTS}"
-    assert wb_observer.retained(reconnects_topic) == "1"
-
-    # Another disconnect/connect cycle — counter advances.
-    fake_mqtt_client.disconnect()
-    fake_mqtt_client.connect(rc=0)
-    assert wb_observer.retained(reconnects_topic) == "2"
+        expected = {
+            f"{BASE}/bridge/state",
+            f"{BASE}/bridge/info",
+            f"{BASE}/bridge/logging",
+            f"{BASE}/bridge/devices",
+            f"{BASE}/bridge/event",
+            f"{BASE}/bridge/response/device/remove",
+            f"{BASE}/+/availability",
+        }
+        assert expected.issubset(set(fake_mqtt_client.subscriptions))
 
 
-def test_disconnect_marks_known_devices_unavailable(
-    app: WbZigbee2Mqtt,
-    fake_mqtt_client: FakeMqttClient,
-    wb_observer: WbObserver,
-    z2m_emu: Z2mEmulator,
-) -> None:
-    fake_mqtt_client.connect(rc=0)
-    z2m_emu.devices(
-        [
-            {
-                "ieee_address": "0x0001",
-                "friendly_name": "sensor-1",
-                "type": "EndDevice",
-                "definition": {
-                    "model": "M1",
-                    "vendor": "V1",
-                    "exposes": [
-                        {
-                            "type": "numeric",
-                            "name": "temperature",
-                            "property": "temperature",
-                            "access": 1,
-                        },
-                    ],
+class TestReconnect:
+    """Behaviour after a connect → disconnect → connect cycle."""
+
+    def test_increments_reconnect_counter(
+        self,
+        app: WbZigbee2Mqtt,
+        fake_mqtt_client: FakeMqttClient,
+        wb_observer: WbObserver,
+    ) -> None:
+        """connect → disconnect → connect must trigger Bridge.republish (not subscribe)."""
+        fake_mqtt_client.connect(rc=0)
+        fake_mqtt_client.disconnect()
+        fake_mqtt_client.connect(rc=0)
+
+        reconnects_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.RECONNECTS}"
+        assert wb_observer.retained(reconnects_topic) == "1"
+
+        # Another disconnect/connect cycle — counter advances.
+        fake_mqtt_client.disconnect()
+        fake_mqtt_client.connect(rc=0)
+        assert wb_observer.retained(reconnects_topic) == "2"
+
+    def test_disconnect_marks_known_devices_unavailable(
+        self,
+        app: WbZigbee2Mqtt,
+        fake_mqtt_client: FakeMqttClient,
+        wb_observer: WbObserver,
+        z2m_emu: Z2mEmulator,
+    ) -> None:
+        fake_mqtt_client.connect(rc=0)
+        z2m_emu.devices(
+            [
+                {
+                    "ieee_address": "0x0001",
+                    "friendly_name": "sensor-1",
+                    "type": "EndDevice",
+                    "definition": {
+                        "model": "M1",
+                        "vendor": "V1",
+                        "exposes": [
+                            {
+                                "type": "numeric",
+                                "name": "temperature",
+                                "property": "temperature",
+                                "access": 1,
+                            },
+                        ],
+                    },
                 },
-            },
-        ]
-    )
-    available_topic = f"{DEVICES_PREFIX}/sensor-1/controls/available"
+            ]
+        )
+        available_topic = f"{DEVICES_PREFIX}/sensor-1/controls/available"
 
-    fake_mqtt_client.disconnect()
+        fake_mqtt_client.disconnect()
 
-    assert wb_observer.retained(available_topic) == WbBoolValue.FALSE
-
-
-# Connect failure modes
-def test_auth_failure_stops_client_and_sets_exit_code(
-    app: WbZigbee2Mqtt,
-    fake_mqtt_client: FakeMqttClient,
-    wb_observer: WbObserver,
-) -> None:
-    """rc == 5 (auth failure) is terminal: the client is stopped and exit
-    code is EXIT_NOSTART. The Bridge must not subscribe and must not publish
-    any controls.
-    """
-    fake_mqtt_client.connect(rc=MQTT_RC_AUTH_FAILURE)
-
-    # FakeMqttClient.stop() flips the internal flag (see fakes/client.py).
-    assert fake_mqtt_client._stopped is True  # pylint: disable=protected-access
-    assert app._exit_code == EXIT_NOSTART  # pylint: disable=protected-access
-    # No bridge meta was published — auth failure aborts before subscribe().
-    assert wb_observer.retained(f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta") is None
+        assert wb_observer.retained(available_topic) == WbBoolValue.FALSE
 
 
-def test_non_auth_connect_failure_does_not_subscribe(
-    app: WbZigbee2Mqtt,
-    fake_mqtt_client: FakeMqttClient,
-    wb_observer: WbObserver,
-) -> None:
-    """Generic connect rc != 0, != 5: log and wait; do not subscribe yet."""
-    fake_mqtt_client.connect(rc=1)
+class TestConnectFailureModes:
+    """Non-zero `rc` codes from MQTT CONNACK."""
 
-    # Bridge.subscribe() did not run → no z2m bridge subscriptions, no meta.
-    assert f"{BASE}/bridge/state" not in fake_mqtt_client.subscriptions
-    assert wb_observer.retained(f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta") is None
-    # Client was not stopped (only auth failure stops it).
-    assert fake_mqtt_client._stopped is False  # pylint: disable=protected-access
-    assert app._exit_code == EXIT_SUCCESS
+    def test_auth_failure_stops_client_and_sets_exit_code(
+        self,
+        app: WbZigbee2Mqtt,
+        fake_mqtt_client: FakeMqttClient,
+        wb_observer: WbObserver,
+    ) -> None:
+        """rc == 5 (auth failure) is terminal: the client is stopped and exit
+        code is EXIT_NOSTART. The Bridge must not subscribe and must not publish
+        any controls.
+        """
+        fake_mqtt_client.connect(rc=MQTT_RC_AUTH_FAILURE)
+
+        # FakeMqttClient.stop() flips the internal flag (see fakes/client.py).
+        assert fake_mqtt_client._stopped is True  # pylint: disable=protected-access
+        assert app._exit_code == EXIT_NOSTART  # pylint: disable=protected-access
+        # No bridge meta was published — auth failure aborts before subscribe().
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta") is None
+
+    def test_non_auth_failure_does_not_subscribe(
+        self,
+        app: WbZigbee2Mqtt,
+        fake_mqtt_client: FakeMqttClient,
+        wb_observer: WbObserver,
+    ) -> None:
+        """Generic connect rc != 0, != 5: log and wait; do not subscribe yet."""
+        fake_mqtt_client.connect(rc=1)
+
+        # Bridge.subscribe() did not run → no z2m bridge subscriptions, no meta.
+        assert f"{BASE}/bridge/state" not in fake_mqtt_client.subscriptions
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta") is None
+        # Client was not stopped (only auth failure stops it).
+        assert fake_mqtt_client._stopped is False  # pylint: disable=protected-access
+        assert app._exit_code == EXIT_SUCCESS

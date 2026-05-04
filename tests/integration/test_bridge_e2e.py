@@ -13,6 +13,7 @@ import json
 from typing import Any
 
 import pytest
+
 from wb.mqtt_zigbee import bridge as bridge_module
 from wb.mqtt_zigbee.bridge import Bridge
 from wb.mqtt_zigbee.wb_converter.controls import BridgeControl, WbBoolValue

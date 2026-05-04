@@ -14,6 +14,7 @@ throttling, command debounce) is deterministic.
 """
 
 import pytest
+
 from wb.mqtt_zigbee import app as app_module
 from wb.mqtt_zigbee import bridge as bridge_module
 from wb.mqtt_zigbee.app import (

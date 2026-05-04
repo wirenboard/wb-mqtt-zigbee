@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
+
 from wb.mqtt_zigbee.z2m.client import Z2MClient
 from wb.mqtt_zigbee.z2m.model import BridgeInfo, DeviceEvent, DeviceEventType, Z2MDevice
 

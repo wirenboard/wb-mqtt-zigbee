@@ -20,9 +20,7 @@ from .helpers.z2m_emulator import Z2mEmulator
 BASE = "zigbee2mqtt"
 
 
-# -- Test harness ---------------------------------------------------------------
-
-
+# Test harness
 @dataclass
 class _Recorder:
     """Captures every Z2MClient callback invocation for assertions."""
@@ -53,9 +51,7 @@ def _make_client(fake_mqtt_client: FakeMqttClient) -> tuple[Z2MClient, _Recorder
     return client, rec
 
 
-# -- bridge/state ---------------------------------------------------------------
-
-
+# bridge/state
 @pytest.mark.parametrize("state", ["online", "offline", "error"])
 def test_bridge_state_plain_string(
     fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator, state: str
@@ -77,9 +73,7 @@ def test_bridge_state_unknown_value_ignored(fake_mqtt_client: FakeMqttClient, z2
     assert not rec.bridge_states
 
 
-# -- bridge/info ----------------------------------------------------------------
-
-
+# bridge/info
 def test_bridge_info_full_payload(fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator) -> None:
     _client, rec = _make_client(fake_mqtt_client)
     z2m_emu.info(version="1.42.0", permit_join=True, permit_join_end=1700000000)
@@ -100,9 +94,7 @@ def test_bridge_info_invalid_json_skipped(fake_mqtt_client: FakeMqttClient, z2m_
     assert not rec.bridge_infos
 
 
-# -- bridge/logging -------------------------------------------------------------
-
-
+# bridge/logging
 def test_bridge_log_valid_payload(fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator) -> None:
     _client, rec = _make_client(fake_mqtt_client)
     z2m_emu.log("warning", "something happened")
@@ -117,9 +109,7 @@ def test_bridge_log_invalid_json_falls_back_to_raw(
     assert rec.bridge_logs == [("info", "not json at all")]
 
 
-# -- bridge/devices -------------------------------------------------------------
-
-
+# bridge/devices
 def test_bridge_devices_excludes_coordinator_and_parses_rest(
     fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator
 ) -> None:
@@ -137,7 +127,7 @@ def test_bridge_devices_excludes_coordinator_and_parses_rest(
     )
     assert len(rec.devices_calls) == 1
     devices = rec.devices_calls[0]
-    assert [d.friendly_name for d in devices] == ["lamp"]
+    assert [device.friendly_name for device in devices] == ["lamp"]
     assert devices[0].vendor == "V1"
 
 
@@ -156,12 +146,10 @@ def test_bridge_devices_one_broken_does_not_affect_others(
         )
     )
     assert len(rec.devices_calls) == 1
-    assert [d.friendly_name for d in rec.devices_calls[0]] == ["ok"]
+    assert [device.friendly_name for device in rec.devices_calls[0]] == ["ok"]
 
 
-# -- bridge/event ---------------------------------------------------------------
-
-
+# bridge/event
 @pytest.mark.parametrize(
     ("z2m_type", "expected_internal"),
     [
@@ -194,9 +182,7 @@ def test_bridge_event_unknown_type_ignored(fake_mqtt_client: FakeMqttClient, z2m
     assert not rec.device_events
 
 
-# -- bridge/response/device/remove ---------------------------------------------
-
-
+# bridge/response/device/remove
 def test_remove_response_ok_emits_removed_event(
     fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator
 ) -> None:
@@ -211,9 +197,7 @@ def test_remove_response_error_status_ignored(fake_mqtt_client: FakeMqttClient, 
     assert not rec.device_events
 
 
-# -- +/availability -------------------------------------------------------------
-
-
+# +/availability
 def test_device_availability_online(fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator) -> None:
     _client, rec = _make_client(fake_mqtt_client)
     z2m_emu.device_availability("lamp", online=True)
@@ -242,9 +226,7 @@ def test_device_availability_invalid_json_skipped(
     assert not rec.availability
 
 
-# -- per-device state -----------------------------------------------------------
-
-
+# per-device state
 def test_device_state_received_after_subscribe_device(
     fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator
 ) -> None:
@@ -273,9 +255,7 @@ def test_subscribe_device_is_idempotent(fake_mqtt_client: FakeMqttClient) -> Non
     assert fake_mqtt_client.subscriptions == subs_after_first
 
 
-# -- outgoing commands ----------------------------------------------------------
-
-
+# outgoing commands
 def test_set_permit_join_enabled_publishes_254(
     fake_mqtt_client: FakeMqttClient, wb_observer: WbObserver
 ) -> None:
@@ -325,5 +305,31 @@ def test_refresh_device_list_re_subscribes(
     assert len(rec.devices_calls) == 1
 
     client.refresh_device_list()
-    # After re-subscribe, retained `bridge/devices` is replayed by the broker
+    devices_topic = f"{BASE}/bridge/devices"
+    # Production API contract: refresh must drop and re-add the bridge/devices subscription.
+    assert fake_mqtt_client.unsubscriptions.count(devices_topic) == 1
+    # The most recent subscribe call must target bridge/devices.
+    assert fake_mqtt_client.subscriptions[-1] == devices_topic
+    # And after re-subscribe, the retained payload is replayed.
     assert len(rec.devices_calls) == 2
+
+
+def test_subscribe_subscribes_to_expected_bridge_topics(
+    fake_mqtt_client: FakeMqttClient,
+) -> None:
+    """Locks the set of topics Z2MClient.subscribe() registers on the broker.
+
+    Other tests assert behavior via retained-message replay, which can mask a
+    silently dropped subscription. This test pins the topology directly.
+    """
+    _client, _rec = _make_client(fake_mqtt_client)
+    expected = {
+        f"{BASE}/bridge/state",
+        f"{BASE}/bridge/info",
+        f"{BASE}/bridge/logging",
+        f"{BASE}/bridge/devices",
+        f"{BASE}/bridge/event",
+        f"{BASE}/bridge/response/device/remove",
+        f"{BASE}/+/availability",
+    }
+    assert expected.issubset(set(fake_mqtt_client.subscriptions))

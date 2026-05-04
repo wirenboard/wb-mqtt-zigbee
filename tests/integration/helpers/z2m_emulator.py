@@ -20,8 +20,7 @@ class Z2mEmulator:
     def base_topic(self) -> str:
         return self._base
 
-    # -- bridge/state ---------------------------------------------------------
-
+    # bridge/state
     def online(self) -> None:
         self._broker.inject(f"{self._base}/bridge/state", "online", retain=True)
 
@@ -31,8 +30,7 @@ class Z2mEmulator:
     def state_raw(self, payload: Any, retain: bool = True) -> None:
         self._broker.inject(f"{self._base}/bridge/state", payload, retain=retain)
 
-    # -- bridge/info ----------------------------------------------------------
-
+    # bridge/info
     def info(
         self,
         version: str = "2.0.0",
@@ -45,8 +43,7 @@ class Z2mEmulator:
     def info_raw(self, payload: Any, retain: bool = True) -> None:
         self._broker.inject(f"{self._base}/bridge/info", payload, retain=retain)
 
-    # -- bridge/logging -------------------------------------------------------
-
+    # bridge/logging
     def log(self, level: str, message: str) -> None:
         payload = {"level": level, "message": message}
         self._broker.inject(f"{self._base}/bridge/logging", json.dumps(payload))
@@ -54,16 +51,14 @@ class Z2mEmulator:
     def log_raw(self, payload: Any) -> None:
         self._broker.inject(f"{self._base}/bridge/logging", payload)
 
-    # -- bridge/devices -------------------------------------------------------
-
+    # bridge/devices
     def devices(self, devices: list[dict]) -> None:
         self._broker.inject(f"{self._base}/bridge/devices", json.dumps(devices), retain=True)
 
     def devices_raw(self, payload: Any, retain: bool = True) -> None:
         self._broker.inject(f"{self._base}/bridge/devices", payload, retain=retain)
 
-    # -- bridge/event ---------------------------------------------------------
-
+    # bridge/event
     def event(self, event_type: str, data: dict) -> None:
         payload = {"type": event_type, "data": data}
         self._broker.inject(f"{self._base}/bridge/event", json.dumps(payload))
@@ -81,17 +76,18 @@ class Z2mEmulator:
             "device_leave", {"friendly_name": friendly_name, "ieee_address": ieee_address or friendly_name}
         )
 
-    def device_renamed(self, from_name: str, to_name: str) -> None:
-        self.event("device_renamed", {"from": from_name, "to": to_name})
+    def device_renamed(self, from_name: str, to_name: str, ieee_address: str = "") -> None:
+        data: dict[str, Any] = {"from": from_name, "to": to_name}
+        if ieee_address:
+            data["ieee_address"] = ieee_address
+        self.event("device_renamed", data)
 
-    # -- bridge/response/device/remove ---------------------------------------
-
+    # bridge/response/device/remove
     def remove_response(self, status: str = "ok", id_: str = "device-1") -> None:
         payload = {"status": status, "data": {"id": id_}}
         self._broker.inject(f"{self._base}/bridge/response/device/remove", json.dumps(payload))
 
-    # -- per-device topics ---------------------------------------------------
-
+    # per-device topics
     def device_state(self, friendly_name: str, state: dict) -> None:
         self._broker.inject(f"{self._base}/{friendly_name}", json.dumps(state))
 

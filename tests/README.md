@@ -22,7 +22,7 @@ pip install -r dev-requirements.txt
 ```
 tests/
 ├── __init__.py                 # делает tests пакетом для pytest discovery
-├── conftest.py                 # общие фикстуры (пока пустой)
+├── conftest.py                 # общие фикстуры (сейчас пустой; оставлен под общие фикстуры между unit и integration)
 ├── README.md                   # этот файл
 ├── unit/                       # unit-тесты (без I/O)
 │   ├── __init__.py
@@ -43,10 +43,11 @@ tests/
     ├── test_fake_broker.py     # самотесты мока
     ├── test_z2m_client.py      # уровень 1: Z2MClient
     ├── test_wb_publisher.py    # уровень 2: WbMqttDriver
-    └── test_bridge_e2e.py      # уровень 3: Bridge end-to-end
+    ├── test_bridge_e2e.py      # уровень 3: Bridge end-to-end
+    └── test_app_lifecycle.py   # уровень 4: WbZigbee2Mqtt connect/disconnect/reconnect
 ```
 
-Отдельного pytest-конфига в проекте нет: `tests/__init__.py` и `tests/unit/__init__.py` подсказывают pytest корень, а пакет `wb.mqtt_zigbee` импортируется после `pip install -e .`. Единственная зависимость для базового прогона — `pytest` (закреплена в `dev-requirements.txt`).
+Отдельного pytest-конфига в проекте нет: pytest сам находит тесты через auto-discovery от корня репозитория, а корень попадает в `sys.path` за счёт `tests/__init__.py` (rootdir-механизм pytest), так что `import wb.mqtt_zigbee` работает без `pip install -e .`. Пакеты `tests/__init__.py`, `tests/unit/__init__.py`, `tests/integration/__init__.py` также нужны для относительных импортов хелперов и фейков. Зависимости для запуска — `pytest` и `paho-mqtt` (для прод-кода `z2m/client.py` и `wb_converter/publisher.py`); обе закреплены в `dev-requirements.txt`.
 
 
 ## Запуск
@@ -184,7 +185,7 @@ make_expose(
 
 Раздел растёт по мере появления новых тестов. Содержание идёт по тест-файлам.
 
-### `tests/unit/test_expose_mapper.py` — 42 теста
+### `tests/unit/test_expose_mapper.py`
 
 Проверяют [`wb/mqtt_zigbee/wb_converter/expose_mapper.py`](../wb/mqtt_zigbee/wb_converter/expose_mapper.py) — модуль, конвертирующий `exposes`-схему zigbee2mqtt в словарь метаданных WB MQTT-контролов. Это чистая функциональная логика (без I/O и состояния), и она покрыта на 100%.
 
@@ -198,7 +199,7 @@ make_expose(
 | `_make_title` | `TestMakeTitle` | `snake_case` → `Snake case`; единичные слова; параметризованный тест. |
 | `_resolve_wb_type` | `TestResolveWbType` | Все ветки (numeric known/unknown, binary, enum, text, unknown → `None`). |
 
-### `tests/unit/test_controls.py` — 55 тестов
+### `tests/unit/test_controls.py`
 
 Проверяют [`wb/mqtt_zigbee/wb_converter/controls.py`](../wb/mqtt_zigbee/wb_converter/controls.py) — модуль с типами WB-контролов, метаданными бридж-устройства и конверсией значений между WB MQTT и z2m. Покрытие — 100%.
 
@@ -212,7 +213,7 @@ make_expose(
 | `ControlMeta` defaults | `TestControlMetaDefaults` | Дефолтные значения опциональных полей; `default_factory=dict` для `title` создаёт независимый словарь на каждый инстанс. |
 | `BRIDGE_CONTROLS` | `TestBridgeControls` | Все ожидаемые ключи присутствуют; значения `order` уникальны и идут подряд от 1; у каждого контрола есть переводы `en` и `ru`; writable только `Permit join` и `Update devices`; `Permit join` — `switch`, `Update devices` — `pushbutton`. |
 
-### `tests/unit/test_model.py` — 37 тестов
+### `tests/unit/test_model.py`
 
 Проверяют [`wb/mqtt_zigbee/z2m/model.py`](../wb/mqtt_zigbee/z2m/model.py) — дата-классы и константы, описывающие сущности zigbee2mqtt (устройства, expose-фичи, события, состояния бриджа). Покрытие — 100%.
 
@@ -226,7 +227,7 @@ make_expose(
 | Константы-перечисления | `TestEnumLikeConstants` | Битовые значения `ExposeAccess`; строковые значения `BridgeState`, `DeviceAvailability`, `Z2MEventType`, `DeviceEventType`; все `ExposeType.*` — непустые уникальные строки. |
 | `BridgeLogLevel` | `TestBridgeLogLevel` | `RANK` упорядочен `debug < info < warning < error`; покрывает все четыре уровня; строковые значения уровней. |
 
-### `tests/unit/test_config_loader.py` — 22 теста
+### `tests/unit/test_config_loader.py`
 
 Проверяют [`wb/mqtt_zigbee/config_loader.py`](../wb/mqtt_zigbee/config_loader.py) — загрузка и валидация JSON-конфига `wb-mqtt-zigbee.conf`. Все тесты используют фикстуру `tmp_path` и хелпер `write_config()` для генерации временных файлов; походов в файловую систему за пределами `tmp_path` нет. Покрытие — 100%.
 
@@ -237,7 +238,7 @@ make_expose(
 | `_validate_log_level` | `TestValidateLogLevel` | Параметризованно для 4 валидных уровней — возвращаются как есть; неизвестный уровень → дефолт + warning в логе (через `caplog`); end-to-end через `load_config` — невалидный уровень в файле тоже падает на дефолт; пустая строка и uppercase (`"ERROR"`) считаются невалидными (z2m уровни — lowercase). |
 | Дефолты-константы | `TestDefaults` | Значения `BRIDGE_DEVICE_ID_DEFAULT`, `BRIDGE_DEVICE_NAME_DEFAULT`, `BRIDGE_LOG_MIN_LEVEL_DEFAULT`, `COMMAND_DEBOUNCE_SEC_DEFAULT`. |
 
-### `tests/unit/test_registered_device.py` — 6 тестов
+### `tests/unit/test_registered_device.py`
 
 Проверяют [`wb/mqtt_zigbee/registered_device.py`](../wb/mqtt_zigbee/registered_device.py) — дата-классы `PendingCommand` и `RegisteredDevice` (внутренний кэш состояния устройства между MQTT-публикациями и командами). Покрытие — 100%.
 
@@ -254,7 +255,7 @@ make_expose(
 
 Каждый тест получает свежий брокер (function-scope фикстура `fake_broker`).
 
-### `tests/integration/test_fake_broker.py` — 29 тестов
+### `tests/integration/test_fake_broker.py`
 
 Самотесты мока: фиксируют поведение, на которое опирается остальной набор. Если они падают, остальным тестам доверять нельзя.
 
@@ -265,7 +266,7 @@ make_expose(
 | Retained | `retain=True` сохраняет последний payload; пустой payload с `retain=True` удаляет retained-запись; новые подписчики получают retained при `set_callback` (а не при `subscribe`); wildcard-фильтры тоже забирают retained. |
 | `inject` vs `publish_from_client` | `inject` не пишет в `publish_log`, `publish_from_client` — пишет; обе процедуры применяют retain и роутинг одинаково. |
 
-### `tests/integration/test_z2m_client.py` — 30 тестов
+### `tests/integration/test_z2m_client.py`
 
 Проверяют [`wb/mqtt_zigbee/z2m/client.py`](../wb/mqtt_zigbee/z2m/client.py): подписки на топики `<base>/bridge/...` и `<base>/+/availability`, парсинг входящих JSON, исходящие команды (`set_permit_join`, `request_device_state`, `set_device_state`, `subscribe_device`).
 
@@ -281,7 +282,7 @@ make_expose(
 | Per-device subscriptions | `subscribe_device` идемпотентен; `unsubscribe_device` без подписки no-op; `state_topic` = `<base>/<name>` доставляет state-callbacks. |
 | Outgoing commands | `set_permit_join(True/False)` публикует `{"time": 254}` или `{"time": 0}`; `set_device_state` сериализует payload в JSON; `request_device_state` шлёт пустой `{}`; `refresh_device_list` снимает и заново ставит подписку на `bridge/devices`. |
 
-### `tests/integration/test_wb_publisher.py` — 25 тестов
+### `tests/integration/test_wb_publisher.py`
 
 Проверяют [`wb/mqtt_zigbee/wb_converter/publisher.py`](../wb/mqtt_zigbee/wb_converter/publisher.py): публикацию виртуальных WB-устройств и контролов согласно WB MQTT Conventions (`/devices/<id>/...`).
 
@@ -294,7 +295,7 @@ make_expose(
 | Device commands | Подписка только на writable-контролы (readonly пропускаются); команда дёргает callback с `(control_id, value)`; `unsubscribe_device_commands` снимает только writable; после unsubscribe команда не доходит до callback. |
 | `start_retained_scan` | Собирает только устройства с `driver == "wb-mqtt-zigbee"`; чужие драйверы фильтруются; bridge-устройство исключается; собирает per-device control_ids; невалидные/пустые `meta`-payload игнорируются; `stop_retained_scan` снимает wildcard-подписки; повторный `start` сбрасывает предыдущее состояние. |
 
-### `tests/integration/test_bridge_e2e.py` — 24 теста
+### `tests/integration/test_bridge_e2e.py`
 
 End-to-end проверки [`wb/mqtt_zigbee/bridge.py`](../wb/mqtt_zigbee/bridge.py) через единый `FakeMqttBroker`: входящие z2m-shaped сообщения переводятся в WB MQTT, исходящие WB-команды роутятся обратно в `<base>/<name>/set`. Время управляется фикстурой `fake_clock` через `monkeypatch.setattr` на `bridge_module.time.monotonic` — это позволяет детерминированно проверять 1Hz-throttling статистики и 5-секундный debounce pending-команд без реального ожидания.
 
@@ -308,6 +309,18 @@ End-to-end проверки [`wb/mqtt_zigbee/bridge.py`](../wb/mqtt_zigbee/bridg
 | Pending command debounce | В пределах 5с входящий state с расхождением подавляется; после истечения окна — публикуется; подтверждающий state очищает pending. |
 | Stats throttling | `Messages received` обновляется не чаще 1 раза в секунду (контролируется через `fake_clock`). |
 | События | `device_leave` и `bridge/response/device/remove` удаляют устройство из WB и обновляют `Last left`; `device_renamed` переносит retained-состояние со старого `device_id` на новый. |
-| Stale cleanup | Устройство, пропавшее из нового списка `bridge/devices`, удаляется. |
+| Stale cleanup | Устройство, пропавшее из нового списка `bridge/devices`, удаляется; пустой `bridge/devices` удаляет все устройства, `Device count` обнуляется. |
 | Ghost cleanup | Retained устройства с прошлого запуска (наш `driver`, но не в текущем `bridge/devices`) затираются после первого `bridge/devices`. |
 | Reconnect | `republish()` инкрементит `Reconnects`; `set_all_unavailable()` переводит все известные устройства в `available=0`. |
+
+### `tests/integration/test_app_lifecycle.py`
+
+Проверяют [`wb/mqtt_zigbee/app.py`](../wb/mqtt_zigbee/app.py) — класс `WbZigbee2Mqtt`, который держит MQTT-соединение и переводит коллбэки `on_connect`/`on_disconnect` в действия над `Bridge`. Тесты подменяют конструктор `MQTTClient` через `monkeypatch.setattr`, чтобы получить `FakeMqttClient`, и подменяют `signal.signal` на no-op (иначе модификация сигналов мешает pytest). Соединение/разрыв триггерится через `FakeMqttClient.connect(rc=...)` и `disconnect()`.
+
+| Цель | Что проверяется |
+|---|---|
+| Первый connect | `connect(rc=0)` вызывает `Bridge.subscribe()` — публикуется `meta` бриджа, проставляются ожидаемые подписки на z2m-топики. |
+| Reconnect | `connect(rc=0)` → `disconnect()` → `connect(rc=0)` дёргает `Bridge.republish()`, инкрементит `Reconnects`. |
+| Disconnect | После регистрации устройств `disconnect()` помечает все известные устройства `available = "0"`. |
+| Auth failure | `connect(rc=5)` останавливает клиента (`stop()`), не публикует `meta` и не подписывается на топики. |
+| Прочие connect-ошибки | `connect(rc=1)` (например, не-AUTH) не приводит ни к `subscribe`, ни к `republish`. |

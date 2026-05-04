@@ -81,6 +81,19 @@ class FakeMqttBroker:
     zigbee2mqtt"), production code publishes via `client.publish(...)`. Both
     paths route messages to all matching subscriptions on this broker.
 
+    Limitations vs. a real broker:
+        - No subscription deduplication. Calling `subscribe(topic)` twice for
+          the same client adds two `_Subscription` entries; `unsubscribe(topic)`
+          only removes the most recent one. Production code that calls
+          `subscribe` idempotently (e.g. via an internal "already subscribed"
+          set, like Z2MClient.subscribe_device) is not affected, but tests
+          should not rely on a real broker's automatic dedup.
+        - `set_callback`/`remove_callback` operate on the most recent
+          subscription for a (client_id, topic_filter) pair. This matches the
+          practical effect of paho's per-topic callback registration but means
+          callback bookkeeping is order-sensitive when duplicated subscriptions
+          exist.
+
     Attributes:
         retained: map of topic → last retained payload. Empty payload deletes.
         subscriptions: list of active subscriptions across all clients.
@@ -92,8 +105,7 @@ class FakeMqttBroker:
         self.subscriptions: list[_Subscription] = []
         self.publish_log: list[PublishedMessage] = []
 
-    # -- Subscription management ----------------------------------------------
-
+    # Subscription management
     def subscribe(self, client_id: str, topic_filter: str) -> None:
         """Add a subscription for client_id.
 
@@ -142,8 +154,7 @@ class FakeMqttBroker:
                 sub.handler = None
                 return
 
-    # -- Publishing -----------------------------------------------------------
-
+    # Publishing
     def publish_from_client(
         self,
         client_id: str,
@@ -172,8 +183,7 @@ class FakeMqttBroker:
         self._apply_retain(topic, data, retain)
         self._route(MockMqttMessage(topic=topic, payload=data, retain=retain, qos=qos))
 
-    # -- Internals ------------------------------------------------------------
-
+    # Internals
     def _apply_retain(self, topic: str, data: bytes, retain: bool) -> None:
         if not retain:
             return

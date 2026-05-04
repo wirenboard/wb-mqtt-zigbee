@@ -30,9 +30,7 @@ BRIDGE_ID = "zigbee2mqtt"
 BRIDGE_NAME = "Zigbee2MQTT bridge"
 
 
-# -- Helpers --------------------------------------------------------------------
-
-
+# Helpers
 def _make_driver(fake_mqtt_client: FakeMqttClient) -> WbMqttDriver:
     return WbMqttDriver(
         mqtt_client=fake_mqtt_client,
@@ -60,9 +58,7 @@ def _sample_controls() -> dict[str, ControlMeta]:
     }
 
 
-# -- Bridge device publishing ---------------------------------------------------
-
-
+# Bridge device publishing
 def test_publish_bridge_device_publishes_device_meta(
     fake_mqtt_client: FakeMqttClient,
     wb_observer: WbObserver,
@@ -101,9 +97,7 @@ def test_all_meta_publishes_use_retain_qos1(
         assert msg.qos == 1, msg.topic
 
 
-# -- Bridge control values ------------------------------------------------------
-
-
+# Bridge control values
 def test_publish_bridge_control_writes_value(
     fake_mqtt_client: FakeMqttClient,
     wb_observer: WbObserver,
@@ -114,9 +108,7 @@ def test_publish_bridge_control_writes_value(
     assert wb_observer.retained(topic) == "online"
 
 
-# -- Generic device publishing --------------------------------------------------
-
-
+# Generic device publishing
 def test_publish_device_writes_device_and_control_meta(
     fake_mqtt_client: FakeMqttClient,
     wb_observer: WbObserver,
@@ -182,9 +174,7 @@ def test_publish_device_control_writes_value(
     assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/temperature") == "22.4"
 
 
-# -- Device removal -------------------------------------------------------------
-
-
+# Device removal
 def test_remove_device_clears_retained_state(
     fake_mqtt_client: FakeMqttClient,
     wb_observer: WbObserver,
@@ -216,9 +206,7 @@ def test_remove_retained_device_clears_by_control_ids(
     assert wb_observer.retained(f"{DEVICES_PREFIX}/0x456/controls/temperature") is None
 
 
-# -- Subscriptions: bridge commands --------------------------------------------
-
-
+# Subscriptions: bridge commands
 def test_subscribe_bridge_commands_subscribes_topics(
     fake_mqtt_client: FakeMqttClient,
 ) -> None:
@@ -262,9 +250,7 @@ def test_update_devices_command_dispatches(
     assert len(calls) == 1
 
 
-# -- Subscriptions: device commands --------------------------------------------
-
-
+# Subscriptions: device commands
 def test_subscribe_device_commands_skips_readonly(
     fake_mqtt_client: FakeMqttClient,
 ) -> None:
@@ -285,7 +271,7 @@ def test_device_command_dispatches_control_id_and_value(
     driver.subscribe_device_commands(
         "0x123",
         _sample_controls(),
-        on_command=lambda c, v: received.append((c, v)),
+        on_command=lambda control_id, value: received.append((control_id, value)),
     )
 
     fake_broker.inject(f"{DEVICES_PREFIX}/0x123/controls/switch/on", WbBoolValue.TRUE)
@@ -314,7 +300,7 @@ def test_command_handler_does_not_fire_after_unsubscribe(
     driver.subscribe_device_commands(
         "0x123",
         controls,
-        on_command=lambda c, v: received.append((c, v)),
+        on_command=lambda control_id, value: received.append((control_id, value)),
     )
     driver.unsubscribe_device_commands("0x123", controls)
 
@@ -323,9 +309,7 @@ def test_command_handler_does_not_fire_after_unsubscribe(
     assert not received
 
 
-# -- Retained scan --------------------------------------------------------------
-
-
+# Retained scan
 def _our_device_meta(name: Optional[str] = "X") -> str:
     return json.dumps({"driver": DRIVER_NAME, "title": {"en": name, "ru": name}})
 

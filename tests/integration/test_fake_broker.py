@@ -9,9 +9,8 @@ import pytest
 from .fakes.broker import FakeMqttBroker, MockMqttMessage, topic_matches
 from .fakes.client import FakeMqttClient
 
-# -- topic_matches --------------------------------------------------------------
 
-
+# topic_matches
 @pytest.mark.parametrize(
     ("topic_filter", "topic", "expected"),
     [
@@ -45,9 +44,7 @@ def test_topic_matches(topic_filter: str, topic: str, expected: bool) -> None:
     assert topic_matches(topic_filter, topic) is expected
 
 
-# -- retained ------------------------------------------------------------------
-
-
+# retained
 def test_publish_without_retain_does_not_store() -> None:
     broker = FakeMqttBroker()
     client = FakeMqttClient(broker)
@@ -73,9 +70,7 @@ def test_publish_retain_empty_payload_clears_topic() -> None:
     assert "a/b" not in broker.retained
 
 
-# -- new subscriptions receive retained ----------------------------------------
-
-
+# new subscriptions receive retained
 def test_subscriber_with_callback_replays_matching_retained_messages() -> None:
     """Production order: subscribe(topic) -> message_callback_add(topic, handler).
     Retained messages must reach the handler at the moment it is bound.
@@ -89,22 +84,20 @@ def test_subscriber_with_callback_replays_matching_retained_messages() -> None:
     received: list[MockMqttMessage] = []
     subscriber = FakeMqttClient(broker)
     subscriber.subscribe("devices/+/meta")
-    subscriber.message_callback_add("devices/+/meta", lambda _c, _u, m: received.append(m))
+    subscriber.message_callback_add("devices/+/meta", lambda _c, _u, msg: received.append(msg))
 
-    topics = sorted(m.topic for m in received)
+    topics = sorted(msg.topic for msg in received)
     assert topics == ["devices/bar/meta", "devices/foo/meta"]
-    assert all(m.retain is True for m in received)
+    assert all(msg.retain is True for msg in received)
 
 
-# -- routing -------------------------------------------------------------------
-
-
+# routing
 def test_publish_routes_to_matching_subscribers_including_self() -> None:
     broker = FakeMqttBroker()
     client = FakeMqttClient(broker)
     received: list[str] = []
     client.subscribe("devices/+/meta")
-    client.message_callback_add("devices/+/meta", lambda _c, _u, m: received.append(m.topic))
+    client.message_callback_add("devices/+/meta", lambda _c, _u, msg: received.append(msg.topic))
 
     client.publish("devices/foo/meta", "x", retain=True)
     client.publish("other/topic", "y", retain=True)
@@ -117,7 +110,7 @@ def test_inject_routes_but_does_not_log_publish() -> None:
     client = FakeMqttClient(broker)
     received: list[str] = []
     client.subscribe("a/+")
-    client.message_callback_add("a/+", lambda _c, _u, m: received.append(m.payload.decode()))
+    client.message_callback_add("a/+", lambda _c, _u, msg: received.append(msg.payload.decode()))
 
     broker.inject("a/b", "from-outside")
     assert received == ["from-outside"]
@@ -129,7 +122,7 @@ def test_unsubscribe_stops_routing() -> None:
     client = FakeMqttClient(broker)
     received: list[str] = []
     client.subscribe("a/b")
-    client.message_callback_add("a/b", lambda _c, _u, m: received.append(m.topic))
+    client.message_callback_add("a/b", lambda _c, _u, msg: received.append(msg.topic))
 
     broker.inject("a/b", "1")
     client.message_callback_remove("a/b")
@@ -145,9 +138,9 @@ def test_multiple_matching_subscriptions_all_fire() -> None:
     seen_specific: list[str] = []
     seen_wildcard: list[str] = []
     client.subscribe("a/b")
-    client.message_callback_add("a/b", lambda _c, _u, m: seen_specific.append(m.topic))
+    client.message_callback_add("a/b", lambda _c, _u, msg: seen_specific.append(msg.topic))
     client.subscribe("a/+")
-    client.message_callback_add("a/+", lambda _c, _u, m: seen_wildcard.append(m.topic))
+    client.message_callback_add("a/+", lambda _c, _u, msg: seen_wildcard.append(msg.topic))
 
     broker.inject("a/b", "x")
 

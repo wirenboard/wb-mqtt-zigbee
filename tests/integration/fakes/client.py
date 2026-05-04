@@ -35,8 +35,7 @@ class FakeMqttClient:
         self._started = False
         self._stopped = False
 
-    # -- Production API -------------------------------------------------------
-
+    # Production API
     def subscribe(self, topic: str) -> None:
         self._subscriptions.append(topic)
         self._broker.subscribe(self._client_id, topic)
@@ -67,8 +66,7 @@ class FakeMqttClient:
     def loop_forever(self) -> None:  # pragma: no cover - never invoked in tests
         return None
 
-    # -- Test helpers ---------------------------------------------------------
-
+    # Test helpers
     @property
     def client_id(self) -> str:
         return self._client_id

@@ -1,4 +1,5 @@
-"""Integration tests for `wb.mqtt_zigbee.app.WbZigbee2Mqtt` lifecycle.
+"""
+Integration tests for `wb.mqtt_zigbee.app.WbZigbee2Mqtt` lifecycle.
 
 Exercises the MQTT connect/disconnect flow at the application level: the
 real `MQTTClient` constructor is replaced with one returning the per-test
@@ -38,7 +39,9 @@ BRIDGE_NAME = "Zigbee2MQTT bridge"
 
 @pytest.fixture
 def fake_clock(monkeypatch: pytest.MonkeyPatch) -> "list[float]":
-    """Mutable single-element holder driving patched `time.monotonic` in Bridge."""
+    """
+    Mutable single-element holder driving patched `time.monotonic` in Bridge
+    """
     holder = [0.0]
     monkeypatch.setattr(bridge_module.time, "monotonic", lambda: holder[0])
     return holder
@@ -50,7 +53,8 @@ def app(
     fake_mqtt_client: FakeMqttClient,
     fake_clock: "list[float]",
 ) -> WbZigbee2Mqtt:
-    """Construct WbZigbee2Mqtt with `MQTTClient` and `signal.signal` stubbed.
+    """
+    Construct WbZigbee2Mqtt with `MQTTClient` and `signal.signal` stubbed.
 
     The `MQTTClient(...)` call inside `WbZigbee2Mqtt.__init__` is rerouted to
     return the shared `FakeMqttClient` from the test fixtures. `signal.signal`
@@ -72,7 +76,9 @@ def app(
 
 
 class TestFirstConnect:
-    """Initial successful MQTT connection (rc == 0)."""
+    """
+    Initial successful MQTT connection (rc == 0)
+    """
 
     def test_publishes_bridge_meta(
         self,
@@ -105,7 +111,9 @@ class TestFirstConnect:
 
 
 class TestReconnect:
-    """Behaviour after a connect → disconnect → connect cycle."""
+    """
+    Behaviour after a connect → disconnect → connect cycle
+    """
 
     def test_increments_reconnect_counter(
         self,
@@ -163,7 +171,9 @@ class TestReconnect:
 
 
 class TestConnectFailureModes:
-    """Non-zero `rc` codes from MQTT CONNACK."""
+    """
+    Non-zero `rc` codes from MQTT CONNACK
+    """
 
     def test_auth_failure_stops_client_and_sets_exit_code(
         self,
@@ -171,7 +181,8 @@ class TestConnectFailureModes:
         fake_mqtt_client: FakeMqttClient,
         wb_observer: WbObserver,
     ) -> None:
-        """rc == 5 (auth failure) is terminal: the client is stopped and exit
+        """
+        rc == 5 (auth failure) is terminal: the client is stopped and exit
         code is EXIT_NOSTART. The Bridge must not subscribe and must not publish
         any controls.
         """
@@ -189,7 +200,9 @@ class TestConnectFailureModes:
         fake_mqtt_client: FakeMqttClient,
         wb_observer: WbObserver,
     ) -> None:
-        """Generic connect rc != 0, != 5: log and wait; do not subscribe yet."""
+        """
+        Generic connect rc != 0, != 5: log and wait; do not subscribe yet.
+        """
         fake_mqtt_client.connect(rc=1)
 
         # Bridge.subscribe() did not run → no z2m bridge subscriptions, no meta.

@@ -1,4 +1,5 @@
-"""Z2mEmulator — facade for publishing z2m-shaped messages onto the fake broker.
+"""
+Z2mEmulator — facade for publishing z2m-shaped messages onto the fake broker.
 
 Tests use this instead of constructing topic strings and JSON payloads inline.
 """
@@ -10,7 +11,9 @@ from ..fakes.broker import FakeMqttBroker
 
 
 class Z2mEmulator:
-    """Publishes messages on the topics that real zigbee2mqtt would use."""
+    """
+    Publishes messages on the topics that real zigbee2mqtt would use
+    """
 
     def __init__(self, broker: FakeMqttBroker, base_topic: str = "zigbee2mqtt") -> None:
         self._broker = broker

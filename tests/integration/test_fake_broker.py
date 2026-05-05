@@ -1,4 +1,5 @@
-"""Self-tests for the FakeMqttBroker mock.
+"""
+Self-tests for the FakeMqttBroker mock.
 
 These tests pin the mock's behavior to the subset of MQTT spec that production
 code relies on. If they fail, no other integration test can be trusted.
@@ -11,7 +12,9 @@ from .fakes.client import FakeMqttClient
 
 
 class TestTopicMatches:
-    """`topic_matches()` implements MQTT topic filter wildcards."""
+    """
+    `topic_matches()` implements MQTT topic filter wildcards
+    """
 
     @pytest.mark.parametrize(
         ("topic_filter", "topic", "expected"),
@@ -47,7 +50,9 @@ class TestTopicMatches:
 
 
 class TestRetained:
-    """Retained-message storage and replay semantics."""
+    """
+    Retained-message storage and replay semantics
+    """
 
     def test_publish_without_retain_does_not_store(self) -> None:
         broker = FakeMqttBroker()
@@ -72,7 +77,8 @@ class TestRetained:
         assert "a/b" not in broker.retained
 
     def test_subscriber_with_callback_replays_matching_retained_messages(self) -> None:
-        """Production order: subscribe(topic) -> message_callback_add(topic, handler).
+        """
+        Production order: subscribe(topic) -> message_callback_add(topic, handler).
         Retained messages must reach the handler at the moment it is bound.
         """
         broker = FakeMqttBroker()
@@ -92,7 +98,9 @@ class TestRetained:
 
 
 class TestRouting:
-    """Subscribe/publish/inject/unsubscribe message routing."""
+    """
+    Subscribe/publish/inject/unsubscribe message routing
+    """
 
     def test_publish_routes_to_matching_subscribers_including_self(self) -> None:
         broker = FakeMqttBroker()
@@ -148,7 +156,9 @@ class TestRouting:
 
 
 class TestPublishLog:
-    """`broker.publish_log` records every client publish for assertions."""
+    """
+    `broker.publish_log` records every client publish for assertions
+    """
 
     def test_records_topic_payload_retain_qos(self) -> None:
         broker = FakeMqttBroker()

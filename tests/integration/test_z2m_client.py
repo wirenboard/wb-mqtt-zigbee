@@ -1,4 +1,5 @@
-"""Integration tests for `wb.mqtt_zigbee.z2m.client.Z2MClient`.
+"""
+Integration tests for `wb.mqtt_zigbee.z2m.client.Z2MClient`.
 
 Wires Z2MClient to a FakeMqttClient/FakeMqttBroker, asserts that
 zigbee2mqtt-shaped MQTT messages reach the right typed callbacks and that
@@ -23,7 +24,9 @@ BASE = "zigbee2mqtt"
 
 @dataclass
 class _Recorder:
-    """Captures every Z2MClient callback invocation for assertions."""
+    """
+    Captures every Z2MClient callback invocation for assertions
+    """
 
     bridge_states: list[str] = field(default_factory=list)
     bridge_infos: list[BridgeInfo] = field(default_factory=list)
@@ -52,7 +55,9 @@ def _make_client(fake_mqtt_client: FakeMqttClient) -> tuple[Z2MClient, _Recorder
 
 
 class TestBridgeState:
-    """`zigbee2mqtt/bridge/state` parsing."""
+    """
+    `zigbee2mqtt/bridge/state` parsing
+    """
 
     @pytest.mark.parametrize("state", ["online", "offline", "error"])
     def test_plain_string(self, fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator, state: str) -> None:
@@ -72,7 +77,9 @@ class TestBridgeState:
 
 
 class TestBridgeInfo:
-    """`zigbee2mqtt/bridge/info` parsing."""
+    """
+    `zigbee2mqtt/bridge/info` parsing
+    """
 
     def test_full_payload(self, fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator) -> None:
         _client, rec = _make_client(fake_mqtt_client)
@@ -95,7 +102,9 @@ class TestBridgeInfo:
 
 
 class TestBridgeLog:
-    """`zigbee2mqtt/bridge/logging` parsing."""
+    """
+    `zigbee2mqtt/bridge/logging` parsing
+    """
 
     def test_valid_payload(self, fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator) -> None:
         _client, rec = _make_client(fake_mqtt_client)
@@ -111,7 +120,9 @@ class TestBridgeLog:
 
 
 class TestBridgeDevices:
-    """`zigbee2mqtt/bridge/devices` parsing."""
+    """
+    `zigbee2mqtt/bridge/devices` parsing
+    """
 
     def test_excludes_coordinator_and_parses_rest(
         self, fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator
@@ -157,7 +168,9 @@ class TestBridgeDevices:
 
 
 class TestBridgeEvent:
-    """`zigbee2mqtt/bridge/event` parsing."""
+    """
+    `zigbee2mqtt/bridge/event` parsing
+    """
 
     @pytest.mark.parametrize(
         ("z2m_type", "expected_internal"),
@@ -191,7 +204,9 @@ class TestBridgeEvent:
 
 
 class TestRemoveResponse:
-    """`zigbee2mqtt/bridge/response/device/remove` parsing."""
+    """
+    `zigbee2mqtt/bridge/response/device/remove` parsing
+    """
 
     def test_ok_emits_removed_event(self, fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator) -> None:
         _client, rec = _make_client(fake_mqtt_client)
@@ -205,7 +220,9 @@ class TestRemoveResponse:
 
 
 class TestDeviceAvailability:
-    """`zigbee2mqtt/+/availability` parsing."""
+    """
+    `zigbee2mqtt/+/availability` parsing
+    """
 
     def test_online(self, fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator) -> None:
         _client, rec = _make_client(fake_mqtt_client)
@@ -229,7 +246,9 @@ class TestDeviceAvailability:
 
 
 class TestPerDeviceState:
-    """Per-device `zigbee2mqtt/<name>` subscribe/unsubscribe and state delivery."""
+    """
+    Per-device `zigbee2mqtt/<name>` subscribe/unsubscribe and state delivery
+    """
 
     def test_received_after_subscribe_device(
         self, fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator
@@ -258,7 +277,9 @@ class TestPerDeviceState:
 
 
 class TestOutgoingCommands:
-    """`set_permit_join`, `request_device_state`, `set_device_state` publishes."""
+    """
+    `set_permit_join`, `request_device_state`, `set_device_state` publishes
+    """
 
     def test_set_permit_join_enabled_publishes_254(
         self, fake_mqtt_client: FakeMqttClient, wb_observer: WbObserver
@@ -298,10 +319,13 @@ class TestOutgoingCommands:
 
 
 class TestSubscriptionTopology:
-    """High-level subscribe/refresh API contracts."""
+    """
+    High-level subscribe/refresh API contracts
+    """
 
     def test_subscribe_subscribes_to_expected_bridge_topics(self, fake_mqtt_client: FakeMqttClient) -> None:
-        """Locks the set of topics Z2MClient.subscribe() registers on the broker.
+        """
+        Locks the set of topics Z2MClient.subscribe() registers on the broker.
 
         Other tests assert behavior via retained-message replay, which can mask a
         silently dropped subscription. This test pins the topology directly.

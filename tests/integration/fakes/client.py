@@ -1,4 +1,5 @@
-"""FakeMqttClient — drop-in replacement for `wb_common.mqtt_client.MQTTClient`.
+"""
+FakeMqttClient — drop-in replacement for `wb_common.mqtt_client.MQTTClient`.
 
 Implements only the subset of API used by `wb.mqtt_zigbee` production code:
   - subscribe / unsubscribe
@@ -21,7 +22,9 @@ _id_counter = itertools.count(1)
 
 
 class FakeMqttClient:
-    """In-process MQTT client backed by FakeMqttBroker."""
+    """
+    In-process MQTT client backed by FakeMqttBroker
+    """
 
     def __init__(self, broker: FakeMqttBroker, client_id: Optional[str] = None) -> None:
         self._broker = broker
@@ -73,20 +76,29 @@ class FakeMqttClient:
 
     @property
     def subscriptions(self) -> list[str]:
-        """Topics this client has subscribed to (in call order, with duplicates)."""
+        """
+        Topics this client has subscribed to (in call order, with duplicates)
+        """
         return list(self._subscriptions)
 
     @property
     def unsubscriptions(self) -> list[str]:
+        """
+        Topics this client has unsubscribed from (in call order, with duplicates)
+        """
         return list(self._unsubscriptions)
 
     def connect(self, rc: int = 0) -> None:
-        """Simulate a successful broker connect — invokes on_connect callback."""
+        """
+        Simulate a successful broker connect — invokes on_connect callback
+        """
         if self.on_connect is not None:
             self.on_connect(self, None, {}, rc)
 
     def disconnect(self) -> None:
-        """Simulate a broker disconnect — invokes on_disconnect callback."""
+        """
+        Simulate a broker disconnect — invokes on_disconnect callback
+        """
         if self.on_disconnect is not None:
             self.on_disconnect(self, None, {})
 

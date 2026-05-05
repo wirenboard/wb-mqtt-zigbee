@@ -1,4 +1,5 @@
-"""WbObserver — query helpers over `FakeMqttBroker.publish_log` and `retained`.
+"""
+WbObserver — query helpers over `FakeMqttBroker.publish_log` and `retained`.
 
 Reads only — never modifies broker state.
 """
@@ -10,7 +11,9 @@ from ..fakes.broker import FakeMqttBroker, PublishedMessage
 
 
 class WbObserver:
-    """Convenience wrapper over the broker's publish log and retained map."""
+    """
+    Convenience wrapper over the broker's publish log and retained map
+    """
 
     def __init__(self, broker: FakeMqttBroker) -> None:
         self._broker = broker

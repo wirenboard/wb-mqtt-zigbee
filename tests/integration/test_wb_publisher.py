@@ -1,4 +1,5 @@
-"""Integration tests for `wb.mqtt_zigbee.wb_converter.publisher.WbMqttDriver`.
+"""
+Integration tests for `wb.mqtt_zigbee.wb_converter.publisher.WbMqttDriver`.
 
 Wires WbMqttDriver to a FakeMqttClient/FakeMqttBroker and asserts the
 Wiren Board MQTT Conventions topic/payload shape: every meta is published
@@ -66,7 +67,9 @@ def _foreign_device_meta() -> str:
 
 
 class TestPublishBridgeDevice:
-    """`publish_bridge_device()` initial meta + controls."""
+    """
+    `publish_bridge_device()` initial meta + controls
+    """
 
     def test_publishes_device_meta(
         self,
@@ -108,7 +111,9 @@ class TestPublishBridgeDevice:
 
 
 class TestPublishBridgeControl:
-    """`publish_bridge_control()` writes a value to the bridge control topic."""
+    """
+    `publish_bridge_control()` writes a value to the bridge control topic
+    """
 
     def test_writes_value(
         self,
@@ -122,7 +127,9 @@ class TestPublishBridgeControl:
 
 
 class TestPublishDevice:
-    """`publish_device()` for non-bridge devices."""
+    """
+    `publish_device()` for non-bridge devices
+    """
 
     def test_writes_device_and_control_meta(
         self,
@@ -191,7 +198,9 @@ class TestPublishDevice:
 
 
 class TestRemoveDevice:
-    """`remove_device()` and `remove_retained_device()`."""
+    """
+    `remove_device()` and `remove_retained_device()`
+    """
 
     def test_remove_device_clears_retained_state(
         self,
@@ -226,7 +235,9 @@ class TestRemoveDevice:
 
 
 class TestSubscribeBridgeCommands:
-    """`subscribe_bridge_commands()` topic wiring and dispatch."""
+    """
+    `subscribe_bridge_commands()` topic wiring and dispatch
+    """
 
     def test_subscribes_topics(
         self,
@@ -273,7 +284,9 @@ class TestSubscribeBridgeCommands:
 
 
 class TestSubscribeDeviceCommands:
-    """`subscribe_device_commands()` and the matching `unsubscribe_device_commands()`."""
+    """
+    `subscribe_device_commands()` and the matching `unsubscribe_device_commands()`
+    """
 
     def test_skips_readonly(
         self,
@@ -335,7 +348,9 @@ class TestSubscribeDeviceCommands:
 
 
 class TestRetainedScan:
-    """`start_retained_scan()` / `stop_retained_scan()` ghost-device discovery."""
+    """
+    `start_retained_scan()` / `stop_retained_scan()` ghost-device discovery
+    """
 
     def test_collects_only_our_driver_devices(
         self,

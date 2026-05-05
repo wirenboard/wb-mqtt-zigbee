@@ -1,4 +1,5 @@
-"""End-to-end integration tests for `wb.mqtt_zigbee.bridge.Bridge`.
+"""
+End-to-end integration tests for `wb.mqtt_zigbee.bridge.Bridge`.
 
 Exercises the full MQTT ↔ Bridge ↔ MQTT data path through a single
 `FakeMqttBroker`: zigbee2mqtt-shaped messages enter the bridge via the
@@ -31,7 +32,8 @@ BRIDGE_NAME = "Zigbee2MQTT bridge"
 
 @pytest.fixture
 def fake_clock(monkeypatch: pytest.MonkeyPatch) -> "list[float]":
-    """A mutable list whose [0] item is returned by patched `time.monotonic`.
+    """
+    A mutable list whose [0] item is returned by patched `time.monotonic`.
 
     Tests advance time by mutating the list:
         fake_clock[0] += 2.0
@@ -43,7 +45,8 @@ def fake_clock(monkeypatch: pytest.MonkeyPatch) -> "list[float]":
 
 @pytest.fixture
 def bridge(fake_mqtt_client: FakeMqttClient, fake_clock: "list[float]") -> Bridge:
-    """Bridge wired to fakes with a deterministic monotonic clock.
+    """
+    Bridge wired to fakes with a deterministic monotonic clock.
 
     `fake_clock` is included in the dependency chain so it always patches
     `time.monotonic` before any Bridge code runs.
@@ -60,7 +63,9 @@ def bridge(fake_mqtt_client: FakeMqttClient, fake_clock: "list[float]") -> Bridg
 
 
 def _z2m_sensor(friendly_name: str, ieee: str = "0x0001") -> dict[str, Any]:
-    """Z2M-shaped device dict for a simple temperature sensor."""
+    """
+    Z2M-shaped device dict for a simple temperature sensor
+    """
     return {
         "ieee_address": ieee,
         "friendly_name": friendly_name,
@@ -83,7 +88,9 @@ def _z2m_sensor(friendly_name: str, ieee: str = "0x0001") -> dict[str, Any]:
 
 
 def _z2m_switch(friendly_name: str, ieee: str = "0x0002") -> dict[str, Any]:
-    """Z2M-shaped device dict for a writable on/off switch."""
+    """
+    Z2M-shaped device dict for a writable on/off switch
+    """
     return {
         "ieee_address": ieee,
         "friendly_name": friendly_name,
@@ -112,7 +119,9 @@ def _z2m_switch(friendly_name: str, ieee: str = "0x0002") -> dict[str, Any]:
 
 
 class TestBridgeInitialization:
-    """`Bridge.subscribe()` initial publishes and bridge/state, bridge/info, bridge/log handling."""
+    """
+    `Bridge.subscribe()` initial publishes and bridge/state, bridge/info, bridge/log handling
+    """
 
     def test_publishes_bridge_device_meta(
         self,
@@ -193,7 +202,9 @@ class TestBridgeInitialization:
 
 
 class TestDeviceRegistration:
-    """Device discovery via `bridge/devices`."""
+    """
+    Device discovery via `bridge/devices`.
+    """
 
     def test_device_is_registered_in_wb(
         self,
@@ -238,7 +249,9 @@ class TestDeviceRegistration:
 
 
 class TestDeviceStatePropagation:
-    """z2m → WB state and availability forwarding."""
+    """
+    z2m → WB state and availability forwarding.
+    """
 
     def test_state_is_forwarded_to_wb_control(
         self,
@@ -269,7 +282,9 @@ class TestDeviceStatePropagation:
 
 
 class TestWbToZ2mCommands:
-    """WB commands on `/on` topics forwarded to z2m `*/set`."""
+    """
+    WB commands on `/on` topics forwarded to z2m `*/set`.
+    """
 
     def test_command_is_forwarded_to_z2m_set_topic(
         self,
@@ -304,7 +319,9 @@ class TestWbToZ2mCommands:
 
 
 class TestPendingCommandDebounce:
-    """`command_debounce_sec` interaction with stale state values from z2m."""
+    """
+    `command_debounce_sec` interaction with stale state values from z2m.
+    """
 
     def test_stale_state_during_window_is_suppressed(
         self,
@@ -377,7 +394,9 @@ class TestPendingCommandDebounce:
 
 
 class TestStatsThrottling:
-    """1Hz throttling of bridge stats counters."""
+    """
+    1Hz throttling of bridge stats counters
+    """
 
     def test_messages_received_throttled_to_once_per_second(
         self,
@@ -417,7 +436,9 @@ class TestStatsThrottling:
 
 
 class TestDeviceEvents:
-    """`bridge/event` and `bridge/response/device/remove` handling."""
+    """
+    `bridge/event` and `bridge/response/device/remove` handling
+    """
 
     def test_device_left_removes_wb_device(
         self,
@@ -459,7 +480,8 @@ class TestDeviceEvents:
         wb_observer: WbObserver,
         fake_mqtt_client: FakeMqttClient,
     ) -> None:
-        """After rename, state coming on the new z2m topic must reach the new WB device,
+        """
+        After rename, state coming on the new z2m topic must reach the new WB device,
         and the old per-device subscription must be dropped from the broker.
         """
         bridge.subscribe()
@@ -488,7 +510,9 @@ class TestDeviceEvents:
 
 
 class TestStaleDeviceCleanup:
-    """Devices missing from a refreshed `bridge/devices` list are removed."""
+    """
+    Devices missing from a refreshed `bridge/devices` list are removed
+    """
 
     def test_devices_missing_from_new_list_are_removed(
         self,
@@ -507,7 +531,9 @@ class TestStaleDeviceCleanup:
 
 
 class TestGhostCleanup:
-    """Retained ghost devices from previous runs are scrubbed on startup."""
+    """
+    Retained ghost devices from previous runs are scrubbed on startup
+    """
 
     def test_empty_devices_list_clears_all_devices(
         self,
@@ -515,7 +541,8 @@ class TestGhostCleanup:
         z2m_emu: Z2mEmulator,
         wb_observer: WbObserver,
     ) -> None:
-        """Edge case: zigbee2mqtt may publish an empty `bridge/devices` array
+        """
+        Edge case: zigbee2mqtt may publish an empty `bridge/devices` array
         (e.g. after factory reset of the coordinator). All known devices must
         be removed and Device count must drop to 0.
         """
@@ -549,7 +576,9 @@ class TestGhostCleanup:
 
 
 class TestReconnectFlow:
-    """`Bridge.republish()` and `Bridge.set_all_unavailable()` after reconnect."""
+    """
+    `Bridge.republish()` and `Bridge.set_all_unavailable()` after reconnect.
+    """
 
     def test_republish_increments_reconnect_counter(
         self,

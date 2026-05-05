@@ -1,4 +1,5 @@
-"""In-process MQTT broker mock for integration tests.
+"""
+In-process MQTT broker mock for integration tests.
 
 Replaces a real MQTT broker with a deterministic, single-threaded fake. Tracks
 retained messages, supports MQTT wildcards (`+`, `#`), and routes published
@@ -11,7 +12,8 @@ from typing import Any, Callable, Optional
 
 
 def topic_matches(topic_filter: str, topic: str) -> bool:
-    """Return True if `topic` matches MQTT `topic_filter`.
+    """
+    Return True if `topic` matches MQTT `topic_filter`.
 
     Rules (per MQTT 3.1.1 spec):
         - `+` matches exactly one topic level (no `/`).
@@ -35,7 +37,9 @@ def topic_matches(topic_filter: str, topic: str) -> bool:
 
 @dataclass(frozen=True)
 class MockMqttMessage:
-    """Minimal stand-in for paho.mqtt.client.MQTTMessage used by handlers."""
+    """
+    Minimal stand-in for paho.mqtt.client.MQTTMessage used by handlers
+    """
 
     topic: str
     payload: bytes
@@ -45,7 +49,9 @@ class MockMqttMessage:
 
 @dataclass(frozen=True)
 class PublishedMessage:
-    """Record of a single client.publish() call captured by the broker."""
+    """
+    Record of a single client.publish() call captured by the broker
+    """
 
     topic: str
     payload: bytes
@@ -72,7 +78,8 @@ def _to_bytes(payload: Any) -> bytes:
 
 
 class FakeMqttBroker:
-    """In-process MQTT broker mock.
+    """
+    In-process MQTT broker mock.
 
     Deterministic, no networking, no threads. All callbacks are invoked
     synchronously from publish()/inject().
@@ -107,7 +114,8 @@ class FakeMqttBroker:
 
     # Subscription management
     def subscribe(self, client_id: str, topic_filter: str) -> None:
-        """Add a subscription for client_id.
+        """
+        Add a subscription for client_id.
 
         Retained messages are replayed when a callback is bound (see
         `set_callback`), not here, because production code follows the
@@ -116,7 +124,9 @@ class FakeMqttBroker:
         self.subscriptions.append(_Subscription(client_id, topic_filter, handler=None))
 
     def unsubscribe(self, client_id: str, topic_filter: str) -> None:
-        """Remove the most recent subscription for (client_id, topic_filter)."""
+        """
+        Remove the most recent subscription for (client_id, topic_filter)
+        """
         for i in range(len(self.subscriptions) - 1, -1, -1):
             sub = self.subscriptions[i]
             if sub.client_id == client_id and sub.topic_filter == topic_filter:
@@ -129,7 +139,8 @@ class FakeMqttBroker:
         topic_filter: str,
         handler: Callable[[Any, Any, MockMqttMessage], None],
     ) -> None:
-        """Attach `handler` to the most recent subscription for (client_id, topic_filter).
+        """
+        Attach `handler` to the most recent subscription for (client_id, topic_filter).
 
         Replays any retained messages matching `topic_filter` to the new
         handler. This matches the practical effect of paho's subscribe + a
@@ -148,7 +159,9 @@ class FakeMqttBroker:
                 return
 
     def remove_callback(self, client_id: str, topic_filter: str) -> None:
-        """Detach handler from the most recent subscription for (client_id, topic_filter)."""
+        """
+        Detach handler from the most recent subscription for (client_id, topic_filter)
+        """
         for sub in reversed(self.subscriptions):
             if sub.client_id == client_id and sub.topic_filter == topic_filter:
                 sub.handler = None
@@ -163,7 +176,9 @@ class FakeMqttBroker:
         retain: bool = False,
         qos: int = 0,
     ) -> None:
-        """Record a client.publish() call and route the message."""
+        """
+        Record a client.publish() call and route the message
+        """
         data = _to_bytes(payload)
         self.publish_log.append(
             PublishedMessage(topic=topic, payload=data, retain=retain, qos=qos, client_id=client_id)
@@ -178,7 +193,9 @@ class FakeMqttBroker:
         retain: bool = False,
         qos: int = 0,
     ) -> None:
-        """Inject a message "from outside" (no record in publish_log)."""
+        """
+        Inject a message "from outside" (no record in publish_log)
+        """
         data = _to_bytes(payload)
         self._apply_retain(topic, data, retain)
         self._route(MockMqttMessage(topic=topic, payload=data, retain=retain, qos=qos))

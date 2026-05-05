@@ -22,7 +22,6 @@ pip install -r dev-requirements.txt
 ```
 tests/
 ├── __init__.py                 # делает tests пакетом для pytest discovery
-├── conftest.py                 # общие фикстуры (сейчас пустой; оставлен под общие фикстуры между unit и integration)
 ├── README.md                   # этот файл
 ├── unit/                       # unit-тесты (без I/O)
 │   ├── __init__.py
@@ -30,6 +29,7 @@ tests/
 │   ├── test_controls.py
 │   ├── test_expose_mapper.py
 │   ├── test_model.py
+│   ├── test_publisher.py
 │   └── test_registered_device.py
 └── integration/                # интеграционные тесты (с моком MQTT-брокера)
     ├── __init__.py
@@ -232,6 +232,14 @@ make_expose(
 | Ошибки загрузки | `TestLoadConfigErrors` | Несуществующий файл → `FileNotFoundError`; путь-директория тоже даёт `FileNotFoundError`; невалидный JSON → `ValueError("not valid JSON")`; отсутствие `broker_url` или `zigbee2mqtt_base_topic` → `ValueError("Missing required configuration key")`; нечисловой `command_debounce_sec` → `ValueError` от `float()`. |
 | `_validate_log_level` | `TestValidateLogLevel` | Параметризованно для 4 валидных уровней — возвращаются как есть; неизвестный уровень → дефолт + warning в логе (через `caplog`); end-to-end через `load_config` — невалидный уровень в файле тоже падает на дефолт; пустая строка и uppercase (`"ERROR"`) считаются невалидными (z2m уровни — lowercase). |
 | Дефолты-константы | `TestDefaults` | Значения `BRIDGE_DEVICE_ID_DEFAULT`, `BRIDGE_DEVICE_NAME_DEFAULT`, `BRIDGE_LOG_MIN_LEVEL_DEFAULT`, `COMMAND_DEBOUNCE_SEC_DEFAULT`. |
+
+### `tests/unit/test_publisher.py`
+
+Точечный тест на фильтрацию `DRIVER_NAME` / `LEGACY_DRIVER_NAMES` в `_on_retained_device_meta` из [`wb/mqtt_zigbee/wb_converter/publisher.py`](../wb/mqtt_zigbee/wb_converter/publisher.py). Класс `WbMqttDriver` целиком unit-тестами не покрыт — основное покрытие даёт `tests/integration/test_wb_publisher.py`. Этот файл существует, чтобы зафиксировать обработку legacy-имён драйвера (после переименования `wb-zigbee2mqtt` → `wb-mqtt-zigbee`, коммит d37b3ad), без чего ghost-cleanup пропускал бы retained-meta от старых версий пакета.
+
+| Цель | Класс тестов | Что проверяется |
+|---|---|---|
+| `_on_retained_device_meta` | `TestRetainedDeviceMetaFilter` | `DRIVER_NAME` и каждое значение из `LEGACY_DRIVER_NAMES` попадают в `_scanned_our_ids`; чужой драйвер игнорируется; пустой payload и невалидный JSON не падают и не добавляют id. |
 
 ### `tests/unit/test_registered_device.py`
 

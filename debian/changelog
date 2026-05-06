@@ -2,7 +2,7 @@ wb-mqtt-zigbee (1.4.3) stable; urgency=medium
 
   * Add integration tests for Z2MClient, WbMqttDriver, and Bridge
 
- -- Victor Fedorov <victor.fedorov@wirenboard.com>  Mon, 04 May 2026 17:58:22 +0300
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Mon, 06 May 2026 13:20:22 +0300
 
 wb-mqtt-zigbee (1.4.2) stable; urgency=medium
 

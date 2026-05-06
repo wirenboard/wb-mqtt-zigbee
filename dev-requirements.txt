@@ -1,5 +1,6 @@
 black==24.2.0
 isort==5.13.2
+paho-mqtt==2.1.0
 pylint==3.1.0
 pytest==8.3.5
 pytest-cov==6.0.0

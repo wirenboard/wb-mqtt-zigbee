@@ -28,6 +28,8 @@ if importlib.util.find_spec("wb_common") is None:
 
 import pytest  # noqa: E402
 
+from wb.mqtt_zigbee import bridge as bridge_module  # noqa: E402
+
 from .fakes.broker import FakeMqttBroker  # noqa: E402
 from .fakes.client import FakeMqttClient  # noqa: E402
 from .helpers.wb_observer import WbObserver  # noqa: E402
@@ -68,3 +70,18 @@ def z2m_emu(fake_broker: FakeMqttBroker) -> Z2mEmulator:
     Helper to publish z2m-shaped messages onto the broker
     """
     return Z2mEmulator(fake_broker, DEFAULT_BASE_TOPIC)
+
+
+@pytest.fixture
+def fake_clock(monkeypatch: pytest.MonkeyPatch) -> "list[float]":
+    """
+    Mutable single-element list whose [0] item is returned by patched
+    ``time.monotonic`` inside Bridge.
+
+    Tests advance time by mutating the list::
+
+        fake_clock[0] += 2.0
+    """
+    holder = [0.0]
+    monkeypatch.setattr(bridge_module.time, "monotonic", lambda: holder[0])
+    return holder

@@ -17,7 +17,6 @@ throttling, command debounce) is deterministic.
 import pytest
 
 from wb.mqtt_zigbee import app as app_module
-from wb.mqtt_zigbee import bridge as bridge_module
 from wb.mqtt_zigbee.app import (
     EXIT_NOSTART,
     EXIT_SUCCESS,
@@ -35,16 +34,6 @@ from .helpers.z2m_emulator import Z2mEmulator
 BASE = "zigbee2mqtt"
 BRIDGE_ID = "zigbee2mqtt"
 BRIDGE_NAME = "Zigbee2MQTT bridge"
-
-
-@pytest.fixture
-def fake_clock(monkeypatch: pytest.MonkeyPatch) -> "list[float]":
-    """
-    Mutable single-element holder driving patched `time.monotonic` in Bridge
-    """
-    holder = [0.0]
-    monkeypatch.setattr(bridge_module.time, "monotonic", lambda: holder[0])
-    return holder
 
 
 @pytest.fixture

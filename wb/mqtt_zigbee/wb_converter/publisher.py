@@ -51,7 +51,7 @@ class WbMqttDriver:
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", "")
             self._clear_legacy_control_meta(device_id, control_id)
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", "")
-        self._clear_legacy_device_meta(device_id)
+        self._clear_device_meta_subtopics(device_id)
 
     def remove_retained_device(self, device_id: str, control_ids: set[str]) -> None:
         """Remove a ghost device discovered via retained scan (no ControlMeta needed)"""
@@ -60,7 +60,7 @@ class WbMqttDriver:
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", "")
             self._clear_legacy_control_meta(device_id, control_id)
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", "")
-        self._clear_legacy_device_meta(device_id)
+        self._clear_device_meta_subtopics(device_id)
 
     def publish_device_control(self, device_id: str, control_id: str, value: str) -> None:
         topic = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}"
@@ -189,7 +189,7 @@ class WbMqttDriver:
     ) -> None:
         device_meta = {"driver": DRIVER_NAME, "title": {"en": name, "ru": name}}
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", json.dumps(device_meta))
-        self._clear_legacy_device_meta(device_id)
+        self._publish_device_meta_subtopics(device_id, name)
         for control_id, meta in controls.items():
             self._clear_legacy_control_meta(device_id, control_id)
             self._publish_control_meta(device_id, control_id, meta)
@@ -210,12 +210,33 @@ class WbMqttDriver:
             payload["min"] = meta.min
         topic = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
         self._publish_retain(topic, json.dumps(payload))
+        self._publish_control_meta_subtopics(device_id, control_id, meta)
 
-    def _clear_legacy_device_meta(self, device_id: str) -> None:
-        """Clear old wb-rules style device meta sub-topics (name, driver)"""
+    def _publish_device_meta_subtopics(self, device_id: str, name: str) -> None:
+        """Publish device meta sub-topics (name, driver)"""
         prefix = f"{DEVICES_PREFIX}/{device_id}/meta"
-        for sub in ("name", "driver"):
-            self._publish_retain(f"{prefix}/{sub}", "")
+        self._publish_retain(f"{prefix}/name", name)
+        self._publish_retain(f"{prefix}/driver", DRIVER_NAME)
+
+    def _clear_device_meta_subtopics(self, device_id: str) -> None:
+        """Clear device meta sub-topics when removing a device"""
+        prefix = f"{DEVICES_PREFIX}/{device_id}/meta"
+        self._publish_retain(f"{prefix}/name", "")
+        self._publish_retain(f"{prefix}/driver", "")
+
+    def _publish_control_meta_subtopics(self, device_id: str, control_id: str, meta: ControlMeta) -> None:
+        """Publish control meta sub-topics for HomeAssistant discovery"""
+        prefix = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
+        self._publish_retain(f"{prefix}/type", meta.type)
+        self._publish_retain(f"{prefix}/readonly", "1" if meta.readonly else "0")
+        if meta.order is not None:
+            self._publish_retain(f"{prefix}/order", str(meta.order))
+        if meta.enum:
+            self._publish_retain(f"{prefix}/enum", json.dumps(meta.enum))
+        if meta.max is not None:
+            self._publish_retain(f"{prefix}/max", str(meta.max))
+        if meta.min is not None:
+            self._publish_retain(f"{prefix}/min", str(meta.min))
 
     def _clear_legacy_control_meta(self, device_id: str, control_id: str) -> None:
         """Clear old wb-rules style control meta sub-topics (type, order, readonly)"""

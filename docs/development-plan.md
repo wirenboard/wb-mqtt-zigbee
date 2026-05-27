@@ -1,18 +1,17 @@
 # План разработки wb-mqtt-zigbee
 
-
 ## Этапы разработки
 
-| Этап | Название | Оценка | Статус |
-|---|---|---|---|
-| 1 | Основа + сервис + упаковка | 0.5-1  дня | ✅ Выполнен |
-| 2 | Устройство моста | 1–2 дня | ✅ Выполнен |
-| 3 | Обнаружение устройств (readonly) | 2–3 дня | ✅ Выполнен |
-| 4 | Управление устройствами | 1–2 дня | ✅ Выполнен |
-| 5 | Жизненный цикл устройств | 0.5–1 день | ✅ Выполнен |
-| 6 | OTA | 1–2 дня | |
-| 7 | Группы | 1–2 дня | |
-| | **Итого** | **7–13 дней** | |
+| Этап | Название                         | Оценка        | Статус      |
+| ---- | -------------------------------- | ------------- | ----------- |
+| 1    | Основа + сервис + упаковка       | 0.5-1 дня     | ✅ Выполнен |
+| 2    | Устройство моста                 | 1–2 дня       | ✅ Выполнен |
+| 3    | Обнаружение устройств (readonly) | 2–3 дня       | ✅ Выполнен |
+| 4    | Управление устройствами          | 1–2 дня       | ✅ Выполнен |
+| 5    | Жизненный цикл устройств         | 0.5–1 день    | ✅ Выполнен |
+| 6    | OTA                              | 1–2 дня       |             |
+| 7    | Группы                           | 1–2 дня       |             |
+|      | **Итого**                        | **7–13 дней** |             |
 
 ---
 
@@ -23,6 +22,7 @@
 **Результат:** deb-пакет собирается, устанавливается на железо, сервис стартует через `systemctl` и подключается к MQTT-брокеру.
 
 **Проверка:**
+
 - `apt install ./wb-mqtt-zigbee.deb` — пакет устанавливается без ошибок
 - `systemctl status wb-mqtt-zigbee` — сервис в состоянии `active (running)`
 - Перезапуск MQTT-брокера → сервис переподключается автоматически, в логах нет необработанных исключений
@@ -31,28 +31,30 @@
 
 ### Этап 2 — Устройство моста (1–2 дня) ✅
 
-**Что сделали:** подписка на `bridge/state`, `bridge/info`, `bridge/logging`, `bridge/devices`, `bridge/event`, `bridge/response/device/remove`; виртуальное WB-устройство `zigbee2mqtt` с 12 контролами; фильтрация логов по уровню; JSON `/meta` с en/ru переводами.
+**Что сделали:** подписка на `bridge/state`, `bridge/info`, `bridge/logging`, `bridge/devices`, `bridge/event`, `bridge/response/device/remove`; виртуальное WB-устройство `zigbee2mqtt` с 13 контролами; фильтрация логов по уровню; JSON `/meta` с en/ru переводами.
 
 **Контролы устройства моста:**
 
-| Контрол | Тип | ReadOnly | Описание |
-|---|---|---|---|
-| State | text | R | Состояние моста (online/offline/error) |
-| Version | text | R | Версия zigbee2mqtt |
-| Permit join | switch | W | Разрешить подключение устройств (254 сек) |
-| Device count | value | R | Количество устройств (без координатора) |
-| Last joined | text | R | Последнее подключенное устройство |
-| Last left | text | R | Последнее вышедшее из сети устройство |
-| Last removed | text | R | Последнее удалённое устройство |
-| Update devices | pushbutton | W | Запросить обновление списка устройств |
-| Last seen | text | R | Последняя активность (время последнего сообщения от z2m) |
-| Messages received | value | R | Количество полученных сообщений от z2m |
-| Log level | text | R | Минимальный уровень логов (из конфига) |
-| Log | text | R | Последнее лог-сообщение (фильтруется по уровню) |
+| Контрол           | Тип        | ReadOnly | Описание                                                 |
+| ----------------- | ---------- | -------- | -------------------------------------------------------- |
+| State             | text       | R        | Состояние моста (online/offline/error)                   |
+| Version           | text       | R        | Версия zigbee2mqtt                                       |
+| Permit join       | switch     | W        | Разрешить подключение устройств (254 сек)                |
+| Device count      | value      | R        | Количество устройств (без координатора)                  |
+| Last joined       | text       | R        | Последнее подключенное устройство                        |
+| Last left         | text       | R        | Последнее вышедшее из сети устройство                    |
+| Last removed      | text       | R        | Последнее удалённое устройство                           |
+| Update devices    | pushbutton | W        | Запросить обновление списка устройств                    |
+| Last seen         | text       | R        | Последняя активность (время последнего сообщения от z2m) |
+| Messages received | value      | R        | Количество полученных сообщений от z2m                   |
+| Log level         | text       | R        | Минимальный уровень логов (из конфига)                   |
+| Log               | text       | R        | Последнее лог-сообщение (фильтруется по уровню)          |
+| Reconnects        | value      | R        | Счётчик переподключений к MQTT-брокеру                   |
 
 **Результат:** в WB появляется устройство `Zigbee2MQTT`, все контролы обновляются в реальном времени, permit_join работает, логи фильтруются по настроенному уровню.
 
 **Проверка:**
+
 - WB UI показывает устройство `Zigbee2MQTT` с актуальными State и Version
 - Переключение Permit join → в z2m UI режим сопряжения включается/выключается
 - Нажатие Update devices → в логах z2m видно запрос на обновление списка устройств
@@ -66,7 +68,11 @@
 {
   "version": "1.13.0",
   "commit": "772f6c0",
-  "coordinator": { "type": "zStack30x", "ieee_address": "0x12345678", "meta": {} },
+  "coordinator": {
+    "type": "zStack30x",
+    "ieee_address": "0x12345678",
+    "meta": {}
+  },
   "network": { "channel": 15, "pan_id": 5674, "extended_pan_id": [0, 11, 22] },
   "permit_join": true,
   "permit_join_end": 1733666394,
@@ -98,13 +104,13 @@ Re-subscribe на `zigbee2mqtt/bridge/devices` (unsubscribe + subscribe) — б�
 
 #### Модули
 
-| Модуль | Что реализовано |
-|---|---|
-| `z2m/model.py` | `BridgeInfo`, `BridgeState`, `Z2MEventType`, `DeviceEventType`, `DeviceEvent`, `BridgeLogLevel` |
-| `z2m/client.py` | `Z2MClient`: подписка на 6 топиков (state, info, logging, devices, event, response/device/remove); парсинг → типизированные коллбэки |
-| `wb_converter/controls.py` | `BridgeControl` (ID контролов), `ControlMeta` (type, readonly, order, title), `BRIDGE_CONTROLS` (10 контролов с en/ru переводами) |
+| Модуль                      | Что реализовано                                                                                                                          |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `z2m/model.py`              | `BridgeInfo`, `BridgeState`, `Z2MEventType`, `DeviceEventType`, `DeviceEvent`, `BridgeLogLevel`                                          |
+| `z2m/client.py`             | `Z2MClient`: подписка на 6 топиков (state, info, logging, devices, event, response/device/remove); парсинг → типизированные коллбэки     |
+| `wb_converter/controls.py`  | `BridgeControl` (ID контролов), `ControlMeta` (type, readonly, order, title), `BRIDGE_CONTROLS` (13 контролов с en/ru переводами)        |
 | `wb_converter/publisher.py` | `WbMqttDriver`: публикация WB-устройства с JSON `/meta`, начальных значений контролов, подписка на команды (permit_join, update_devices) |
-| `bridge.py` | `Bridge`: оркестратор — z2m-события → WB-контролы, фильтрация логов по `bridge_log_min_level` |
+| `bridge.py`                 | `Bridge`: оркестратор — z2m-события → WB-контролы, фильтрация логов по `bridge_log_min_level`                                            |
 
 ---
 
@@ -132,20 +138,21 @@ Re-subscribe на `zigbee2mqtt/bridge/devices` (unsubscribe + subscribe) — б�
 
 **Модули:**
 
-| Модуль | Что реализовано |
-|---|---|
-| `z2m/model.py` | + `ExposeFeature`, `ExposeAccess`, `ExposeType`, `ExposeProperty`, `Z2MDevice`, `Z2MEventType.DEVICE_RENAMED`, `DeviceEventType.RENAMED`, поле `old_name` в `DeviceEvent` |
-| `z2m/client.py` | + `subscribe_device`, `unsubscribe_device`, `request_device_state`, обработка `device_renamed` |
-| `wb_converter/expose_mapper.py` | Новый модуль: `map_exposes_to_controls()`, `NUMERIC_TYPE_MAP` (12 типов), `NESTED_TYPES`, `_resolve_wb_type`, `_map_color_feature` (composite color → rgb), auto-range для writable numerics с min/max |
-| `wb_converter/controls.py` | + `WbControlType` (16 констант, вкл. RANGE, RGB), `ControlMeta.format_value()` (вкл. HS→RGB через `colorsys`), поля `value_on`/`value_off` |
-| `wb_converter/publisher.py` | + `publish_device()`, `publish_device_control()`, `remove_device()` |
-| `registered_device.py` | Новый модуль: `RegisteredDevice` dataclass |
-| `bridge.py` | + `_register_device`, `_on_device_state`, `_on_device_renamed`, `_find_old_name`, `_format_last_seen`, `_sanitize_device_id` |
-| `config_loader.py` | + валидация `bridge_log_min_level` |
+| Модуль                          | Что реализовано                                                                                                                                                                                                                                                         |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `z2m/model.py`                  | + `ExposeFeature`, `ExposeAccess`, `ExposeType`, `ExposeProperty`, `Z2MDevice`, `Z2MEventType.DEVICE_RENAMED`, `DeviceEventType.RENAMED`, поле `old_name` в `DeviceEvent`                                                                                               |
+| `z2m/client.py`                 | + `subscribe_device`, `unsubscribe_device`, `request_device_state`, обработка `device_renamed`                                                                                                                                                                          |
+| `wb_converter/expose_mapper.py` | Новый модуль: `map_exposes_to_controls()`, `NUMERIC_TYPE_MAP` (12 типов), `NESTED_TYPES`, `_resolve_wb_type`, `_map_color_feature` (composite color → rgb), auto-range для writable numerics с min/max, двуязычные `title` через `PROPERTY_TITLES` + `_localized_title` |
+| `wb_converter/controls.py`      | + `WbControlType` (16 констант, вкл. RANGE, RGB), `ControlMeta.format_value()` (вкл. HS→RGB через `colorsys`), поля `value_on`/`value_off`                                                                                                                              |
+| `wb_converter/publisher.py`     | + `publish_device()`, `publish_device_control()`, `remove_device()`                                                                                                                                                                                                     |
+| `registered_device.py`          | Новый модуль: `RegisteredDevice` dataclass                                                                                                                                                                                                                              |
+| `bridge.py`                     | + `_register_device`, `_on_device_state`, `_on_device_renamed`, `_find_old_name`, `_format_last_seen`, `_sanitize_device_id`                                                                                                                                            |
+| `config_loader.py`              | + валидация `bridge_log_min_level`                                                                                                                                                                                                                                      |
 
 **Результат:** все Zigbee-устройства отображаются в WB с правильными типами контролов и актуальными значениями. Удаление и переименование устройств в z2m отражается в WB без перезапуска сервиса.
 
 **Проверка (пройдена на 5 устройствах: 2 реле, датчик температуры, 2 датчика):**
+
 - После `systemctl restart wb-mqtt-zigbee` все устройства появляются в WB в течение нескольких секунд
 - Значения контролов совпадают с тем, что показывает z2m UI
 - Датчик температуры меняет значение → контрол в WB обновляется в реальном времени
@@ -166,6 +173,7 @@ Re-subscribe на `zigbee2mqtt/bridge/devices` (unsubscribe + subscribe) — б�
 **Результат:** writable-контролы в WB отправляют команды на устройства. Каждое устройство показывает свой тип и время последней активности.
 
 **Проверка:**
+
 - Переключение реле из WB → физическое устройство реагирует
 - Изменение яркости/цветовой температуры лампы из WB → устройство реагирует
 - Команда отражается обратно в WB (z2m публикует новое состояние после выполнения)
@@ -175,10 +183,12 @@ Re-subscribe на `zigbee2mqtt/bridge/devices` (unsubscribe + subscribe) — б�
 ### Этап 5 — Жизненный цикл устройств (0.5–1 день) ✅
 
 **Уже сделано (в рамках этапа 3):**
+
 - ✅ Удаление устройств (`device_removed`, `device_leave`) — отписка, очистка retain, удаление из `_known_devices`
 - ✅ Переименование устройств (`device_renamed`) — переподписка на новый топик, обновление title в WB
 
 **Добавлено:**
+
 - ✅ Очистка stale-устройств — при каждом `bridge/devices` удаляются устройства из `_known_devices`, которых нет в актуальном списке z2m
 - ✅ Очистка ghost-устройств при старте — wildcard-сканирование retained `/devices/+/meta` по маркеру `"driver": "wb-mqtt-zigbee"` (плюс legacy `wb-zigbee2mqtt` для совместимости с v1 и ранними сборками v2), сравнение с первым `bridge/devices`, удаление отсутствующих
 - ✅ Маркер `driver` в device meta — все WB-устройства публикуются с `"driver": "wb-mqtt-zigbee"` для идентификации
@@ -186,11 +196,13 @@ Re-subscribe на `zigbee2mqtt/bridge/devices` (unsubscribe + subscribe) — б�
 - ✅ `postinst` — автоматическое удаление v1 wb-rules скрипта (`wb-zigbee2mqtt.js` / `.disabled`) при установке пакета
 
 **Дополнительно реализовано:**
+
 - ✅ Обновление `exposes` при изменении — контролы перерегистрируются автоматически
 - ✅ Валидация `friendly_name` — MQTT wildcard символы (+, #) отклоняются
 - ✅ Устойчивость к ошибкам — битое устройство в списке не блокирует обработку остальных
 
 **Проверка (пройдена):**
+
 - Удалить устройство в z2m UI → устройство исчезает из WB ✅
 - Переименовать устройство в z2m UI → в WB появляется новое имя, device_id не меняется ✅
 - Удалить устройства, перезапустить сервис → ghost-устройства очищаются при старте ✅
@@ -198,6 +210,7 @@ Re-subscribe на `zigbee2mqtt/bridge/devices` (unsubscribe + subscribe) — б�
 - Установка пакета на систему с v1 скриптом → скрипт удаляется, wb-rules перезапускается ✅
 
 **Проверка (пройдена после реализации Stage 4):**
+
 - После переименования управление устройством из WB продолжает работать ✅
 
 ---
@@ -209,6 +222,7 @@ Re-subscribe на `zigbee2mqtt/bridge/devices` (unsubscribe + subscribe) — б�
 **Результат:** пользователь видит версию прошивки, может проверить наличие обновления и запустить его с отображением прогресса.
 
 **Проверка:**
+
 - На устройстве с поддержкой OTA появляются контролы `ota_installed_version` и `ota_check`
 - Нажатие `ota_check` → появляется `ota_check_state` со статусом проверки, исчезает по завершении
 - Если обновление найдено → появляются `ota_latest_version` и `ota_update`
@@ -223,18 +237,17 @@ Re-subscribe на `zigbee2mqtt/bridge/devices` (unsubscribe + subscribe) — б�
 **Результат:** группы z2m отображаются в WB как отдельные устройства, поддерживают команды.
 
 **Проверка:**
+
 - Создать группу в z2m → устройство группы появляется в WB
 - Отправить команду группе из WB → все устройства-члены группы реагируют
 - Контрол `members` содержит актуальный список участников
-
-
 
 ## Структура проекта
 
 ```
 wb-mqtt-zigbee/
 ├── wb/
-│   └── zigbee2mqtt/             — Python-пакет (namespace wb)
+│   └── mqtt_zigbee/             — Python-пакет (namespace wb)
 │       ├── __init__.py
 │       ├── __main__.py
 │       ├── main.py              — setup_logging(), main() (точка входа)
@@ -242,11 +255,9 @@ wb-mqtt-zigbee/
 │       ├── config_loader.py     — ConfigLoader (dataclass), load_config()
 │       ├── bridge.py            — оркестратор: z2m-события → WB-контролы
 │       ├── registered_device.py — RegisteredDevice: кеш устройства (z2m + controls + device_id)
-│       ├── mqtt_client.py       — зарезервировано
 │       ├── z2m/
 │       │   ├── client.py        — Z2MClient: подписка на z2m-топики + устройства, парсинг → коллбэки
-│       │   ├── model.py         — Z2MDevice, ExposeFeature, ExposeType, ExposeProperty, BridgeInfo, ...
-│       │   └── ota.py           — зарезервировано (TODO: этап 6)
+│       │   └── model.py         — Z2MDevice, ExposeFeature, ExposeType, ExposeProperty, BridgeInfo, ...
 │       └── wb_converter/
 │           ├── publisher.py     — WbMqttDriver: публикация/удаление WB-устройств и JSON /meta
 │           ├── controls.py      — WbControlType, BridgeControl, ControlMeta (с format_value)
@@ -259,6 +270,7 @@ wb-mqtt-zigbee/
 ├── docs/
 │   ├── arc42.md                 — архитектура в формате arc42
 │   ├── development-plan.md      — план разработки, структура, модули (этот файл)
+│   ├── REFACTORING.md           — backlog идей рефакторинга
 │   └── v1-analysis.md           — анализ предыдущей версии (JS/wb-rules)
 ├── debian/
 │   ├── control
@@ -303,21 +315,19 @@ wb-mqtt-zigbee/
 
 ## Модули
 
-| Модуль | Назначение | Статус |
-|---|---|---|
-| `main.py` | Точка входа: `setup_logging()`, парсинг CLI-аргументов, загрузка конфига | ✅ |
-| `app.py` | `WbZigbee2Mqtt`: MQTT-клиент, обработка сигналов (SIGINT/SIGTERM/SIGHUP), жизненный цикл, коды выхода | ✅ |
-| `config_loader.py` | Загрузка JSON-конфига, `dataclass ConfigLoader`, валидация `bridge_log_min_level` | ✅ |
-| `bridge.py` | Оркестратор: z2m-события → WB-контролы, регистрация/удаление/переименование устройств, фильтрация логов | ✅ |
-| `registered_device.py` | `RegisteredDevice`: кеш z2m-устройства с WB controls и device_id | ✅ |
-| `z2m/client.py` | `Z2MClient`: подписка на 6 z2m-топиков + устройства, парсинг → типизированные коллбэки | ✅ |
-| `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty`, `ExposeAccess` | ✅ |
-| `mqtt_client.py` | Зарезервировано для расширения MQTT-клиента | зарезервировано |
-| `z2m/ota.py` | OTA: запрос проверки и запуск обновления | зарезервировано |
-| `wb_converter/controls.py` | `WbControlType` (16 типов, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` (12 контролов с en/ru) | ✅ |
-| `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, rgb для color) | ✅ |
-| `wb_converter/publisher.py` | `WbMqttDriver`: публикация/удаление WB-устройств, JSON `/meta` с driver-маркером, подписка на команды, retained-сканирование ghost-устройств | ✅ |
-| ~~`wb_converter/subscriber.py`~~ | Удалён — подписка на команды реализована в `publisher.py` | — |
+| Модуль                           | Назначение                                                                                                                                                          | Статус |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `main.py`                        | Точка входа: `setup_logging()`, парсинг CLI-аргументов, загрузка конфига                                                                                            | ✅     |
+| `app.py`                         | `WbZigbee2Mqtt`: MQTT-клиент, обработка сигналов (SIGINT/SIGTERM/SIGHUP), жизненный цикл, коды выхода                                                               | ✅     |
+| `config_loader.py`               | Загрузка JSON-конфига, `dataclass ConfigLoader`, валидация `bridge_log_min_level`                                                                                   | ✅     |
+| `bridge.py`                      | Оркестратор: z2m-события → WB-контролы, регистрация/удаление/переименование устройств, фильтрация логов                                                             | ✅     |
+| `registered_device.py`           | `RegisteredDevice`: кеш z2m-устройства с WB controls и device_id                                                                                                    | ✅     |
+| `z2m/client.py`                  | `Z2MClient`: подписка на 6 z2m-топиков + устройства, парсинг → типизированные коллбэки                                                                              | ✅     |
+| `z2m/model.py`                   | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty`, `ExposeAccess`                          | ✅     |
+| `wb_converter/controls.py`       | `WbControlType` (16 типов, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` (13 контролов с en/ru) | ✅     |
+| `wb_converter/expose_mapper.py`  | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, rgb для color); двуязычные `title` через `PROPERTY_TITLES` + `_localized_title`       | ✅     |
+| `wb_converter/publisher.py`      | `WbMqttDriver`: публикация/удаление WB-устройств, JSON `/meta` с driver-маркером, подписка на команды, retained-сканирование ghost-устройств                        | ✅     |
+| ~~`wb_converter/subscriber.py`~~ | Удалён — подписка на команды реализована в `publisher.py`                                                                                                           | —      |
 
 ## Конфигурация
 
@@ -325,25 +335,27 @@ wb-mqtt-zigbee/
 
 ```json
 {
-    "broker_url": "unix:///var/run/mosquitto/mosquitto.sock",
-    "zigbee2mqtt_base_topic": "zigbee2mqtt",
-    "bridge_log_min_level": "warning"
+  "broker_url": "unix:///var/run/mosquitto/mosquitto.sock",
+  "zigbee2mqtt_base_topic": "zigbee2mqtt",
+  "bridge_log_min_level": "warning"
 }
 ```
 
-| Параметр | Обязателен | По умолчанию | Описание |
-|---|---|---|---|
-| `broker_url` | да | — | URL MQTT-брокера |
-| `zigbee2mqtt_base_topic` | да | — | Базовый топик zigbee2mqtt |
-| `device_id` | нет | `"zigbee2mqtt"` | ID WB-устройства моста |
-| `device_name` | нет | `"Zigbee2MQTT"` | Отображаемое имя WB-устройства |
-| `bridge_log_min_level` | нет | `"warning"` | Минимальный уровень логов моста (debug/info/warning/error) |
+| Параметр                 | Обязателен | По умолчанию    | Описание                                                                                          |
+| ------------------------ | ---------- | --------------- | ------------------------------------------------------------------------------------------------- |
+| `broker_url`             | да         | —               | URL MQTT-брокера                                                                                  |
+| `zigbee2mqtt_base_topic` | да         | —               | Базовый топик zigbee2mqtt                                                                         |
+| `device_id`              | нет        | `"zigbee2mqtt"` | ID WB-устройства моста                                                                            |
+| `device_name`            | нет        | `"Zigbee2MQTT"` | Отображаемое имя WB-устройства                                                                    |
+| `bridge_log_min_level`   | нет        | `"warning"`     | Минимальный уровень логов моста (debug/info/warning/error)                                        |
+| `command_debounce_sec`   | нет        | `5.0`           | Окно debounce optimistic-update для команд (сек); подавляет «мерцание» state от z2m после команды |
 
 Путь по умолчанию задан в `config_loader.CONFIG_FILEPATH`, переопределяется флагом `-c`/`--config`.
 
 ## Построение контролов из exposes
 
 В v1 типы контролов захардкожены (12 атрибутов, все readonly). В v2 используем схему `exposes`, которую zigbee2mqtt публикует для каждого устройства. Там указано:
+
 - имя атрибута (`temperature`, `state`, `brightness`, …)
 - тип (`numeric`, `binary`, `enum`, `text`)
 - `access`: readonly / readwrite / writeonly
@@ -351,14 +363,23 @@ wb-mqtt-zigbee/
 
 Контролы WB строятся динамически из `exposes` — управление устройствами появляется автоматически без захардкоженных маппингов.
 
-Отображаемое имя контрола (title) генерируется из имени property: `noise_detect_level` → `"Noise detect level"` (`property.replace("_", " ").capitalize()`).
+Отображаемое имя контрола (`title`) разрешается в `_localized_title()`:
+
+1. Точное совпадение в курируемом двуязычном словаре `PROPERTY_TITLES` (en+ru, ~112 базовых property) — например `temperature` → `{"en": "Temperature", "ru": "Температура"}`.
+2. Endpoint-варианты многофазных счётчиков и многоканальных реле (`power_l1`, `voltage_a`, `state_l2`, …) — суффикс (`_l<N>` / `_a`/`_b`/`_c`) распознаётся регуляркой `PHASE_SUFFIX_RE`, имя собирается из базового property плюс метка фазы в верхнем регистре: `power_l1` → `{"en": "Power L1", "ru": "Мощность L1"}`.
+3. Fallback для property не из словаря — только английское имя, механически из property: `noise_detect_level` → `{"en": "Noise detect level"}` (`property.replace("_", " ").capitalize()`).
+
+Словарь написан вручную. Редкие manufacturer-specific property сознательно остаются на английском fallback.
 
 ### Цветные лампы (RGB)
 
 Цветные лампы в z2m имеют composite expose `color` с вложенными `x`/`y` (CIE XY) или `hue`/`saturation` (HS). В state z2m всегда отдаёт оба представления одновременно:
 
 ```json
-{"color": {"x": 0.4066, "y": 0.1643, "hue": 308, "saturation": 100}, "color_mode": "xy"}
+{
+  "color": { "x": 0.4066, "y": 0.1643, "hue": 308, "saturation": 100 },
+  "color_mode": "xy"
+}
 ```
 
 Вместо разворачивания composite в отдельные контролы `x`, `y`, `hue`, `saturation` (что бесполезно для пользователя), composite `color` маппится в один WB-контрол типа `rgb`. Конвертация через HS→RGB (`colorsys.hsv_to_rgb`), brightness вынесен в отдельный контрол (V=1.0). Результат — формат WB `"R;G;B"`, homeui отображает color picker.
@@ -390,26 +411,27 @@ zigbee2mqtt публикует поле `update` в состоянии кажд�
 
 OTA-контролы показываются динамически в зависимости от состояния:
 
-| Состояние | Показываем контролы |
-|---|---|
-| `idle` | `ota_installed_version`, `ota_check` |
-| `checking` | `ota_installed_version`, `ota_check`, `ota_check_state` |
-| `available` (installed ≠ latest) | `ota_installed_version`, `ota_latest_version`, `ota_check`, `ota_update` |
-| `updating` | `ota_installed_version`, `ota_latest_version`, `ota_state`, `ota_progress` |
+| Состояние                        | Показываем контролы                                                        |
+| -------------------------------- | -------------------------------------------------------------------------- |
+| `idle`                           | `ota_installed_version`, `ota_check`                                       |
+| `checking`                       | `ota_installed_version`, `ota_check`, `ota_check_state`                    |
+| `available` (installed ≠ latest) | `ota_installed_version`, `ota_latest_version`, `ota_check`, `ota_update`   |
+| `updating`                       | `ota_installed_version`, `ota_latest_version`, `ota_state`, `ota_progress` |
 
 Описание контролов:
 
-| Контрол | Тип | Описание |
-|---|---|---|
-| `ota_installed_version` | text, readonly | Установленная версия прошивки |
-| `ota_latest_version` | text, readonly | Доступная новая версия |
-| `ota_state` | text, readonly | `updating` — отображается только во время обновления |
-| `ota_progress` | value, readonly | Прогресс 0–100% |
-| `ota_check` | pushbutton | Проверить наличие обновления |
-| `ota_check_state` | text, readonly | `"Проверяю..."` — появляется пока идёт проверка, исчезает по завершении |
-| `ota_update` | pushbutton | Запустить обновление |
+| Контрол                 | Тип             | Описание                                                                |
+| ----------------------- | --------------- | ----------------------------------------------------------------------- |
+| `ota_installed_version` | text, readonly  | Установленная версия прошивки                                           |
+| `ota_latest_version`    | text, readonly  | Доступная новая версия                                                  |
+| `ota_state`             | text, readonly  | `updating` — отображается только во время обновления                    |
+| `ota_progress`          | value, readonly | Прогресс 0–100%                                                         |
+| `ota_check`             | pushbutton      | Проверить наличие обновления                                            |
+| `ota_check_state`       | text, readonly  | `"Проверяю..."` — появляется пока идёт проверка, исчезает по завершении |
+| `ota_update`            | pushbutton      | Запустить обновление                                                    |
 
 Команды:
+
 - `ota_check` → публикует в `zigbee2mqtt/bridge/request/device/ota_update/check` payload `{"id": "<ieee_address>"}`
 - `ota_update` → публикует в `zigbee2mqtt/bridge/request/device/ota_update/update` payload `{"id": "<ieee_address>"}`. Показывается только когда `installed_version != latest_version`.
 
@@ -437,6 +459,7 @@ zigbee2mqtt публикует события в `zigbee2mqtt/bridge/event`:
 Каждая группа ведёт себя как устройство: имеет топик `zigbee2mqtt/{group_name}` и поддерживает команды.
 
 Группы обрабатываются тем же кодом, что и устройства, с отличиями:
+
 - В `model.py` флаг `is_group: bool`
 - `exposes` у групп не публикуются — используется фиксированный набор: `state`, `brightness`, `color_temp`
 - В WB-устройстве группы дополнительный readonly контрол `members` со списком участников
@@ -465,14 +488,14 @@ zigbee2mqtt публикует события в `zigbee2mqtt/bridge/event`:
 
 **Сравнение с exposes:**
 
-| | HA Discovery | exposes |
-|---|---|---|
-| Readable/writable | явно: `command_topic` есть → writable | нужно разбирать поле `access` |
-| Типы | `device_class` + `unit_of_measurement` | вложенная структура (`numeric`/`binary`/`enum`) |
-| Сложность парсинга | умеренная | высокая (composite/specific features) |
-| Удаление устройства | пустой payload в discovery-топик | `bridge/event` → `device_removed` |
-| Зависимость | нужно включить HA integration в конфиге z2m | ничего дополнительно |
-| Официальность | побочный механизм (для HA) | основной API для интеграций |
+|                     | HA Discovery                                | exposes                                         |
+| ------------------- | ------------------------------------------- | ----------------------------------------------- |
+| Readable/writable   | явно: `command_topic` есть → writable       | нужно разбирать поле `access`                   |
+| Типы                | `device_class` + `unit_of_measurement`      | вложенная структура (`numeric`/`binary`/`enum`) |
+| Сложность парсинга  | умеренная                                   | высокая (composite/specific features)           |
+| Удаление устройства | пустой payload в discovery-топик            | `bridge/event` → `device_removed`               |
+| Зависимость         | нужно включить HA integration в конфиге z2m | ничего дополнительно                            |
+| Официальность       | побочный механизм (для HA)                  | основной API для интеграций                     |
 
 **Почему отклонили:**
 

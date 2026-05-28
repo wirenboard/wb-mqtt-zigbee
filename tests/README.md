@@ -130,12 +130,12 @@ wb/mqtt_zigbee/config_loader.py                    37     0   100%
 wb/mqtt_zigbee/main.py                             21    21     0%
 wb/mqtt_zigbee/registered_device.py                14     0   100%
 wb/mqtt_zigbee/wb_converter/controls.py           106     0   100%
-wb/mqtt_zigbee/wb_converter/expose_mapper.py       64     0   100%
+wb/mqtt_zigbee/wb_converter/expose_mapper.py       75     0   100%
 wb/mqtt_zigbee/wb_converter/publisher.py          149     3    98%
 wb/mqtt_zigbee/z2m/client.py                      146     6    96%
 wb/mqtt_zigbee/z2m/model.py                       105     0   100%
 ------------------------------------------------------------------
-TOTAL                                             970    92    91%
+TOTAL                                             981    92    91%
 ```
 
 Вся «чистая» (без I/O) логика покрыта на 100% unit-тестами. Модули с MQTT-коллбэками (`z2m/client.py`, `wb_converter/publisher.py`, `bridge.py`, `app.py`) покрыты интеграционными тестами через `FakeMqttBroker` — 81–98%.
@@ -188,10 +188,11 @@ make_expose(
 |---|---|---|
 | `map_exposes_to_controls` | `TestMapExposesToControls` | Сквозная нумерация `order` начиная с 1; дедупликация по `property` (первое вхождение побеждает); сервисные контролы `available` / `last_seen` добавляются всегда; `device_type` — только при непустом значении; `expose` без `property` пропускается, не ломая порядок. |
 | `_flatten_expose` | `TestFlattenExpose` | Листовые фичи проходят как есть; сложные типы (`light`, `switch`, `climate` и др.) раскрываются рекурсивно, в том числе вложенные; `composite` с `property="color"` сворачивается в один RGB-контрол; композитный тип с пустым `features` падает в ветку листа. |
-| `_map_leaf_feature` | `TestMapLeafFeature` | Пустой `property` → пустой результат; неизвестный `type` → пустой результат; numeric-свойства маппятся через `NUMERIC_TYPE_MAP` с фоллбеком на `value`; writable numeric `value` с обоими `min` и `max` маппятся в `range`, иначе остаётся `value`; типизированные numeric (`temperature` и т. п.) **не** будут `range` даже с min/max; binary → `switch` + `value_on`/`value_off`; enum → `text` + enum-словарь; text → `text`; `readonly` считается от `access & WRITE`; заголовок формируется из имени `property`. |
+| `_map_leaf_feature` | `TestMapLeafFeature` | Пустой `property` → пустой результат; неизвестный `type` → пустой результат; numeric-свойства маппятся через `NUMERIC_TYPE_MAP` с фоллбеком на `value`; writable numeric `value` с обоими `min` и `max` маппятся в `range`, иначе остаётся `value`; типизированные numeric (`temperature` и т. п.) **не** будут `range` даже с min/max; binary → `switch` + `value_on`/`value_off`; enum → `text` + enum-словарь; text → `text`; `readonly` считается от `access & WRITE`; двуязычный `title` (en+ru) для known property из `PROPERTY_TITLES`, fallback на en-only для неизвестных. |
 | `_map_color_feature` | `TestMapColorFeature` | Writable, если хотя бы один sub-feature writable, иначе readonly; пустой `features` → readonly; тип RGB; title имеют переводы на ru, en. |
 | `_make_enum` | `TestMakeEnum` | `["off", "low", "high"]` → `{"off": 0, "low": 1, "high": 2}`; пустой список → `None`. |
 | `_make_title` | `TestMakeTitle` | `snake_case` → `Snake case`; единичные слова; параметризованный тест. |
+| `_localized_title` | `TestLocalizedTitle` | Точное совпадение в `PROPERTY_TITLES` даёт en+ru (включая нетривиальные случаи: `power`=«Мощность», `noise`=«Шум», `pm25`=«PM2.5»); фазовые суффиксы (`power_l1`, `voltage_l3`, `current_a`, `state_l2`) собираются из базового title; неизвестное property и неизвестная база с суффиксом → en-only fallback. |
 | `_resolve_wb_type` | `TestResolveWbType` | Все ветки (numeric known/unknown, binary, enum, text, unknown → `None`). |
 
 ### `tests/unit/test_controls.py`

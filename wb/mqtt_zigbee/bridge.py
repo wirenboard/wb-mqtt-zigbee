@@ -21,12 +21,6 @@ from .z2m.model import (
 
 logger = logging.getLogger(__name__)
 
-_DEVICE_TYPE_RU: dict[str, str] = {
-    "Router": "Маршрутизатор",
-    "EndDevice": "Оконечное устройство",
-    "Coordinator": "Координатор",
-}
-
 _EVENT_TYPE_TO_CONTROL = {
     DeviceEventType.JOINED: BridgeControl.LAST_JOINED,
     DeviceEventType.LEFT: BridgeControl.LAST_LEFT,
@@ -102,7 +96,7 @@ class Bridge:
                 self._mqtt_driver.publish_device_control(
                     registered.device_id,
                     "device_type",
-                    _DEVICE_TYPE_RU.get(registered.z2m.type, registered.z2m.type),
+                    registered.z2m.type,
                 )
             self._mqtt_driver.subscribe_device_commands(
                 registered.device_id,
@@ -205,9 +199,7 @@ class Bridge:
             device_id, device.friendly_name, controls, {"available": WbBoolValue.FALSE}
         )
         if device.type:
-            self._mqtt_driver.publish_device_control(
-                device_id, "device_type", _DEVICE_TYPE_RU.get(device.type, device.type)
-            )
+            self._mqtt_driver.publish_device_control(device_id, "device_type", device.type)
         self._mqtt_driver.subscribe_device_commands(
             device_id,
             controls,
@@ -223,9 +215,7 @@ class Bridge:
         """
         registered = self._known_devices[device.friendly_name]
         if device.type:
-            self._mqtt_driver.publish_device_control(
-                registered.device_id, "device_type", _DEVICE_TYPE_RU.get(device.type, device.type)
-            )
+            self._mqtt_driver.publish_device_control(registered.device_id, "device_type", device.type)
         if device.exposes:
             new_controls = map_exposes_to_controls(device.exposes, device_type=device.type)
             if set(new_controls.keys()) != set(registered.controls.keys()):
@@ -387,9 +377,7 @@ class Bridge:
         self._z2m.subscribe_device(new_name)
         self._mqtt_driver.publish_device(new_device_id, new_name, registered.controls)
         if registered.z2m.type:
-            self._mqtt_driver.publish_device_control(
-                new_device_id, "device_type", _DEVICE_TYPE_RU.get(registered.z2m.type, registered.z2m.type)
-            )
+            self._mqtt_driver.publish_device_control(new_device_id, "device_type", registered.z2m.type)
         self._mqtt_driver.subscribe_device_commands(
             new_device_id,
             registered.controls,

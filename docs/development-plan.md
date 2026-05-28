@@ -31,7 +31,7 @@
 
 ### Этап 2 — Устройство моста (1–2 дня) ✅
 
-**Что сделали:** подписка на `bridge/state`, `bridge/info`, `bridge/logging`, `bridge/devices`, `bridge/event`, `bridge/response/device/remove`; виртуальное WB-устройство `zigbee2mqtt` с 12 контролами; фильтрация логов по уровню; JSON `/meta` с en/ru переводами.
+**Что сделали:** подписка на `bridge/state`, `bridge/info`, `bridge/logging`, `bridge/devices`, `bridge/event`, `bridge/response/device/remove`; виртуальное WB-устройство `zigbee2mqtt` с 13 контролами; фильтрация логов по уровню; JSON `/meta` с en/ru переводами.
 
 **Контролы устройства моста:**
 
@@ -49,6 +49,7 @@
 | Messages received | value | R | Количество полученных сообщений от z2m |
 | Log level | text | R | Минимальный уровень логов (из конфига) |
 | Log | text | R | Последнее лог-сообщение (фильтруется по уровню) |
+| Reconnects | value | R | Счётчик переподключений к MQTT-брокеру |
 
 **Результат:** в WB появляется устройство `Zigbee2MQTT`, все контролы обновляются в реальном времени, permit_join работает, логи фильтруются по настроенному уровню.
 
@@ -102,7 +103,7 @@ Re-subscribe на `zigbee2mqtt/bridge/devices` (unsubscribe + subscribe) — б�
 |---|---|
 | `z2m/model.py` | `BridgeInfo`, `BridgeState`, `Z2MEventType`, `DeviceEventType`, `DeviceEvent`, `BridgeLogLevel` |
 | `z2m/client.py` | `Z2MClient`: подписка на 6 топиков (state, info, logging, devices, event, response/device/remove); парсинг → типизированные коллбэки |
-| `wb_converter/controls.py` | `BridgeControl` (ID контролов), `ControlMeta` (type, readonly, order, title), `BRIDGE_CONTROLS` (10 контролов с en/ru переводами) |
+| `wb_converter/controls.py` | `BridgeControl` (ID контролов), `ControlMeta` (type, readonly, order, title), `BRIDGE_CONTROLS` (13 контролов с en/ru переводами) |
 | `wb_converter/publisher.py` | `WbMqttDriver`: публикация WB-устройства с JSON `/meta`, начальных значений контролов, подписка на команды (permit_join, update_devices) |
 | `bridge.py` | `Bridge`: оркестратор — z2m-события → WB-контролы, фильтрация логов по `bridge_log_min_level` |
 
@@ -136,7 +137,7 @@ Re-subscribe на `zigbee2mqtt/bridge/devices` (unsubscribe + subscribe) — б�
 |---|---|
 | `z2m/model.py` | + `ExposeFeature`, `ExposeAccess`, `ExposeType`, `ExposeProperty`, `Z2MDevice`, `Z2MEventType.DEVICE_RENAMED`, `DeviceEventType.RENAMED`, поле `old_name` в `DeviceEvent` |
 | `z2m/client.py` | + `subscribe_device`, `unsubscribe_device`, `request_device_state`, обработка `device_renamed` |
-| `wb_converter/expose_mapper.py` | Новый модуль: `map_exposes_to_controls()`, `NUMERIC_TYPE_MAP` (12 типов), `NESTED_TYPES`, `_resolve_wb_type`, `_map_color_feature` (composite color → rgb), auto-range для writable numerics с min/max |
+| `wb_converter/expose_mapper.py` | Новый модуль: `map_exposes_to_controls()`, `NUMERIC_TYPE_MAP` (12 типов), `NESTED_TYPES`, `_resolve_wb_type`, `_map_color_feature` (composite color → rgb), auto-range для writable numerics с min/max, двуязычные `title` через `PROPERTY_TITLES` + `_localized_title` |
 | `wb_converter/controls.py` | + `WbControlType` (16 констант, вкл. RANGE, RGB), `ControlMeta.format_value()` (вкл. HS→RGB через `colorsys`), поля `value_on`/`value_off` |
 | `wb_converter/publisher.py` | + `publish_device()`, `publish_device_control()`, `remove_device()` |
 | `registered_device.py` | Новый модуль: `RegisteredDevice` dataclass |
@@ -234,7 +235,7 @@ Re-subscribe на `zigbee2mqtt/bridge/devices` (unsubscribe + subscribe) — б�
 ```
 wb-mqtt-zigbee/
 ├── wb/
-│   └── zigbee2mqtt/             — Python-пакет (namespace wb)
+│   └── mqtt_zigbee/             — Python-пакет (namespace wb)
 │       ├── __init__.py
 │       ├── __main__.py
 │       ├── main.py              — setup_logging(), main() (точка входа)
@@ -242,11 +243,9 @@ wb-mqtt-zigbee/
 │       ├── config_loader.py     — ConfigLoader (dataclass), load_config()
 │       ├── bridge.py            — оркестратор: z2m-события → WB-контролы
 │       ├── registered_device.py — RegisteredDevice: кеш устройства (z2m + controls + device_id)
-│       ├── mqtt_client.py       — зарезервировано
 │       ├── z2m/
 │       │   ├── client.py        — Z2MClient: подписка на z2m-топики + устройства, парсинг → коллбэки
-│       │   ├── model.py         — Z2MDevice, ExposeFeature, ExposeType, ExposeProperty, BridgeInfo, ...
-│       │   └── ota.py           — зарезервировано (TODO: этап 6)
+│       │   └── model.py         — Z2MDevice, ExposeFeature, ExposeType, ExposeProperty, BridgeInfo, ...
 │       └── wb_converter/
 │           ├── publisher.py     — WbMqttDriver: публикация/удаление WB-устройств и JSON /meta
 │           ├── controls.py      — WbControlType, BridgeControl, ControlMeta (с format_value)
@@ -259,6 +258,7 @@ wb-mqtt-zigbee/
 ├── docs/
 │   ├── arc42.md                 — архитектура в формате arc42
 │   ├── development-plan.md      — план разработки, структура, модули (этот файл)
+│   ├── REFACTORING.md           — backlog идей рефакторинга
 │   └── v1-analysis.md           — анализ предыдущей версии (JS/wb-rules)
 ├── debian/
 │   ├── control
@@ -312,10 +312,8 @@ wb-mqtt-zigbee/
 | `registered_device.py` | `RegisteredDevice`: кеш z2m-устройства с WB controls и device_id | ✅ |
 | `z2m/client.py` | `Z2MClient`: подписка на 6 z2m-топиков + устройства, парсинг → типизированные коллбэки | ✅ |
 | `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty`, `ExposeAccess` | ✅ |
-| `mqtt_client.py` | Зарезервировано для расширения MQTT-клиента | зарезервировано |
-| `z2m/ota.py` | OTA: запрос проверки и запуск обновления | зарезервировано |
-| `wb_converter/controls.py` | `WbControlType` (16 типов, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` (12 контролов с en/ru) | ✅ |
-| `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, rgb для color) | ✅ |
+| `wb_converter/controls.py` | `WbControlType` (16 типов, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` (13 контролов с en/ru) | ✅ |
+| `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, rgb для color); двуязычные `title` через `PROPERTY_TITLES` + `_localized_title` | ✅ |
 | `wb_converter/publisher.py` | `WbMqttDriver`: публикация/удаление WB-устройств, JSON `/meta` с driver-маркером, подписка на команды, retained-сканирование ghost-устройств | ✅ |
 | ~~`wb_converter/subscriber.py`~~ | Удалён — подписка на команды реализована в `publisher.py` | — |
 
@@ -338,6 +336,7 @@ wb-mqtt-zigbee/
 | `device_id` | нет | `"zigbee2mqtt"` | ID WB-устройства моста |
 | `device_name` | нет | `"Zigbee2MQTT"` | Отображаемое имя WB-устройства |
 | `bridge_log_min_level` | нет | `"warning"` | Минимальный уровень логов моста (debug/info/warning/error) |
+| `command_debounce_sec` | нет | `5.0` | Окно debounce optimistic-update для команд (сек); подавляет «мерцание» state от z2m после команды |
 
 Путь по умолчанию задан в `config_loader.CONFIG_FILEPATH`, переопределяется флагом `-c`/`--config`.
 
@@ -351,7 +350,13 @@ wb-mqtt-zigbee/
 
 Контролы WB строятся динамически из `exposes` — управление устройствами появляется автоматически без захардкоженных маппингов.
 
-Отображаемое имя контрола (title) генерируется из имени property: `noise_detect_level` → `"Noise detect level"` (`property.replace("_", " ").capitalize()`).
+Отображаемое имя контрола (`title`) разрешается в `_localized_title()`:
+
+1. Точное совпадение в курируемом двуязычном словаре `PROPERTY_TITLES` (en+ru, ~110 базовых property) — например `temperature` → `{"en": "Temperature", "ru": "Температура"}`.
+2. Endpoint-варианты многофазных счётчиков и многоканальных реле (`power_l1`, `voltage_a`, `state_l2`, …) — суффикс (`_l<N>` / `_a`/`_b`/`_c`) распознаётся регуляркой `PHASE_SUFFIX_RE`, имя собирается из базового property плюс метка фазы в верхнем регистре: `power_l1` → `{"en": "Power L1", "ru": "Мощность L1"}`.
+3. Fallback для property не из словаря — только английское имя, механически из property: `noise_detect_level` → `{"en": "Noise detect level"}` (`property.replace("_", " ").capitalize()`).
+
+Словарь написан вручную. Редкие manufacturer-specific property сознательно остаются на английском fallback.
 
 ### Цветные лампы (RGB)
 

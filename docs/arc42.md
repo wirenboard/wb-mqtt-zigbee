@@ -106,7 +106,7 @@
 
 ## 4. Стратегия решения
 
-- **Динамическое построение контролов из `exposes`** вместо захардкоженных маппингов v1. Это автоматически даёт поддержку управления и новых типов устройств без изменения кода. Отображаемое имя контрола генерируется из имени property: `noise_detect_level` → `"Noise detect level"`.
+- **Динамическое построение контролов из `exposes`** вместо захардкоженных маппингов v1. Это автоматически даёт поддержку управления и новых типов устройств без изменения кода. Отображаемое имя контрола (`title`) берётся из курируемого двуязычного словаря `PROPERTY_TITLES` (en+ru) в `expose_mapper.py`; для многофазных endpoint-вариантов (`power_l1`, `voltage_a`, …) имя собирается из базового плюс метка фазы; для property не из словаря — fallback на английское имя, механически полученное из property (`noise_detect_level` → `"Noise detect level"`).
 - **Поддержка цветных ламп**: composite expose `color` (color_xy / color_hs) маппится в единый WB-контрол типа `rgb`. z2m всегда отдаёт оба представления цвета (`hue`/`saturation` и `x`/`y`), используем HS→RGB через `colorsys.hsv_to_rgb()`. Результат — WB формат `"R;G;B"`, homeui показывает color picker. Brightness выделен в отдельный контрол (V=1.0 в HSV).
 - **Сервисные контролы устройств**: к каждому устройству автоматически добавляются контролы `available` (онлайн/офлайн статус), `device_type` (тип в z2m сети: Router/EndDevice/Coordinator с русской локализацией) и `last_seen` (время последней активности, конвертация из epoch/ISO в локальное время).
 - **Event-driven внутри сервиса**: `z2m/client.py` парсит входящие MQTT-сообщения и генерирует события, `bridge.py` реагирует на них и вызывает `wb_converter/publisher.py`. Обратный путь: `publisher.py` подписывается на `/on`-топики WB, команды через callback передаются в `bridge.py`, который публикует в z2m.
@@ -145,7 +145,7 @@
 | `z2m/client.py` | `Z2MClient`: подписка на z2m-топики, парсинг → коллбэки |
 | `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty` |
 | `wb_converter/publisher.py` | `WbMqttDriver`: публикация/удаление устройств, JSON `/meta`, команды |
-| `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, range для writable с min/max) |
+| `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, range для writable с min/max); двуязычные `title` через `PROPERTY_TITLES` + `_localized_title` |
 | `wb_converter/controls.py` | `WbControlType` (16 констант, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` |
 
 ---
@@ -163,7 +163,7 @@ main.py
 
 on_connect (первое подключение):
   → bridge.subscribe()
-    → публикует WB-устройство моста (meta + начальные значения 12 контролов)
+    → публикует WB-устройство моста (meta + начальные значения 13 контролов)
     → z2m_client подписывается на 6 топиков (state, info, logging, devices, event, response/device/remove)
     → подписывается на WB-команды (permit_join, update_devices)
 
@@ -307,7 +307,7 @@ Zigbee-устройства обрабатывают команды с заде�
 ### Известные ограничения
 
 - Устройства, у которых все exposes неизвестного типа, не регистрируются (только `last_seen` недостаточно)
-- OTA-обновление прошивок через WB UI не реализовано (зарезервировано в `z2m/ota.py`)
+- OTA-обновление прошивок через WB UI не реализовано (запланировано — см. этап 6 в development-plan.md)
 - Группы zigbee2mqtt не поддерживаются
 - EndDevice (спящие устройства) не отвечают на `get`-запросы — availability восстанавливается только когда устройство просыпается и отправляет данные
 

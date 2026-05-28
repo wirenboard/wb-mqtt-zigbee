@@ -377,9 +377,7 @@ class Bridge:
         self._z2m.subscribe_device(new_name)
         self._mqtt_driver.publish_device(new_device_id, new_name, registered.controls)
         if registered.z2m.type:
-            self._mqtt_driver.publish_device_control(
-                new_device_id, "device_type", registered.z2m.type
-            )
+            self._mqtt_driver.publish_device_control(new_device_id, "device_type", registered.z2m.type)
         self._mqtt_driver.subscribe_device_commands(
             new_device_id,
             registered.controls,

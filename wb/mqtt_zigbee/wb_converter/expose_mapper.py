@@ -233,6 +233,11 @@ def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "")
             readonly=True,
             order=order,
             title={"en": "Device type", "ru": "Тип устройства"},
+            enum={
+                "Router": {"en": "Router", "ru": "Маршрутизатор"},
+                "EndDevice": {"en": "End device", "ru": "Оконечное устройство"},
+                "Coordinator": {"en": "Coordinator", "ru": "Координатор"},
+            },
         )
         order += 1
     controls["last_seen"] = ControlMeta(

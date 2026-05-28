@@ -43,9 +43,14 @@ PROPERTY_TITLES: dict[str, dict[str, str]] = {
     "pm10": {"en": "PM10", "ru": "PM10"},
     "noise": {"en": "Noise", "ru": "Шум"},
     "noise_detected": {"en": "Noise detected", "ru": "Обнаружен шум"},
+    "noise_detect_level": {"en": "Noise detection level", "ru": "Порог обнаружения шума"},
+    "noise_timeout": {"en": "Noise timeout", "ru": "Таймаут шума"},
     "illuminance": {"en": "Illuminance", "ru": "Освещённость"},
     "illuminance_lux": {"en": "Illuminance", "ru": "Освещённость"},
     "uv_index": {"en": "UV index", "ru": "УФ-индекс"},
+    "co2_autocalibration": {"en": "CO2 auto-calibration", "ru": "Автокалибровка CO₂"},
+    "co2_manual_calibration": {"en": "CO2 manual calibration", "ru": "Ручная калибровка CO₂"},
+    "th_heater": {"en": "T/H heater", "ru": "Нагрев датчика T/H"},
     # --- Electrical metering ---
     "power": {"en": "Power", "ru": "Мощность"},
     "power_factor": {"en": "Power factor", "ru": "Коэффициент мощности"},
@@ -87,6 +92,8 @@ PROPERTY_TITLES: dict[str, dict[str, str]] = {
     "color_mode": {"en": "Color mode", "ru": "Цветовой режим"},
     "min_brightness": {"en": "Minimum brightness", "ru": "Минимальная яркость"},
     "max_brightness": {"en": "Maximum brightness", "ru": "Максимальная яркость"},
+    "color_power_on_behavior": {"en": "Color power-on behavior", "ru": "Поведение цвета при включении"},
+    "do_not_disturb": {"en": "Do not disturb", "ru": "Не беспокоить"},
     # --- Switches / plugs ---
     "power_on_behavior": {"en": "Power-on behavior", "ru": "Поведение при включении"},
     "child_lock": {"en": "Child lock", "ru": "Блокировка от детей"},
@@ -135,7 +142,13 @@ PROPERTY_TITLES: dict[str, dict[str, str]] = {
     # --- Sensitivity / timing / calibration config ---
     "sensitivity": {"en": "Sensitivity", "ru": "Чувствительность"},
     "motion_sensitivity": {"en": "Motion sensitivity", "ru": "Чувствительность к движению"},
+    "presence_sensitivity": {"en": "Presence sensitivity", "ru": "Чувствительность к присутствию"},
+    "occupancy_sensitivity": {"en": "Occupancy sensitivity", "ru": "Чувствительность к присутствию"},
+    "occupancy_level": {"en": "Occupancy level", "ru": "Уровень присутствия"},
     "detection_distance": {"en": "Detection distance", "ru": "Дистанция обнаружения"},
+    "detection_distance_max": {"en": "Maximum detection distance", "ru": "Макс. дистанция обнаружения"},
+    "detection_distance_min": {"en": "Minimum detection distance", "ru": "Мин. дистанция обнаружения"},
+    "target_distance": {"en": "Target distance", "ru": "Дистанция до цели"},
     "occupancy_timeout": {"en": "Occupancy timeout", "ru": "Таймаут присутствия"},
     "detection_interval": {"en": "Detection interval", "ru": "Интервал обнаружения"},
     "fading_time": {"en": "Fading time", "ru": "Время затухания"},
@@ -143,6 +156,7 @@ PROPERTY_TITLES: dict[str, dict[str, str]] = {
     "duration": {"en": "Duration", "ru": "Длительность"},
     "max_duration": {"en": "Maximum duration", "ru": "Максимальная длительность"},
     "temperature_calibration": {"en": "Temperature calibration", "ru": "Калибровка температуры"},
+    "temperature_offset": {"en": "Temperature offset", "ru": "Смещение температуры"},
     "humidity_calibration": {"en": "Humidity calibration", "ru": "Калибровка влажности"},
     "illuminance_calibration": {"en": "Illuminance calibration", "ru": "Калибровка освещённости"},
     "pressure_calibration": {"en": "Pressure calibration", "ru": "Калибровка давления"},
@@ -151,6 +165,11 @@ PROPERTY_TITLES: dict[str, dict[str, str]] = {
     "melody": {"en": "Melody", "ru": "Мелодия"},
     "volume": {"en": "Volume", "ru": "Громкость"},
     "strobe": {"en": "Strobe", "ru": "Стробоскоп"},
+    # --- LEDs / indicators / on-device diagnostics ---
+    "indicator": {"en": "Indicator", "ru": "Индикатор"},
+    "activity_led_indicator": {"en": "Activity LED indicator", "ru": "Светодиод активности"},
+    "uart_connection": {"en": "UART connection", "ru": "Связь по UART"},
+    "uart_baud_rate": {"en": "UART baud rate", "ru": "Скорость UART"},
 }
 
 # Phase/endpoint suffix on multi-phase meters & multi-gang devices: power_l1, voltage_a, …

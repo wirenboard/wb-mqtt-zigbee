@@ -293,8 +293,8 @@ class TestMapLeafFeature:
         assert rw_meta.readonly is False
 
     def test_title_derived_from_property(self):
-        [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="noise_detect_level"))
-        assert meta.title == {"en": "Noise detect level"}
+        [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="totally_unknown_property"))
+        assert meta.title == {"en": "Totally unknown property"}
 
     def test_known_property_gets_bilingual_title(self):
         [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="temperature"))
@@ -385,6 +385,27 @@ class TestLocalizedTitle:
             ("noise", {"en": "Noise", "ru": "Шум"}),
             ("pm25", {"en": "PM2.5", "ru": "PM2.5"}),
             ("temperature", {"en": "Temperature", "ru": "Температура"}),
+            # WB-MSW-ZIGBEE specific exposes (added after on-bench review).
+            ("noise_detect_level", {"en": "Noise detection level", "ru": "Порог обнаружения шума"}),
+            ("noise_timeout", {"en": "Noise timeout", "ru": "Таймаут шума"}),
+            ("occupancy_level", {"en": "Occupancy level", "ru": "Уровень присутствия"}),
+            ("occupancy_sensitivity", {"en": "Occupancy sensitivity", "ru": "Чувствительность к присутствию"}),
+            ("temperature_offset", {"en": "Temperature offset", "ru": "Смещение температуры"}),
+            ("th_heater", {"en": "T/H heater", "ru": "Нагрев датчика T/H"}),
+            ("uart_baud_rate", {"en": "UART baud rate", "ru": "Скорость UART"}),
+            ("uart_connection", {"en": "UART connection", "ru": "Связь по UART"}),
+            ("activity_led_indicator", {"en": "Activity LED indicator", "ru": "Светодиод активности"}),
+            ("co2_autocalibration", {"en": "CO2 auto-calibration", "ru": "Автокалибровка CO₂"}),
+            ("co2_manual_calibration", {"en": "CO2 manual calibration", "ru": "Ручная калибровка CO₂"}),
+            # mmWave presence sensors (Tuya & similar).
+            ("detection_distance_max", {"en": "Maximum detection distance", "ru": "Макс. дистанция обнаружения"}),
+            ("detection_distance_min", {"en": "Minimum detection distance", "ru": "Мин. дистанция обнаружения"}),
+            ("target_distance", {"en": "Target distance", "ru": "Дистанция до цели"}),
+            ("presence_sensitivity", {"en": "Presence sensitivity", "ru": "Чувствительность к присутствию"}),
+            ("indicator", {"en": "Indicator", "ru": "Индикатор"}),
+            # Smart RGB lights.
+            ("do_not_disturb", {"en": "Do not disturb", "ru": "Не беспокоить"}),
+            ("color_power_on_behavior", {"en": "Color power-on behavior", "ru": "Поведение цвета при включении"}),
             # Phase-suffixed endpoints composed from the base entry.
             ("power_l1", {"en": "Power L1", "ru": "Мощность L1"}),
             ("voltage_l3", {"en": "Voltage L3", "ru": "Напряжение L3"}),
@@ -398,7 +419,7 @@ class TestLocalizedTitle:
     @pytest.mark.parametrize(
         "prop, expected",
         [
-            ("noise_detect_level", {"en": "Noise detect level"}),  # unknown property
+            ("totally_unknown_property", {"en": "Totally unknown property"}),
             ("foo_l1", {"en": "Foo l1"}),  # phase suffix, base "foo" not curated
         ],
     )

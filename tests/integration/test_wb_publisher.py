@@ -196,6 +196,36 @@ class TestPublishDevice:
         driver.publish_device_control("0x123", "temperature", "22.4")
         assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/temperature") == "22.4"
 
+    def test_republish_device_clears_stale_optional_meta(
+        self,
+        fake_mqtt_client: FakeMqttClient,
+        wb_observer: WbObserver,
+    ) -> None:
+        driver = _make_driver(fake_mqtt_client)
+
+        # First publish with order and enum
+        controls_with_meta = {
+            "switch": ControlMeta(
+                type=WbControlType.SWITCH,
+                readonly=False,
+                order=1,
+                enum={"ON": "On", "OFF": "Off"},
+            )
+        }
+        driver.publish_device("0x123", "Device", controls_with_meta)
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/switch/meta/order") == "1"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/switch/meta/enum") is not None
+
+        # Second publish without optional meta
+        controls_no_meta = {
+            "switch": ControlMeta(type=WbControlType.SWITCH, readonly=False)
+        }
+        driver.publish_device("0x123", "Device", controls_no_meta)
+
+        # Old values should be cleared
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/switch/meta/order") is None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/switch/meta/enum") is None
+
 
 class TestRemoveDevice:
     """

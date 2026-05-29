@@ -133,9 +133,7 @@ class WbMqttDriver:
         on_update_devices: Callable[[], None],
     ) -> None:
         permit_join_topic = f"{DEVICES_PREFIX}/{self._device_id}/controls/{BridgeControl.PERMIT_JOIN}/on"
-        update_devices_topic = (
-            f"{DEVICES_PREFIX}/{self._device_id}/controls/{BridgeControl.UPDATE_DEVICES}/on"
-        )
+        update_devices_topic = f"{DEVICES_PREFIX}/{self._device_id}/controls/{BridgeControl.UPDATE_DEVICES}/on"
 
         self._client.subscribe(permit_join_topic)
         self._client.subscribe(update_devices_topic)

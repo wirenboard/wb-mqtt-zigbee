@@ -191,6 +191,19 @@ class TestControlMetaParseWbValue:
         assert meta.parse_wb_value(WbBoolValue.TRUE) == "ON"
         assert meta.parse_wb_value(WbBoolValue.FALSE) == "OFF"
 
+    def test_switch_with_bool_value_on_returns_bool(self):
+        # Z2M devices like WB-MSW-ZIGBEE use boolean value_on/value_off.
+        # parse_wb_value must return True/False (not "True"/"False") so Z2M
+        # receives the correct JSON type.
+        meta = ControlMeta(
+            type=WbControlType.SWITCH,
+            readonly=False,
+            value_on=True,
+            value_off=False,
+        )
+        assert meta.parse_wb_value(WbBoolValue.TRUE) is True
+        assert meta.parse_wb_value(WbBoolValue.FALSE) is False
+
     def test_rgb_parses_to_hs_dict(self):
         meta = ControlMeta(type=WbControlType.RGB, readonly=False)
         assert meta.parse_wb_value("255;0;0") == {"hue": 0, "saturation": 100}

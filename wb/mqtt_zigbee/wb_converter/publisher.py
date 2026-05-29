@@ -239,9 +239,9 @@ class WbMqttDriver:
             self._publish_retain(f"{prefix}/min", str(meta.min))
 
     def _clear_legacy_control_meta(self, device_id: str, control_id: str) -> None:
-        """Clear old wb-rules style control meta sub-topics and optional fields"""
+        """Clear old wb-rules style control meta sub-topics (type, order, readonly)"""
         prefix = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
-        for sub in ("type", "order", "readonly", "enum", "max", "min"):
+        for sub in ("type", "order", "readonly"):
             self._publish_retain(f"{prefix}/{sub}", "")
 
     def _publish_retain(self, topic: str, value: str) -> None:

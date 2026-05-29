@@ -227,6 +227,12 @@ class WbMqttDriver:
         prefix = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
         self._publish_retain(f"{prefix}/type", meta.type)
         self._publish_retain(f"{prefix}/readonly", "1" if meta.readonly else "0")
+        # Clear optional fields first to remove stale values
+        self._publish_retain(f"{prefix}/order", "")
+        self._publish_retain(f"{prefix}/enum", "")
+        self._publish_retain(f"{prefix}/max", "")
+        self._publish_retain(f"{prefix}/min", "")
+        # Then publish actual values if they exist
         if meta.order is not None:
             self._publish_retain(f"{prefix}/order", str(meta.order))
         if meta.enum:
@@ -237,9 +243,9 @@ class WbMqttDriver:
             self._publish_retain(f"{prefix}/min", str(meta.min))
 
     def _clear_legacy_control_meta(self, device_id: str, control_id: str) -> None:
-        """Clear old wb-rules style control meta sub-topics (type, order, readonly)"""
+        """Clear old wb-rules style control meta sub-topics and optional fields"""
         prefix = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
-        for sub in ("type", "order", "readonly"):
+        for sub in ("type", "order", "readonly", "enum", "max", "min"):
             self._publish_retain(f"{prefix}/{sub}", "")
 
     def _publish_retain(self, topic: str, value: str) -> None:

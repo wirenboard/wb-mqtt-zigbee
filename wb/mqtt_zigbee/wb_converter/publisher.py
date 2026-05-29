@@ -229,14 +229,10 @@ class WbMqttDriver:
         prefix = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
         self._publish_retain(f"{prefix}/type", meta.type)
         self._publish_retain(f"{prefix}/readonly", "1" if meta.readonly else "0")
-        if meta.order is not None:
-            self._publish_retain(f"{prefix}/order", str(meta.order))
-        if meta.enum:
-            self._publish_retain(f"{prefix}/enum", json.dumps(meta.enum))
-        if meta.max is not None:
-            self._publish_retain(f"{prefix}/max", str(meta.max))
-        if meta.min is not None:
-            self._publish_retain(f"{prefix}/min", str(meta.min))
+        self._publish_retain(f"{prefix}/order", str(meta.order) if meta.order is not None else "")
+        self._publish_retain(f"{prefix}/enum", json.dumps(meta.enum) if meta.enum else "")
+        self._publish_retain(f"{prefix}/max", str(meta.max) if meta.max is not None else "")
+        self._publish_retain(f"{prefix}/min", str(meta.min) if meta.min is not None else "")
 
     def _clear_legacy_control_meta(self, device_id: str, control_id: str) -> None:
         """Clear old wb-rules style control meta sub-topics (type, order, readonly)"""

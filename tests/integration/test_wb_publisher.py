@@ -217,9 +217,7 @@ class TestPublishDevice:
         assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/switch/meta/enum") is not None
 
         # Second publish without optional meta
-        controls_no_meta = {
-            "switch": ControlMeta(type=WbControlType.SWITCH, readonly=False)
-        }
+        controls_no_meta = {"switch": ControlMeta(type=WbControlType.SWITCH, readonly=False)}
         driver.publish_device("0x123", "Device", controls_no_meta)
 
         # Old values should be cleared

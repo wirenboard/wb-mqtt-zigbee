@@ -191,6 +191,7 @@ class WbMqttDriver:
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", json.dumps(device_meta))
         self._publish_device_meta_subtopics(device_id, name)
         for control_id, meta in controls.items():
+            self._clear_legacy_control_meta(device_id, control_id)
             self._publish_control_meta(device_id, control_id, meta)
             value = initial_values.get(control_id, " ") if initial_values else " "
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", value)

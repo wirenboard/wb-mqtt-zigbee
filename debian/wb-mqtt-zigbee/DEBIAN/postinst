@@ -1,0 +1,82 @@
+#!/bin/sh
+set -e
+
+# The old wb-zigbee2mqtt package is removed automatically via Conflicts/Replaces.
+# But if the user disabled/renamed the script via UI, a renamed file may remain
+# outside the package's control. Clean it up and restart wb-rules.
+WB_RULES_DIR="/usr/share/wb-rules-system/rules"
+OLD_SCRIPT_NAME="wb-zigbee2mqtt.js"
+NEED_RESTART_WBRULES=false
+
+for path in "$WB_RULES_DIR"/${OLD_SCRIPT_NAME}*; do
+    if [ -f "$path" ]; then
+        rm -f "$path"
+        NEED_RESTART_WBRULES=true
+        echo "Removed legacy v1 script: $path"
+    fi
+done
+
+if [ "$NEED_RESTART_WBRULES" = true ] && [ -d /run/systemd/system ]; then
+    systemctl restart wb-rules 2>/dev/null || true
+fi
+
+# Enable device availability in zigbee2mqtt if not already configured.
+# This allows our service to track online/offline status of Zigbee devices.
+Z2M_CONFIG="/mnt/data/root/zigbee2mqtt/data/configuration.yaml"
+if [ -f "$Z2M_CONFIG" ] && ! grep -q "^availability:" "$Z2M_CONFIG"; then
+    echo "" >> "$Z2M_CONFIG"
+    cat >> "$Z2M_CONFIG" << 'EOF'
+availability:
+  enabled: true
+  active:
+    timeout: 10
+    max_jitter: 30000
+    backoff: true
+EOF
+    echo "Added availability section to $Z2M_CONFIG"
+    if [ -d /run/systemd/system ]; then
+        systemctl restart zigbee2mqtt 2>/dev/null || true
+    fi
+fi
+
+
+# Automatically added by dh_python3
+if command -v py3compile >/dev/null 2>&1; then
+	py3compile -p wb-mqtt-zigbee 
+fi
+if command -v pypy3compile >/dev/null 2>&1; then
+	pypy3compile -p wb-mqtt-zigbee  || true
+fi
+
+# End automatically added section
+# Automatically added by dh_installsystemd/13.14.1ubuntu5
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
+	# The following line should be removed in trixie or trixie+1
+	deb-systemd-helper unmask 'wb-mqtt-zigbee.service' >/dev/null || true
+
+	# was-enabled defaults to true, so new installations run enable.
+	if deb-systemd-helper --quiet was-enabled 'wb-mqtt-zigbee.service'; then
+		# Enables the unit on first installation, creates new
+		# symlinks on upgrades if the unit file has changed.
+		deb-systemd-helper enable 'wb-mqtt-zigbee.service' >/dev/null || true
+	else
+		# Update the statefile to add new symlinks (if any), which need to be
+		# cleaned up on purge. Also remove old symlinks.
+		deb-systemd-helper update-state 'wb-mqtt-zigbee.service' >/dev/null || true
+	fi
+fi
+# End automatically added section
+# Automatically added by dh_installsystemd/13.14.1ubuntu5
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
+	if [ -d /run/systemd/system ]; then
+		systemctl --system daemon-reload >/dev/null || true
+		if [ -n "$2" ]; then
+			_dh_action=restart
+		else
+			_dh_action=start
+		fi
+		deb-systemd-invoke $_dh_action 'wb-mqtt-zigbee.service' >/dev/null || true
+	fi
+fi
+# End automatically added section
+

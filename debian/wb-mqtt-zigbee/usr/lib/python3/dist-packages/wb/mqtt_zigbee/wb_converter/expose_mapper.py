@@ -325,7 +325,6 @@ def _map_leaf_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
         enum=enum,
         min=feature.value_min,
         max=feature.value_max,
-        endpoint=feature.endpoint,
     )
     return [(feature.property, meta)]
 

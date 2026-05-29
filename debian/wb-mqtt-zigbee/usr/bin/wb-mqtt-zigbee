@@ -1,0 +1,8 @@
+#!/usr/bin/python3
+# pylint: disable=invalid-name
+
+import sys
+
+from wb.mqtt_zigbee.main import main
+
+sys.exit(main(sys.argv))

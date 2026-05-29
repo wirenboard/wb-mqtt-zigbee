@@ -77,7 +77,6 @@ class ExposeFeature:
     value_off: Optional[str] = None
     values: list[str] = field(default_factory=list)
     features: list["ExposeFeature"] = field(default_factory=list)
-    endpoint: Optional[str] = None
 
     @property
     def is_writable(self) -> bool:
@@ -97,7 +96,6 @@ class ExposeFeature:
             value_off=_str_or_none(data.get("value_off")),
             values=data.get("values", []),
             features=[ExposeFeature.from_dict(feat) for feat in data.get("features", [])],
-            endpoint=data.get("endpoint"),
         )
 
 

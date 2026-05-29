@@ -301,10 +301,7 @@ class Bridge:
             if meta is None:
                 return
             z2m_value = meta.parse_wb_value(wb_value)
-            if meta.endpoint:
-                payload = {meta.endpoint: {control_id: z2m_value}}
-            else:
-                payload = {control_id: z2m_value}
+            payload = {control_id: z2m_value}
             logger.info(
                 "Device command: %s/%s = %s → %s",
                 registered.z2m.friendly_name,

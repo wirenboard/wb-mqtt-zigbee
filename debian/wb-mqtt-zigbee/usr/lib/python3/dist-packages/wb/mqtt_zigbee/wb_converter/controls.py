@@ -73,7 +73,6 @@ class ControlMeta:
     enum: Optional[dict] = None
     min: Optional[float] = None
     max: Optional[float] = None
-    endpoint: Optional[str] = None
 
     def format_value(self, value: object) -> str:
         """Convert a z2m value to WB control string representation"""

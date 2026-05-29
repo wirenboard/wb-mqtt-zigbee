@@ -13,3 +13,6 @@ debian/.debhelper/
 debian/tmp/
 debian/wb-zigbee2mqtt/
 .pybuild/
+
+# Local codestyle config (use to run black/isort locally)
+pyproject.toml

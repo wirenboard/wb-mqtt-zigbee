@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -73,8 +73,8 @@ class ExposeFeature:
     unit: str = ""
     value_min: Optional[float] = None
     value_max: Optional[float] = None
-    value_on: Optional[str] = None
-    value_off: Optional[str] = None
+    value_on: Any = None
+    value_off: Any = None
     values: list[str] = field(default_factory=list)
     features: list["ExposeFeature"] = field(default_factory=list)
     endpoint: Optional[str] = None
@@ -93,8 +93,8 @@ class ExposeFeature:
             unit=data.get("unit", ""),
             value_min=data.get("value_min"),
             value_max=data.get("value_max"),
-            value_on=_str_or_none(data.get("value_on")),
-            value_off=_str_or_none(data.get("value_off")),
+            value_on=data.get("value_on"),
+            value_off=data.get("value_off"),
             values=data.get("values", []),
             features=[ExposeFeature.from_dict(feat) for feat in data.get("features", [])],
             endpoint=data.get("endpoint"),

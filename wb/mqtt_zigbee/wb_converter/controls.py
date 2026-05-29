@@ -2,7 +2,7 @@ import colorsys
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, TypedDict
+from typing import Any, Optional, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +68,8 @@ class ControlMeta:
     readonly: bool
     order: Optional[int] = None
     title: dict = field(default_factory=dict)
-    value_on: Optional[str] = None
-    value_off: Optional[str] = None
+    value_on: Any = None
+    value_off: Any = None
     enum: Optional[dict] = None
     min: Optional[float] = None
     max: Optional[float] = None

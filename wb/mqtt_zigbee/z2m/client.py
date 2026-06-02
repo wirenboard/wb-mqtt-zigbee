@@ -239,8 +239,11 @@ class Z2MClient:
 
 def _parse_json_payload(message: MQTTMessage, topic_name: str) -> Optional[Union[dict, list]]:
     """Decode MQTT message payload as JSON. Returns None and logs warning on failure"""
+    payload = message.payload.decode("utf-8")
+    if not payload:
+        return None
     try:
-        return json.loads(message.payload.decode("utf-8"))
+        return json.loads(payload)
     except json.JSONDecodeError:
         logger.warning("Failed to parse %s payload", topic_name)
         return None

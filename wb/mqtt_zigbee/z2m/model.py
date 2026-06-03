@@ -128,12 +128,6 @@ class Z2MDevice:
         )
 
 
-def _str_or_none(value: object) -> Optional[str]:
-    if value is None:
-        return None
-    return str(value)
-
-
 class BridgeState:
     """Possible values of the bridge/state topic"""
 

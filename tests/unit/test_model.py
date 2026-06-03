@@ -12,27 +12,7 @@ from wb.mqtt_zigbee.z2m.model import (
     ExposeType,
     Z2MDevice,
     Z2MEventType,
-    _str_or_none,
 )
-
-
-class TestStrOrNone:
-    def test_none_returns_none(self):
-        assert _str_or_none(None) is None
-
-    def test_string_returned_as_is(self):
-        assert _str_or_none("ON") == "ON"
-
-    def test_int_converted_to_string(self):
-        assert _str_or_none(1) == "1"
-
-    def test_bool_converted_to_string(self):
-        assert _str_or_none(True) == "True"
-        assert _str_or_none(False) == "False"
-
-    def test_empty_string_preserved(self):
-        # empty string is not None — must be returned as ""
-        assert _str_or_none("") == ""
 
 
 class TestExposeFeatureIsWritable:

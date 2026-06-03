@@ -49,7 +49,7 @@ class WbMqttDriver:
         for control_id in controls:
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta", "")
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", "")
-            self._clear_legacy_control_meta(device_id, control_id)
+            self._clear_control_meta_subtopics(device_id, control_id)
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", "")
         self._clear_device_meta_subtopics(device_id)
 
@@ -58,7 +58,7 @@ class WbMqttDriver:
         for control_id in control_ids:
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta", "")
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", "")
-            self._clear_legacy_control_meta(device_id, control_id)
+            self._clear_control_meta_subtopics(device_id, control_id)
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", "")
         self._clear_device_meta_subtopics(device_id)
 
@@ -191,7 +191,7 @@ class WbMqttDriver:
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", json.dumps(device_meta))
         self._publish_device_meta_subtopics(device_id, name)
         for control_id, meta in controls.items():
-            self._clear_legacy_control_meta(device_id, control_id)
+            self._clear_control_meta_subtopics(device_id, control_id)
             self._publish_control_meta(device_id, control_id, meta)
             value = initial_values.get(control_id, " ") if initial_values else " "
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", value)
@@ -234,7 +234,7 @@ class WbMqttDriver:
         self._publish_retain(f"{prefix}/max", str(meta.max) if meta.max is not None else "")
         self._publish_retain(f"{prefix}/min", str(meta.min) if meta.min is not None else "")
 
-    def _clear_legacy_control_meta(self, device_id: str, control_id: str) -> None:
+    def _clear_control_meta_subtopics(self, device_id: str, control_id: str) -> None:
         """Clear all control meta sub-topics (type, readonly, order, enum, max, min)"""
         prefix = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
         for sub in ("type", "readonly", "order", "enum", "max", "min"):

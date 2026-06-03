@@ -393,8 +393,8 @@ class TestLocalizedTitle:
             ("tvoc", {"en": "TVOC", "ru": "TVOC"}),
             ("co2", {"en": "CO2", "ru": "CO2"}),
             ("uv_index", {"en": "UV Index", "ru": "UV-индекс"}),
-            # WB canonical wording for apparent power (per WB-MAP web interface).
-            ("power_apparent", {"en": "Apparent Power", "ru": "Кажущаяся мощность"}),
+            # Apparent power — "Полная мощность" matches WB meter templates (e.g. milur total_power) and ГОСТ.
+            ("power_apparent", {"en": "Apparent Power", "ru": "Полная мощность"}),
             # WB-MSW-ZIGBEE specific exposes (added after on-bench review).
             ("noise_detect_level", {"en": "Noise Detection Level", "ru": "Порог обнаружения шума"}),
             ("noise_timeout", {"en": "Noise Timeout", "ru": "Таймаут шума"}),

@@ -296,7 +296,7 @@ class TestMapLeafFeature:
         [(_, meta)] = _map_leaf_feature(
             make_expose(type=ExposeType.NUMERIC, property="totally_unknown_property")
         )
-        assert meta.title == {"en": "Totally unknown property"}
+        assert meta.title == {"en": "Totally Unknown Property"}
 
     def test_known_property_gets_bilingual_title(self):
         [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="temperature"))
@@ -368,7 +368,7 @@ class TestMakeTitle:
         "prop, expected",
         [
             ("temperature", "Temperature"),
-            ("noise_detect_level", "Noise detect level"),
+            ("noise_detect_level", "Noise Detect Level"),
             ("x", "X"),
         ],
     )
@@ -383,45 +383,55 @@ class TestLocalizedTitle:
         "prop, expected",
         [
             # Exact matches — pins the correct ru wording, including tricky cases.
+            # EN titles follow the WB style guide: every word capitalized.
             ("power", {"en": "Power", "ru": "Мощность"}),
             ("noise", {"en": "Noise", "ru": "Шум"}),
             ("pm25", {"en": "PM2.5", "ru": "PM2.5"}),
             ("temperature", {"en": "Temperature", "ru": "Температура"}),
+            # Abbreviations are not translated — left as-is in both languages.
+            ("voc", {"en": "VOC", "ru": "VOC"}),
+            ("tvoc", {"en": "TVOC", "ru": "TVOC"}),
+            ("co2", {"en": "CO2", "ru": "CO2"}),
+            ("uv_index", {"en": "UV Index", "ru": "UV-индекс"}),
+            # Apparent power — "Полная мощность" matches WB meter templates (e.g. milur total_power) and ГОСТ.
+            ("power_apparent", {"en": "Apparent Power", "ru": "Полная мощность"}),
             # WB-MSW-ZIGBEE specific exposes (added after on-bench review).
-            ("noise_detect_level", {"en": "Noise detection level", "ru": "Порог обнаружения шума"}),
-            ("noise_timeout", {"en": "Noise timeout", "ru": "Таймаут шума"}),
-            ("occupancy_level", {"en": "Occupancy level", "ru": "Уровень присутствия"}),
+            ("noise_detect_level", {"en": "Noise Detection Level", "ru": "Порог обнаружения шума"}),
+            ("noise_timeout", {"en": "Noise Timeout", "ru": "Таймаут шума"}),
+            ("occupancy_level", {"en": "Occupancy Level", "ru": "Уровень присутствия"}),
             (
                 "occupancy_sensitivity",
-                {"en": "Occupancy sensitivity", "ru": "Чувствительность к присутствию"},
+                {"en": "Occupancy Sensitivity", "ru": "Чувствительность к присутствию"},
             ),
-            ("temperature_offset", {"en": "Temperature offset", "ru": "Смещение температуры"}),
-            ("th_heater", {"en": "T/H heater", "ru": "Нагрев датчика T/H"}),
-            ("uart_baud_rate", {"en": "UART baud rate", "ru": "Скорость UART"}),
-            ("uart_connection", {"en": "UART connection", "ru": "Связь по UART"}),
-            ("activity_led_indicator", {"en": "Activity LED indicator", "ru": "Светодиод активности"}),
-            ("co2_autocalibration", {"en": "CO2 auto-calibration", "ru": "Автокалибровка CO₂"}),
-            ("co2_manual_calibration", {"en": "CO2 manual calibration", "ru": "Ручная калибровка CO₂"}),
+            ("temperature_offset", {"en": "Temperature Offset", "ru": "Смещение температуры"}),
+            ("th_heater", {"en": "T/H Heater", "ru": "Нагрев датчика T/H"}),
+            ("uart_baud_rate", {"en": "UART Baud Rate", "ru": "Скорость UART"}),
+            ("uart_connection", {"en": "UART Connection", "ru": "Связь по UART"}),
+            # "LED" stays Latin (abbreviation); surrounding words are translated.
+            ("led_disabled_night", {"en": "Disable LED At Night", "ru": "Отключать LED ночью"}),
+            ("activity_led_indicator", {"en": "Activity LED Indicator", "ru": "LED-индикатор активности"}),
+            ("co2_autocalibration", {"en": "CO2 Auto-Calibration", "ru": "Автокалибровка CO2"}),
+            ("co2_manual_calibration", {"en": "CO2 Manual Calibration", "ru": "Ручная калибровка CO2"}),
             # mmWave presence sensors (Tuya & similar).
             (
                 "detection_distance_max",
-                {"en": "Maximum detection distance", "ru": "Макс. дистанция обнаружения"},
+                {"en": "Maximum Detection Distance", "ru": "Максимальная дистанция обнаружения"},
             ),
             (
                 "detection_distance_min",
-                {"en": "Minimum detection distance", "ru": "Мин. дистанция обнаружения"},
+                {"en": "Minimum Detection Distance", "ru": "Минимальная дистанция обнаружения"},
             ),
-            ("target_distance", {"en": "Target distance", "ru": "Дистанция до цели"}),
+            ("target_distance", {"en": "Target Distance", "ru": "Дистанция до цели"}),
             (
                 "presence_sensitivity",
-                {"en": "Presence sensitivity", "ru": "Чувствительность к присутствию"},
+                {"en": "Presence Sensitivity", "ru": "Чувствительность к присутствию"},
             ),
             ("indicator", {"en": "Indicator", "ru": "Индикатор"}),
             # Smart RGB lights.
-            ("do_not_disturb", {"en": "Do not disturb", "ru": "Не беспокоить"}),
+            ("do_not_disturb", {"en": "Do Not Disturb", "ru": "Не беспокоить"}),
             (
                 "color_power_on_behavior",
-                {"en": "Color power-on behavior", "ru": "Поведение цвета при включении"},
+                {"en": "Color Power-On Behavior", "ru": "Поведение цвета при включении"},
             ),
             # Phase-suffixed endpoints composed from the base entry.
             ("power_l1", {"en": "Power L1", "ru": "Мощность L1"}),
@@ -436,8 +446,8 @@ class TestLocalizedTitle:
     @pytest.mark.parametrize(
         "prop, expected",
         [
-            ("totally_unknown_property", {"en": "Totally unknown property"}),
-            ("foo_l1", {"en": "Foo l1"}),  # phase suffix, base "foo" not curated
+            ("totally_unknown_property", {"en": "Totally Unknown Property"}),
+            ("foo_l1", {"en": "Foo L1"}),  # phase suffix, base "foo" not curated
         ],
     )
     def test_falls_back_to_english_only(self, prop, expected):

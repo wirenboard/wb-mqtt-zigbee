@@ -12,31 +12,7 @@ from wb.mqtt_zigbee.z2m.model import (
     ExposeType,
     Z2MDevice,
     Z2MEventType,
-    _str_or_none,
 )
-
-
-class TestStrOrNone:
-    def test_none_returns_none(self):
-        assert _str_or_none(None) is None
-
-    def test_string_returned_as_is(self):
-        assert _str_or_none("ON") == "ON"
-
-    def test_int_converted_to_string(self):
-        assert _str_or_none(1) == "1"
-
-    def test_bool_converted_to_string(self):
-        # bool is a common z2m value type for value_on/value_off.
-        # NOTE: str(True) == "True" (not "true"!) — see docs/REFACTORING.md.
-        # If z2m starts sending bool consistently, this will silently
-        # break switch comparisons in ControlMeta.format_value.
-        assert _str_or_none(True) == "True"
-        assert _str_or_none(False) == "False"
-
-    def test_empty_string_preserved(self):
-        # empty string is not None — must be returned as ""
-        assert _str_or_none("") == ""
 
 
 class TestExposeFeatureIsWritable:
@@ -118,18 +94,32 @@ class TestExposeFeatureFromDict:
         assert feat.value_on == "ON"
         assert feat.value_off == "OFF"
 
-    def test_value_on_off_converted_to_string(self):
-        # z2m sometimes uses bool/int for value_on/value_off
+    def test_value_on_off_preserves_bool(self):
+        # z2m uses bool for value_on/value_off (e.g. activity_led_indicator)
+        # Must be preserved as-is so Z2M receives true/false, not "True"/"False"
         feat = ExposeFeature.from_dict(
             {
                 "type": "binary",
-                "property": "occupancy",
+                "property": "activity_led_indicator",
                 "value_on": True,
                 "value_off": False,
             }
         )
-        assert feat.value_on == "True"
-        assert feat.value_off == "False"
+        assert feat.value_on is True
+        assert feat.value_off is False
+
+    def test_value_on_off_preserves_string(self):
+        # z2m also uses strings for value_on/value_off (e.g. state: "ON"/"OFF")
+        feat = ExposeFeature.from_dict(
+            {
+                "type": "binary",
+                "property": "state",
+                "value_on": "ON",
+                "value_off": "OFF",
+            }
+        )
+        assert feat.value_on == "ON"
+        assert feat.value_off == "OFF"
 
     def test_value_on_off_none_stays_none(self):
         feat = ExposeFeature.from_dict({"type": "numeric", "property": "x"})

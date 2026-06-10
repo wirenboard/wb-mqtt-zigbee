@@ -9,7 +9,16 @@ htmlcov/
 .venv/
 
 # Debian build artifacts
+build/
 debian/.debhelper/
 debian/tmp/
 debian/wb-zigbee2mqtt/
+debian/wb-mqtt-zigbee/
+debian/debhelper-build-stamp
+debian/files
+debian/*.debhelper.log
+debian/*.postinst.debhelper
+debian/*.postrm.debhelper
+debian/*.prerm.debhelper
+debian/*.substvars
 .pybuild/

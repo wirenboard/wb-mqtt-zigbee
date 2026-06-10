@@ -196,6 +196,34 @@ class TestPublishDevice:
         driver.publish_device_control("0x123", "temperature", "22.4")
         assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/temperature") == "22.4"
 
+    def test_republish_device_clears_stale_optional_meta(
+        self,
+        fake_mqtt_client: FakeMqttClient,
+        wb_observer: WbObserver,
+    ) -> None:
+        driver = _make_driver(fake_mqtt_client)
+
+        # First publish with order and enum
+        controls_with_meta = {
+            "switch": ControlMeta(
+                type=WbControlType.SWITCH,
+                readonly=False,
+                order=1,
+                enum={"ON": "On", "OFF": "Off"},
+            )
+        }
+        driver.publish_device("0x123", "Device", controls_with_meta)
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/switch/meta/order") == "1"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/switch/meta/enum") is not None
+
+        # Second publish without optional meta
+        controls_no_meta = {"switch": ControlMeta(type=WbControlType.SWITCH, readonly=False)}
+        driver.publish_device("0x123", "Device", controls_no_meta)
+
+        # Old values should be cleared
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/switch/meta/order") is None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/switch/meta/enum") is None
+
 
 class TestRemoveDevice:
     """
@@ -218,6 +246,38 @@ class TestRemoveDevice:
         assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/temperature/meta") is None
         assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/temperature") is None
         assert wb_observer.retained(f"{DEVICES_PREFIX}/0x123/controls/switch") is None
+
+    def test_remove_device_clears_control_meta_subtopics(
+        self,
+        fake_mqtt_client: FakeMqttClient,
+        wb_observer: WbObserver,
+    ) -> None:
+        controls = {
+            "switch": ControlMeta(
+                type=WbControlType.SWITCH,
+                readonly=False,
+                order=1,
+                enum={"ON": "On", "OFF": "Off"},
+                max=100.0,
+                min=0.0,
+            )
+        }
+        driver = _make_driver(fake_mqtt_client)
+        driver.publish_device("0x123", "Device", controls)
+        prefix = f"{DEVICES_PREFIX}/0x123/controls/switch/meta"
+        assert wb_observer.retained(f"{prefix}/type") is not None
+        assert wb_observer.retained(f"{prefix}/order") is not None
+        assert wb_observer.retained(f"{prefix}/enum") is not None
+        assert wb_observer.retained(f"{prefix}/max") is not None
+        assert wb_observer.retained(f"{prefix}/min") is not None
+
+        driver.remove_device("0x123", controls)
+
+        assert wb_observer.retained(f"{prefix}/type") is None
+        assert wb_observer.retained(f"{prefix}/order") is None
+        assert wb_observer.retained(f"{prefix}/enum") is None
+        assert wb_observer.retained(f"{prefix}/max") is None
+        assert wb_observer.retained(f"{prefix}/min") is None
 
     def test_remove_retained_device_clears_by_control_ids(
         self,

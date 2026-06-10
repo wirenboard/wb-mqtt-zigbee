@@ -1,3 +1,9 @@
+wb-mqtt-zigbee (1.4.6) stable; urgency=medium
+
+  * Add control and device meta subtopics for HomeAssistant discovery
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Tue, 04 Jun 2026 15:00:00 +0300
+
 wb-mqtt-zigbee (1.4.5) stable; urgency=medium
 
   * Update Russian translations

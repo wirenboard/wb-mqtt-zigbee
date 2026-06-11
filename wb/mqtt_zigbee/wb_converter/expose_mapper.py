@@ -191,10 +191,21 @@ NESTED_TYPES = {
 }
 
 # Service controls always added by map_exposes_to_controls regardless of exposes
-SERVICE_CONTROLS = {"available", "device_type", "last_seen"}
+SERVICE_CONTROLS = {"available", "device_type", "power_source", "last_seen"}
+
+_POWER_SOURCE_LABELS = {
+    "Battery": {"en": "Battery", "ru": "Батарея"},
+    "Mains (single phase)": {"en": "Mains (single phase)", "ru": "Сеть 220В"},
+    "Mains (3 phase)": {"en": "Mains (3 phase)", "ru": "Сеть 380В"},
+    "DC Source": {"en": "DC Source", "ru": "Внешний DC"},
+    "USB": {"en": "USB", "ru": "USB"},
+    "Unknown": {"en": "Unknown", "ru": "Неизвестно"},
+}
 
 
-def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "") -> dict[str, ControlMeta]:
+def map_exposes_to_controls(
+    exposes: list[ExposeFeature], device_type: str = "", power_source: str = ""
+) -> dict[str, ControlMeta]:
     """Convert a list of z2m expose features into a flat dict of WB controls.
 
     Recursively flattens all exposes, deduplicates by property name,
@@ -241,6 +252,15 @@ def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "")
                 "EndDevice": {"en": "End Device", "ru": "Оконечное устройство"},
                 "Coordinator": {"en": "Coordinator", "ru": "Координатор"},
             },
+        )
+        order += 1
+    if power_source:
+        controls["power_source"] = ControlMeta(
+            type=WbControlType.TEXT,
+            readonly=True,
+            order=order,
+            title={"en": "Power Source", "ru": "Тип питания"},
+            enum=_POWER_SOURCE_LABELS,
         )
         order += 1
     controls["last_seen"] = ControlMeta(

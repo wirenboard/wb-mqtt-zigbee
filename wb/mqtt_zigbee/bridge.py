@@ -439,7 +439,8 @@ def _sanitize_device_id(name: str) -> str:
 
 
 def _build_device_id(model: str, friendly_name: str) -> str:
-    """Build the WB device ID from model and friendly_name.
+    """
+    Build the WB device ID from model and friendly_name.
 
     Mirrors the composite display name "{model} {friendly_name}" so the device_id
     itself carries the model + name. The device_id is the last-resort fallback the

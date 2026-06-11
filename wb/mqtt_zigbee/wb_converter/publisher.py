@@ -41,8 +41,9 @@ class WbMqttDriver:
         name: str,
         controls: dict[str, ControlMeta],
         initial_values: Optional[dict[str, str]] = None,
+        model: str = "",
     ) -> None:
-        self._publish_device(device_id, name, controls, initial_values)
+        self._publish_device(device_id, name, controls, initial_values, model)
 
     def remove_device(self, device_id: str, controls: dict[str, ControlMeta]) -> None:
         """Remove a WB device by publishing empty retain on all its topics"""
@@ -186,10 +187,12 @@ class WbMqttDriver:
         name: str,
         controls: dict[str, ControlMeta],
         initial_values: Optional[dict[str, str]] = None,
+        model: str = "",
     ) -> None:
-        device_meta = {"driver": DRIVER_NAME, "title": {"en": name, "ru": name}}
+        display_name = f"{model} {name}".strip() if model else name
+        device_meta = {"driver": DRIVER_NAME, "title": {"en": display_name, "ru": display_name}}
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", json.dumps(device_meta))
-        self._publish_device_meta_subtopics(device_id, name)
+        self._publish_device_meta_subtopics(device_id, display_name, model)
         for control_id, meta in controls.items():
             self._publish_control_meta(device_id, control_id, meta)
             value = initial_values.get(control_id, " ") if initial_values else " "
@@ -211,17 +214,19 @@ class WbMqttDriver:
         self._publish_retain(topic, json.dumps(payload))
         self._publish_control_meta_subtopics(device_id, control_id, meta)
 
-    def _publish_device_meta_subtopics(self, device_id: str, name: str) -> None:
-        """Publish device meta sub-topics (name, driver)"""
+    def _publish_device_meta_subtopics(self, device_id: str, name: str, model: str = "") -> None:
+        """Publish device meta sub-topics (name, driver, model)"""
         prefix = f"{DEVICES_PREFIX}/{device_id}/meta"
         self._publish_retain(f"{prefix}/name", name)
         self._publish_retain(f"{prefix}/driver", DRIVER_NAME)
+        self._publish_retain(f"{prefix}/model", model)
 
     def _clear_device_meta_subtopics(self, device_id: str) -> None:
         """Clear device meta sub-topics when removing a device"""
         prefix = f"{DEVICES_PREFIX}/{device_id}/meta"
         self._publish_retain(f"{prefix}/name", "")
         self._publish_retain(f"{prefix}/driver", "")
+        self._publish_retain(f"{prefix}/model", "")
 
     def _publish_control_meta_subtopics(self, device_id: str, control_id: str, meta: ControlMeta) -> None:
         """Publish control meta sub-topics for HomeAssistant discovery"""

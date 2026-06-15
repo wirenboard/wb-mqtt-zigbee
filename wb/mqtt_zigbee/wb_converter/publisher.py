@@ -210,6 +210,8 @@ class WbMqttDriver:
             payload["max"] = meta.max
         if meta.min is not None:
             payload["min"] = meta.min
+        if meta.units:
+            payload["units"] = meta.units
         topic = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
         self._publish_retain(topic, json.dumps(payload))
         self._publish_control_meta_subtopics(device_id, control_id, meta)
@@ -237,11 +239,12 @@ class WbMqttDriver:
         self._publish_retain(f"{prefix}/enum", json.dumps(meta.enum) if meta.enum else "")
         self._publish_retain(f"{prefix}/max", str(meta.max) if meta.max is not None else "")
         self._publish_retain(f"{prefix}/min", str(meta.min) if meta.min is not None else "")
+        self._publish_retain(f"{prefix}/units", meta.units)
 
     def _clear_control_meta_subtopics(self, device_id: str, control_id: str) -> None:
-        """Clear all control meta sub-topics (type, readonly, order, enum, max, min)"""
+        """Clear all control meta sub-topics (type, readonly, order, enum, max, min, units)"""
         prefix = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
-        for sub in ("type", "readonly", "order", "enum", "max", "min"):
+        for sub in ("type", "readonly", "order", "enum", "max", "min", "units"):
             self._publish_retain(f"{prefix}/{sub}", "")
 
     def _publish_retain(self, topic: str, value: str) -> None:

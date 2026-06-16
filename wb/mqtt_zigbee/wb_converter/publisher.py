@@ -19,7 +19,9 @@ _CONTROL_META_WILDCARD = f"{DEVICES_PREFIX}/+/controls/+/meta"
 
 
 class WbMqttDriver:
-    """Publishes virtual WB devices and controls according to Wiren Board MQTT Conventions"""
+    """
+    Publishes virtual WB devices and controls according to Wiren Board MQTT Conventions
+    """
 
     def __init__(self, mqtt_client: MQTTClient, device_id: str, device_name: str) -> None:
         self._client = mqtt_client
@@ -46,7 +48,9 @@ class WbMqttDriver:
         self._publish_device(device_id, name, controls, initial_values, model)
 
     def remove_device(self, device_id: str, controls: dict[str, ControlMeta]) -> None:
-        """Remove a WB device by publishing empty retain on all its topics"""
+        """
+        Remove a WB device by publishing empty retain on all its topics
+        """
         for control_id in controls:
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta", "")
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", "")
@@ -55,7 +59,9 @@ class WbMqttDriver:
         self._clear_device_meta_subtopics(device_id)
 
     def remove_retained_device(self, device_id: str, control_ids: set[str]) -> None:
-        """Remove a ghost device discovered via retained scan (no ControlMeta needed)"""
+        """
+        Remove a ghost device discovered via retained scan (no ControlMeta needed)
+        """
         for control_id in control_ids:
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta", "")
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", "")
@@ -70,7 +76,9 @@ class WbMqttDriver:
     # -- Retained device scan (ghost cleanup) ----------------------------------
 
     def start_retained_scan(self) -> None:
-        """Subscribe to wildcard topics to discover retained devices with our driver."""
+        """
+        Subscribe to wildcard topics to discover retained devices with our driver
+        """
         self._scanned_our_ids.clear()
         self._scanned_controls.clear()
         self._client.subscribe(_DEVICE_META_WILDCARD)
@@ -79,14 +87,17 @@ class WbMqttDriver:
         self._client.message_callback_add(_CONTROL_META_WILDCARD, self._on_retained_control_meta)
 
     def stop_retained_scan(self) -> None:
-        """Unsubscribe from wildcard scan topics."""
+        """
+        Unsubscribe from wildcard scan topics
+        """
         self._client.unsubscribe(_DEVICE_META_WILDCARD)
         self._client.unsubscribe(_CONTROL_META_WILDCARD)
         self._client.message_callback_remove(_DEVICE_META_WILDCARD)
         self._client.message_callback_remove(_CONTROL_META_WILDCARD)
 
     def get_scanned_device_ids(self) -> set[str]:
-        """Return device_ids discovered during retained scan that have our driver.
+        """
+        Return device_ids discovered during retained scan that have our driver.
 
         Excludes the bridge device itself (it is not a zigbee device).
         """
@@ -97,7 +108,9 @@ class WbMqttDriver:
         return self._scanned_controls.get(device_id, set())
 
     def _on_retained_device_meta(self, _client: Client, _userdata: Any, message: MQTTMessage) -> None:
-        """Callback for /devices/+/meta: collect device_ids with our driver."""
+        """
+        Callback for /devices/+/meta: collect device_ids with our driver
+        """
         payload = message.payload.decode("utf-8").strip()
         if not payload:
             return
@@ -113,7 +126,9 @@ class WbMqttDriver:
             self._scanned_our_ids.add(parts[2])
 
     def _on_retained_control_meta(self, _client: Client, _userdata: Any, message: MQTTMessage) -> None:
-        """Callback for /devices/+/controls/+/meta: collect control_ids per device."""
+        """
+        Callback for /devices/+/controls/+/meta: collect control_ids per device
+        """
         payload = message.payload.decode("utf-8").strip()
         if not payload:
             return
@@ -157,7 +172,8 @@ class WbMqttDriver:
         controls: dict[str, ControlMeta],
         on_command: Callable[[str, str], None],
     ) -> None:
-        """Subscribe to /on topics for writable controls.
+        """
+        Subscribe to /on topics for writable controls.
 
         Args:
             device_id: WB device ID
@@ -173,7 +189,9 @@ class WbMqttDriver:
             logger.debug("Subscribed to device command: %s", topic)
 
     def unsubscribe_device_commands(self, device_id: str, controls: dict[str, ControlMeta]) -> None:
-        """Unsubscribe from /on topics for writable controls"""
+        """
+        Unsubscribe from /on topics for writable controls
+        """
         for control_id, meta in controls.items():
             if meta.readonly:
                 continue
@@ -217,21 +235,27 @@ class WbMqttDriver:
         self._publish_control_meta_subtopics(device_id, control_id, meta)
 
     def _publish_device_meta_subtopics(self, device_id: str, name: str, model: str = "") -> None:
-        """Publish device meta sub-topics (name, driver, model)"""
+        """
+        Publish device meta sub-topics (name, driver, model)
+        """
         prefix = f"{DEVICES_PREFIX}/{device_id}/meta"
         self._publish_retain(f"{prefix}/name", name)
         self._publish_retain(f"{prefix}/driver", DRIVER_NAME)
         self._publish_retain(f"{prefix}/model", model)
 
     def _clear_device_meta_subtopics(self, device_id: str) -> None:
-        """Clear device meta sub-topics when removing a device"""
+        """
+        Clear device meta sub-topics when removing a device
+        """
         prefix = f"{DEVICES_PREFIX}/{device_id}/meta"
         self._publish_retain(f"{prefix}/name", "")
         self._publish_retain(f"{prefix}/driver", "")
         self._publish_retain(f"{prefix}/model", "")
 
     def _publish_control_meta_subtopics(self, device_id: str, control_id: str, meta: ControlMeta) -> None:
-        """Publish control meta sub-topics for HomeAssistant discovery"""
+        """
+        Publish control meta sub-topics for HomeAssistant discovery
+        """
         prefix = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
         self._publish_retain(f"{prefix}/type", meta.type)
         self._publish_retain(f"{prefix}/readonly", "1" if meta.readonly else "0")
@@ -242,7 +266,9 @@ class WbMqttDriver:
         self._publish_retain(f"{prefix}/units", meta.units)
 
     def _clear_control_meta_subtopics(self, device_id: str, control_id: str) -> None:
-        """Clear all control meta sub-topics (type, readonly, order, enum, max, min, units)"""
+        """
+        Clear all control meta sub-topics (type, readonly, order, enum, max, min, units)
+        """
         prefix = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
         for sub in ("type", "readonly", "order", "enum", "max", "min", "units"):
             self._publish_retain(f"{prefix}/{sub}", "")
@@ -252,7 +278,9 @@ class WbMqttDriver:
 
 
 def _make_command_handler(control_id: str, on_command: Callable[[str, str], None]):
-    """Create MQTT message handler that extracts payload and calls on_command(control_id, value)"""
+    """
+    Create MQTT message handler that extracts payload and calls on_command(control_id, value)
+    """
 
     def handler(_client: Client, _userdata: Any, message: MQTTMessage) -> None:
         value = message.payload.decode("utf-8").strip()

@@ -138,15 +138,18 @@ def _wb_rgb_to_hs_dict(wb_rgb: str) -> HueSaturationColor:
 
 def _format_number(value: float) -> str:
     """
-    Format a number for a WB control: drop the trailing .0 and float rounding noise.
+    Format a number for a WB control: drop the trailing .0 and binary-float noise.
 
     Example:
         >>> _format_number(3.0)
         '3'
-        >>> _format_number(3700 * 0.001)
-        '3.7'
+        >>> _format_number(9 * 0.001)  # would be '0.009000000000000001' without rounding
+        '0.009'
     """
-    rounded = round(value, 6)
+    # 3 decimals: the only scaling is milli -> base unit (÷1000), so thousandths are
+    # the finest meaningful precision. Rounding here also strips float noise such as
+    # 9 * 0.001 == 0.009000000000000001.
+    rounded = round(value, 3)
     return str(int(rounded)) if float(rounded).is_integer() else str(rounded)
 
 

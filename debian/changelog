@@ -4,7 +4,7 @@ wb-mqtt-zigbee (1.4.7) stable; urgency=medium
   * Add power_source control to the device card with Russian translations
   * Convert battery voltage/current from milli-units (mV/mA) to V/A in the card
 
- -- Victor Fedorov <victor.fedorov@wirenboard.com>  Wed, 11 Jun 2026 12:00:00 +0300
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Tue, 16 Jun 2026 12:00:00 +0300
 
 wb-mqtt-zigbee (1.4.6) stable; urgency=medium
 

@@ -206,7 +206,14 @@ _POWER_SOURCE_LABELS = {
     "Mains (single phase)": {"en": "Mains (single phase)", "ru": "Сеть 220В"},
     "Mains (3 phase)": {"en": "Mains (3 phase)", "ru": "Сеть 380В"},
     "DC Source": {"en": "DC Source", "ru": "Внешний DC"},
-    "USB": {"en": "USB", "ru": "USB"},
+    "Emergency mains constantly powered": {
+        "en": "Emergency mains constantly powered",
+        "ru": "Аварийная сеть (постоянное питание)",
+    },
+    "Emergency mains and transfer switch": {
+        "en": "Emergency mains and transfer switch",
+        "ru": "Аварийная сеть с АВР",
+    },
     "Unknown": {"en": "Unknown", "ru": "Неизвестно"},
 }
 

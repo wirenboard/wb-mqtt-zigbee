@@ -28,6 +28,7 @@ def make_expose(
     name: str = "",
     property: str = "",
     access: int = READABLE,
+    unit: str = "",
     value_min: Optional[float] = None,
     value_max: Optional[float] = None,
     value_on: Optional[str] = None,
@@ -41,6 +42,7 @@ def make_expose(
         name=name or property,
         property=property,
         access=access,
+        unit=unit,
         value_min=value_min,
         value_max=value_max,
         value_on=value_on,
@@ -258,6 +260,40 @@ class TestMapLeafFeature:
             )
         )
         assert meta.type == WbControlType.TEMPERATURE
+
+    def test_voltage_in_millivolts_is_scaled_to_volts(self):
+        [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="voltage", unit="mV"))
+        assert meta.type == WbControlType.VOLTAGE
+        assert meta.scale == 0.001
+        # 3000 mV → 3 V, 2700 mV → 2.7 V
+        assert meta.format_value(3000) == "3"
+        assert meta.format_value(2700) == "2.7"
+
+    def test_voltage_in_volts_is_not_scaled(self):
+        [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="voltage", unit="V"))
+        assert meta.type == WbControlType.VOLTAGE
+        assert meta.scale == 1.0
+        assert meta.format_value(230) == "230"
+
+    def test_current_in_milliamps_is_scaled_to_amps(self):
+        [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="current", unit="mA"))
+        assert meta.type == WbControlType.CURRENT
+        assert meta.scale == 0.001
+        assert meta.format_value(500) == "0.5"
+
+    def test_value_control_carries_z2m_unit(self):
+        # battery is an untyped value control → z2m's "%" unit is passed through.
+        [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="battery", unit="%"))
+        assert meta.type == WbControlType.VALUE
+        assert meta.units == "%"
+
+    def test_typed_control_does_not_carry_z2m_unit(self):
+        # temperature is a typed control → unit comes from the WB type, not z2m.
+        [(_, meta)] = _map_leaf_feature(
+            make_expose(type=ExposeType.NUMERIC, property="temperature", unit="°C")
+        )
+        assert meta.type == WbControlType.TEMPERATURE
+        assert meta.units == ""
 
     def test_binary_becomes_switch_with_value_on_off(self):
         [(_, meta)] = _map_leaf_feature(

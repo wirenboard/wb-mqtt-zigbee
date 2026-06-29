@@ -73,6 +73,14 @@ class ControlMeta:
     enum: Optional[dict] = None
     min: Optional[float] = None
     max: Optional[float] = None
+    # Unit string shown next to the value in the WB UI (e.g. "%", "lx", "s"). Only
+    # set for untyped value/range controls; typed controls (temperature, voltage, …)
+    # already carry their unit via the WB control type.
+    units: str = ""
+    # Multiplier applied to numeric z2m values before publishing (and reversed on
+    # commands). Used to convert z2m milli-units (mV, mA) to the base SI units the
+    # WB voltage/current control types display. 1.0 = no conversion.
+    scale: float = 1.0
 
     def format_value(self, value: object) -> str:
         """Convert a z2m value to WB control string representation"""
@@ -86,6 +94,8 @@ class ControlMeta:
             return _hs_dict_to_wb_rgb(value)
         if isinstance(value, dict):
             return json.dumps(value)
+        if self.scale != 1.0 and isinstance(value, (int, float)):
+            return _format_number(value * self.scale)
         return str(value)
 
     def parse_wb_value(self, wb_value: str) -> object:
@@ -98,7 +108,11 @@ class ControlMeta:
             return _wb_rgb_to_hs_dict(wb_value)
         if self.type == WbControlType.TEXT:
             return wb_value
-        return _parse_number(wb_value)
+        number = _parse_number(wb_value)
+        if self.scale != 1.0 and isinstance(number, (int, float)):
+            reversed_value = number / self.scale
+            return int(reversed_value) if float(reversed_value).is_integer() else reversed_value
+        return number
 
 
 def _wb_rgb_to_hs_dict(wb_rgb: str) -> HueSaturationColor:
@@ -120,6 +134,23 @@ def _wb_rgb_to_hs_dict(wb_rgb: str) -> HueSaturationColor:
     except (ValueError, IndexError):
         logger.warning("Invalid RGB value: '%s'", wb_rgb)
         return {"hue": 0, "saturation": 0}
+
+
+def _format_number(value: float) -> str:
+    """
+    Format a number for a WB control: drop the trailing .0 and binary-float noise.
+
+    Example:
+        >>> _format_number(3.0)
+        '3'
+        >>> _format_number(9 * 0.001)  # would be '0.009000000000000001' without rounding
+        '0.009'
+    """
+    # 3 decimals: the only scaling is milli -> base unit (÷1000), so thousandths are
+    # the finest meaningful precision. Rounding here also strips float noise such as
+    # 9 * 0.001 == 0.009000000000000001.
+    rounded = round(value, 3)
+    return str(int(rounded)) if float(rounded).is_integer() else str(rounded)
 
 
 def _parse_number(value: str) -> object:

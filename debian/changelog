@@ -1,3 +1,11 @@
+wb-mqtt-zigbee (1.4.7) stable; urgency=medium
+
+  * Show the device model in the WB device card: use "{model} {friendly_name}"
+  * Add power_source control to the device card with Russian translations
+  * Convert battery voltage/current from milli-units (mV/mA) to V/A in the card
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Mon, 29 Jun 2026 10:00:00 +0300
+
 wb-mqtt-zigbee (1.4.6) stable; urgency=medium
 
   * Add control and device meta subtopics for HomeAssistant discovery

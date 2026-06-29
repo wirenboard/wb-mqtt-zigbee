@@ -175,6 +175,14 @@ PROPERTY_TITLES: dict[str, dict[str, str]] = {
     "uart_baud_rate": {"en": "UART Baud Rate", "ru": "Скорость UART"},
 }
 
+# z2m milli-unit → WB base-unit conversion factors, keyed by (WB control type, z2m unit).
+# Battery/diagnostic voltage and current are reported in mV/mA; WB voltage/current
+# control types display V/A.
+_UNIT_SCALE_TO_BASE: dict[tuple[str, str], float] = {
+    (WbControlType.VOLTAGE, "mV"): 0.001,
+    (WbControlType.CURRENT, "mA"): 0.001,
+}
+
 # Phase/endpoint suffix on multi-phase meters & multi-gang devices: power_l1, voltage_a, …
 # _localized_title() strips it and appends the upper-cased label to the base title.
 PHASE_SUFFIX_RE = re.compile(r"^(.+)_(l\d+|[abc])$")
@@ -191,10 +199,28 @@ NESTED_TYPES = {
 }
 
 # Service controls always added by map_exposes_to_controls regardless of exposes
-SERVICE_CONTROLS = {"available", "device_type", "last_seen"}
+SERVICE_CONTROLS = {"available", "device_type", "power_source", "last_seen"}
+
+_POWER_SOURCE_LABELS = {
+    "Battery": {"en": "Battery", "ru": "Батарея"},
+    "Mains (single phase)": {"en": "Mains (single phase)", "ru": "Сеть 220В"},
+    "Mains (3 phase)": {"en": "Mains (3 phase)", "ru": "Сеть 380В"},
+    "DC Source": {"en": "DC Source", "ru": "Внешний DC"},
+    "Emergency mains constantly powered": {
+        "en": "Emergency mains constantly powered",
+        "ru": "Аварийная сеть (постоянное питание)",
+    },
+    "Emergency mains and transfer switch": {
+        "en": "Emergency mains and transfer switch",
+        "ru": "Аварийная сеть с АВР",
+    },
+    "Unknown": {"en": "Unknown", "ru": "Неизвестно"},
+}
 
 
-def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "") -> dict[str, ControlMeta]:
+def map_exposes_to_controls(
+    exposes: list[ExposeFeature], device_type: str = "", power_source: str = ""
+) -> dict[str, ControlMeta]:
     """Convert a list of z2m expose features into a flat dict of WB controls.
 
     Recursively flattens all exposes, deduplicates by property name,
@@ -241,6 +267,15 @@ def map_exposes_to_controls(exposes: list[ExposeFeature], device_type: str = "")
                 "EndDevice": {"en": "End Device", "ru": "Оконечное устройство"},
                 "Coordinator": {"en": "Coordinator", "ru": "Координатор"},
             },
+        )
+        order += 1
+    if power_source:
+        controls["power_source"] = ControlMeta(
+            type=WbControlType.TEXT,
+            readonly=True,
+            order=order,
+            title={"en": "Power Source", "ru": "Тип питания"},
+            enum=_POWER_SOURCE_LABELS,
         )
         order += 1
     controls["last_seen"] = ControlMeta(
@@ -319,6 +354,14 @@ def _map_leaf_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
     ):
         wb_type = WbControlType.RANGE
 
+    # z2m reports some diagnostics in milli-units (battery voltage in mV, etc.); the
+    # WB voltage/current control types display base SI units, so scale to V / A.
+    scale = _UNIT_SCALE_TO_BASE.get((wb_type, feature.unit), 1.0)
+
+    # Typed controls (temperature, voltage, …) carry their unit via the WB type, so
+    # only pass z2m's unit through for untyped value/range controls (battery %, etc.).
+    units = feature.unit if wb_type in (WbControlType.VALUE, WbControlType.RANGE) else ""
+
     meta = ControlMeta(
         type=wb_type,
         readonly=not feature.is_writable,
@@ -326,8 +369,10 @@ def _map_leaf_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
         value_on=feature.value_on,
         value_off=feature.value_off,
         enum=enum,
-        min=feature.value_min,
-        max=feature.value_max,
+        min=feature.value_min * scale if feature.value_min is not None else None,
+        max=feature.value_max * scale if feature.value_max is not None else None,
+        units=units,
+        scale=scale,
     )
     return [(feature.property, meta)]
 

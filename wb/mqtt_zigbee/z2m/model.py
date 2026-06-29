@@ -112,6 +112,7 @@ class Z2MDevice:
     model: str = ""
     vendor: str = ""
     description: str = ""
+    power_source: str = ""
     exposes: list[ExposeFeature] = field(default_factory=list)
 
     @staticmethod
@@ -124,6 +125,7 @@ class Z2MDevice:
             model=definition.get("model", ""),
             vendor=definition.get("vendor", ""),
             description=definition.get("description", ""),
+            power_source=data.get("power_source", ""),
             exposes=[ExposeFeature.from_dict(exp) for exp in definition.get("exposes", [])],
         )
 

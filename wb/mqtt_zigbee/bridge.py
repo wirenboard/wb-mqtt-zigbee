@@ -9,7 +9,7 @@ from wb_common.mqtt_client import MQTTClient
 from .registered_device import PendingCommand, RegisteredDevice
 from .wb_converter.controls import BridgeControl, WbBoolValue
 from .wb_converter.expose_mapper import SERVICE_CONTROLS, map_exposes_to_controls
-from .wb_converter.publisher import WbMqttDriver
+from .wb_converter.publisher import WbMqttDriver, build_display_name
 from .z2m.client import Z2MClient
 from .z2m.model import (
     BridgeInfo,
@@ -91,12 +91,20 @@ class Bridge:
                 friendly_name,
                 registered.controls,
                 {"available": WbBoolValue.FALSE},
+                model=registered.z2m.model,
+                ieee_address=registered.z2m.ieee_address,
             )
             if registered.z2m.type:
                 self._mqtt_driver.publish_device_control(
                     registered.device_id,
                     "device_type",
                     registered.z2m.type,
+                )
+            if registered.z2m.model:
+                self._mqtt_driver.publish_device_control(
+                    registered.device_id,
+                    "model",
+                    registered.z2m.model,
                 )
             if registered.z2m.power_source:
                 self._mqtt_driver.publish_device_control(
@@ -191,12 +199,15 @@ class Bridge:
             logger.info("Device '%s' has no exposes yet, skipping", device.friendly_name)
             return
         controls = map_exposes_to_controls(
-            device.exposes, device_type=device.type, power_source=device.power_source
+            device.exposes,
+            device_type=device.type,
+            power_source=device.power_source,
+            model=device.model,
         )
         if sum(1 for _control in controls if _control not in SERVICE_CONTROLS) == 0:
             logger.warning("Device '%s' has no mappable exposes, skipping", device.friendly_name)
             return
-        device_id = _build_device_id(device.model, device.friendly_name)
+        device_id = _build_device_id(device.model, device.friendly_name, device.ieee_address)
         registered = RegisteredDevice(z2m=device, controls=controls, device_id=device_id)
         logger.info(
             "Registering device '%s' as '%s' (%d controls)", device.friendly_name, device_id, len(controls)
@@ -204,10 +215,17 @@ class Bridge:
         self._known_devices[device.friendly_name] = registered
         self._ieee_to_name[device.ieee_address] = device.friendly_name
         self._mqtt_driver.publish_device(
-            device_id, device.friendly_name, controls, {"available": WbBoolValue.FALSE}, model=device.model
+            device_id,
+            device.friendly_name,
+            controls,
+            {"available": WbBoolValue.FALSE},
+            model=device.model,
+            ieee_address=device.ieee_address,
         )
         if device.type:
             self._mqtt_driver.publish_device_control(device_id, "device_type", device.type)
+        if device.model:
+            self._mqtt_driver.publish_device_control(device_id, "model", device.model)
         if device.power_source:
             self._mqtt_driver.publish_device_control(device_id, "power_source", device.power_source)
         self._mqtt_driver.subscribe_device_commands(
@@ -226,7 +244,10 @@ class Bridge:
         registered = self._known_devices[device.friendly_name]
         if device.exposes:
             new_controls = map_exposes_to_controls(
-                device.exposes, device_type=device.type, power_source=device.power_source
+                device.exposes,
+                device_type=device.type,
+                power_source=device.power_source,
+                model=device.model,
             )
             if set(new_controls.keys()) != set(registered.controls.keys()):
                 logger.info(
@@ -240,7 +261,11 @@ class Bridge:
                 registered.controls = new_controls
                 registered.z2m = device
                 self._mqtt_driver.publish_device(
-                    registered.device_id, device.friendly_name, new_controls, model=device.model
+                    registered.device_id,
+                    device.friendly_name,
+                    new_controls,
+                    model=device.model,
+                    ieee_address=device.ieee_address,
                 )
                 self._mqtt_driver.subscribe_device_commands(
                     registered.device_id,
@@ -250,9 +275,11 @@ class Bridge:
                 self._z2m.request_device_state(device.friendly_name)
         # Publish service-control values AFTER any re-registration: remove_device()
         # above wipes the device's retained topics, so publishing these earlier would
-        # leave device_type/power_source blank until exposes next stabilize.
+        # leave device_type/model/power_source blank until exposes next stabilize.
         if device.type:
             self._mqtt_driver.publish_device_control(registered.device_id, "device_type", device.type)
+        if device.model:
+            self._mqtt_driver.publish_device_control(registered.device_id, "model", device.model)
         if device.power_source:
             self._mqtt_driver.publish_device_control(
                 registered.device_id, "power_source", device.power_source
@@ -369,7 +396,7 @@ class Bridge:
 
     def _remove_ghost_devices(self, devices: list[Z2MDevice]) -> None:
         """Remove retained WB devices from previous runs that are no longer in zigbee2mqtt."""
-        current_device_ids = {_build_device_id(d.model, d.friendly_name) for d in devices}
+        current_device_ids = {_build_device_id(d.model, d.friendly_name, d.ieee_address) for d in devices}
         scanned_ids = self._mqtt_driver.get_scanned_device_ids()
         ghost_ids = scanned_ids - current_device_ids
         for device_id in ghost_ids:
@@ -387,7 +414,7 @@ class Bridge:
             logger.warning("Rename event for unknown device '%s' -> '%s'", old_name, new_name)
             return
         old_device_id = registered.device_id
-        new_device_id = _build_device_id(registered.z2m.model, new_name)
+        new_device_id = _build_device_id(registered.z2m.model, new_name, registered.z2m.ieee_address)
         self._z2m.unsubscribe_device(old_name)
         self._mqtt_driver.unsubscribe_device_commands(old_device_id, registered.controls)
         self._mqtt_driver.remove_device(old_device_id, registered.controls)
@@ -397,10 +424,16 @@ class Bridge:
         self._ieee_to_name[registered.z2m.ieee_address] = new_name
         self._z2m.subscribe_device(new_name)
         self._mqtt_driver.publish_device(
-            new_device_id, new_name, registered.controls, model=registered.z2m.model
+            new_device_id,
+            new_name,
+            registered.controls,
+            model=registered.z2m.model,
+            ieee_address=registered.z2m.ieee_address,
         )
         if registered.z2m.type:
             self._mqtt_driver.publish_device_control(new_device_id, "device_type", registered.z2m.type)
+        if registered.z2m.model:
+            self._mqtt_driver.publish_device_control(new_device_id, "model", registered.z2m.model)
         if registered.z2m.power_source:
             self._mqtt_driver.publish_device_control(
                 new_device_id, "power_source", registered.z2m.power_source
@@ -438,17 +471,16 @@ def _sanitize_device_id(name: str) -> str:
     return re.sub(r"[^\w\-]", "_", name)
 
 
-def _build_device_id(model: str, friendly_name: str) -> str:
+def _build_device_id(model: str, friendly_name: str, ieee_address: str) -> str:
     """
-    Build the WB device ID from model and friendly_name.
+    Build the WB device ID from the device display name.
 
-    Mirrors the composite display name "{model} {friendly_name}" so the device_id
-    itself carries the model + name. The device_id is the last-resort fallback the
-    WB Web UI shows in the card header on a cold load, before the /meta title is
-    applied, so embedding the model here keeps the header meaningful.
+    The device_id mirrors the card title (see build_display_name): "{model} {ieee}"
+    while the device is unnamed, or just the user's friendly_name once renamed. The
+    device_id is the last-resort fallback the WB Web UI shows in the card header on a
+    cold load, so it must carry the same meaningful text as the title.
     """
-    composite = f"{model} {friendly_name}".strip() if model else friendly_name
-    return _sanitize_device_id(composite)
+    return _sanitize_device_id(build_display_name(model, friendly_name, ieee_address))
 
 
 def _format_last_seen(value: object) -> str:

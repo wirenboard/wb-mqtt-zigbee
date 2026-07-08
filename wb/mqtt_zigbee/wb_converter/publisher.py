@@ -18,6 +18,20 @@ _DEVICE_META_WILDCARD = f"{DEVICES_PREFIX}/+/meta"
 _CONTROL_META_WILDCARD = f"{DEVICES_PREFIX}/+/controls/+/meta"
 
 
+def build_display_name(model: str, friendly_name: str, ieee_address: str) -> str:
+    """
+    Build the device card name from model and friendly_name.
+
+    The model is prepended only while the device is unnamed — z2m defaults
+    friendly_name to the IEEE address, which alone is meaningless in the card, so
+    we show "{model} {ieee}". Once the user renames the device in z2m, we respect
+    their chosen name and drop the model: "{friendly_name}".
+    """
+    if model and friendly_name == ieee_address:
+        return f"{model} {friendly_name}"
+    return friendly_name
+
+
 class WbMqttDriver:
     """
     Publishes virtual WB devices and controls according to Wiren Board MQTT Conventions
@@ -44,8 +58,9 @@ class WbMqttDriver:
         controls: dict[str, ControlMeta],
         initial_values: Optional[dict[str, str]] = None,
         model: str = "",
+        ieee_address: str = "",
     ) -> None:
-        self._publish_device(device_id, name, controls, initial_values, model)
+        self._publish_device(device_id, name, controls, initial_values, model, ieee_address)
 
     def remove_device(self, device_id: str, controls: dict[str, ControlMeta]) -> None:
         """
@@ -206,8 +221,9 @@ class WbMqttDriver:
         controls: dict[str, ControlMeta],
         initial_values: Optional[dict[str, str]] = None,
         model: str = "",
+        ieee_address: str = "",
     ) -> None:
-        display_name = f"{model} {name}".strip() if model else name
+        display_name = build_display_name(model, name, ieee_address)
         device_meta = {"driver": DRIVER_NAME, "title": {"en": display_name, "ru": display_name}}
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", json.dumps(device_meta))
         self._publish_device_meta_subtopics(device_id, display_name, model)

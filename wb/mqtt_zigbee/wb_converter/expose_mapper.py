@@ -199,7 +199,7 @@ NESTED_TYPES = {
 }
 
 # Service controls always added by map_exposes_to_controls regardless of exposes
-SERVICE_CONTROLS = {"available", "device_type", "power_source", "last_seen"}
+SERVICE_CONTROLS = {"available", "device_type", "model", "power_source", "last_seen"}
 
 _POWER_SOURCE_LABELS = {
     "Battery": {"en": "Battery", "ru": "Батарея"},
@@ -219,7 +219,7 @@ _POWER_SOURCE_LABELS = {
 
 
 def map_exposes_to_controls(
-    exposes: list[ExposeFeature], device_type: str = "", power_source: str = ""
+    exposes: list[ExposeFeature], device_type: str = "", power_source: str = "", model: str = ""
 ) -> dict[str, ControlMeta]:
     """Convert a list of z2m expose features into a flat dict of WB controls.
 
@@ -267,6 +267,14 @@ def map_exposes_to_controls(
                 "EndDevice": {"en": "End Device", "ru": "Оконечное устройство"},
                 "Coordinator": {"en": "Coordinator", "ru": "Координатор"},
             },
+        )
+        order += 1
+    if model:
+        controls["model"] = ControlMeta(
+            type=WbControlType.TEXT,
+            readonly=True,
+            order=order,
+            title={"en": "Model", "ru": "Модель"},
         )
         order += 1
     if power_source:

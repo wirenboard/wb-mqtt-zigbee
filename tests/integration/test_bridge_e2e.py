@@ -202,11 +202,28 @@ class TestDeviceRegistration:
 
         z2m_emu.devices([_z2m_sensor("sensor-1")])
 
-        meta = wb_observer.last_json_on(f"{DEVICES_PREFIX}/MODEL-1_sensor-1/meta")
+        meta = wb_observer.last_json_on(f"{DEVICES_PREFIX}/sensor-1/meta")
         assert isinstance(meta, dict)
         assert meta["driver"] == DRIVER_NAME
-        temp_meta = wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-1_sensor-1/controls/temperature/meta")
+        temp_meta = wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/temperature/meta")
         assert temp_meta is not None
+
+    def test_unnamed_device_carries_model_in_id_and_title(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """friendly_name == ieee (device not renamed in z2m) → id/title = "{model} {ieee}"."""
+        bridge.subscribe()
+
+        z2m_emu.devices([_z2m_sensor("0xabc", ieee="0xabc")])
+
+        meta = wb_observer.last_json_on(f"{DEVICES_PREFIX}/MODEL-1_0xabc/meta")
+        assert isinstance(meta, dict)
+        assert meta["title"] == {"en": "MODEL-1 0xabc", "ru": "MODEL-1 0xabc"}
+        # Not published under the bare ieee.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/0xabc/meta") is None
 
     def test_device_count_is_published(
         self,
@@ -250,7 +267,7 @@ class TestDeviceStatePropagation:
 
         z2m_emu.device_state("sensor-1", {"temperature": 21.5})
 
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-1_sensor-1/controls/temperature") == "21.5"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/temperature") == "21.5"
 
     def test_availability_is_forwarded(
         self,
@@ -263,7 +280,7 @@ class TestDeviceStatePropagation:
 
         z2m_emu.device_availability("sensor-1", online=True)
 
-        available_topic = f"{DEVICES_PREFIX}/MODEL-1_sensor-1/controls/available"
+        available_topic = f"{DEVICES_PREFIX}/sensor-1/controls/available"
         assert wb_observer.retained(available_topic) == WbBoolValue.TRUE
 
 
@@ -282,7 +299,7 @@ class TestWbToZ2mCommands:
         bridge.subscribe()
         z2m_emu.devices([_z2m_switch("switch-1")])
 
-        fake_broker.inject(f"{DEVICES_PREFIX}/MODEL-2_switch-1/controls/state/on", WbBoolValue.TRUE)
+        fake_broker.inject(f"{DEVICES_PREFIX}/switch-1/controls/state/on", WbBoolValue.TRUE)
 
         set_topic = f"{BASE}/switch-1/set"
         last_set = wb_observer.last_payload_on(set_topic)
@@ -299,9 +316,9 @@ class TestWbToZ2mCommands:
         bridge.subscribe()
         z2m_emu.devices([_z2m_switch("switch-1")])
 
-        fake_broker.inject(f"{DEVICES_PREFIX}/MODEL-2_switch-1/controls/state/on", WbBoolValue.TRUE)
+        fake_broker.inject(f"{DEVICES_PREFIX}/switch-1/controls/state/on", WbBoolValue.TRUE)
 
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-2_switch-1/controls/state") == WbBoolValue.TRUE
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/switch-1/controls/state") == WbBoolValue.TRUE
 
 
 class TestPendingCommandDebounce:
@@ -319,10 +336,10 @@ class TestPendingCommandDebounce:
     ) -> None:
         bridge.subscribe()
         z2m_emu.devices([_z2m_switch("switch-1")])
-        state_topic = f"{DEVICES_PREFIX}/MODEL-2_switch-1/controls/state"
+        state_topic = f"{DEVICES_PREFIX}/switch-1/controls/state"
 
         fake_clock[0] = 100.0
-        fake_broker.inject(f"{DEVICES_PREFIX}/MODEL-2_switch-1/controls/state/on", WbBoolValue.TRUE)
+        fake_broker.inject(f"{DEVICES_PREFIX}/switch-1/controls/state/on", WbBoolValue.TRUE)
         assert wb_observer.retained(state_topic) == WbBoolValue.TRUE
 
         # Stale "OFF" state arrives 1 second later (well within 5s debounce).
@@ -342,10 +359,10 @@ class TestPendingCommandDebounce:
     ) -> None:
         bridge.subscribe()
         z2m_emu.devices([_z2m_switch("switch-1")])
-        state_topic = f"{DEVICES_PREFIX}/MODEL-2_switch-1/controls/state"
+        state_topic = f"{DEVICES_PREFIX}/switch-1/controls/state"
 
         fake_clock[0] = 100.0
-        fake_broker.inject(f"{DEVICES_PREFIX}/MODEL-2_switch-1/controls/state/on", WbBoolValue.TRUE)
+        fake_broker.inject(f"{DEVICES_PREFIX}/switch-1/controls/state/on", WbBoolValue.TRUE)
 
         fake_clock[0] = 200.0  # well past 5s debounce
         z2m_emu.device_state("switch-1", {"state": "OFF"})
@@ -362,10 +379,10 @@ class TestPendingCommandDebounce:
     ) -> None:
         bridge.subscribe()
         z2m_emu.devices([_z2m_switch("switch-1")])
-        state_topic = f"{DEVICES_PREFIX}/MODEL-2_switch-1/controls/state"
+        state_topic = f"{DEVICES_PREFIX}/switch-1/controls/state"
 
         fake_clock[0] = 100.0
-        fake_broker.inject(f"{DEVICES_PREFIX}/MODEL-2_switch-1/controls/state/on", WbBoolValue.TRUE)
+        fake_broker.inject(f"{DEVICES_PREFIX}/switch-1/controls/state/on", WbBoolValue.TRUE)
 
         # Confirming state arrives within debounce window with the same value.
         fake_clock[0] = 100.5
@@ -434,11 +451,11 @@ class TestDeviceEvents:
     ) -> None:
         bridge.subscribe()
         z2m_emu.devices([_z2m_sensor("sensor-1")])
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-1_sensor-1/meta") is not None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta") is not None
 
         z2m_emu.device_left("sensor-1", ieee_address="0x0001")
 
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-1_sensor-1/meta") is None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta") is None
         assert (
             wb_observer.retained(f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.LAST_LEFT}")
             == "sensor-1"
@@ -452,12 +469,12 @@ class TestDeviceEvents:
     ) -> None:
         bridge.subscribe()
         z2m_emu.devices([_z2m_sensor("old-name")])
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-1_old-name/meta") is not None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/old-name/meta") is not None
 
         z2m_emu.device_renamed("old-name", "new-name")
 
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-1_old-name/meta") is None
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-1_new-name/meta") is not None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/old-name/meta") is None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/new-name/meta") is not None
 
     def test_device_renamed_resubscribes_state_topic(
         self,
@@ -479,7 +496,7 @@ class TestDeviceEvents:
         assert f"{BASE}/old-name" in fake_mqtt_client.unsubscriptions
         # New per-device state reaches the new WB control.
         z2m_emu.device_state("new-name", {"temperature": 22.5})
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-1_new-name/controls/temperature") == "22.5"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/new-name/controls/temperature") == "22.5"
 
     def test_device_remove_response_removes_wb_device(
         self,
@@ -492,7 +509,7 @@ class TestDeviceEvents:
 
         z2m_emu.remove_response(status="ok", id_="sensor-1")
 
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-1_sensor-1/meta") is None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta") is None
 
 
 class TestStaleDeviceCleanup:
@@ -508,12 +525,12 @@ class TestStaleDeviceCleanup:
     ) -> None:
         bridge.subscribe()
         z2m_emu.devices([_z2m_sensor("sensor-1"), _z2m_switch("switch-1")])
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-2_switch-1/meta") is not None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/switch-1/meta") is not None
 
         z2m_emu.devices([_z2m_sensor("sensor-1")])
 
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-1_sensor-1/meta") is not None
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-2_switch-1/meta") is None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta") is not None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/switch-1/meta") is None
 
 
 class TestGhostCleanup:
@@ -539,8 +556,8 @@ class TestGhostCleanup:
 
         z2m_emu.devices([])
 
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-1_sensor-1/meta") is None
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-2_switch-1/meta") is None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta") is None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/switch-1/meta") is None
         assert wb_observer.retained(device_count_topic) == "0"
 
     def test_ghost_devices_from_previous_run_are_cleaned_up(
@@ -590,6 +607,4 @@ class TestReconnectFlow:
 
         bridge.set_all_unavailable()
 
-        assert (
-            wb_observer.retained(f"{DEVICES_PREFIX}/MODEL-1_sensor-1/controls/available") == WbBoolValue.FALSE
-        )
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/available") == WbBoolValue.FALSE

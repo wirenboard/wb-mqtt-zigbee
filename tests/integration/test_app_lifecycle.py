@@ -152,7 +152,7 @@ class TestReconnect:
                 },
             ]
         )
-        available_topic = f"{DEVICES_PREFIX}/M1_sensor-1/controls/available"
+        available_topic = f"{DEVICES_PREFIX}/sensor-1/controls/available"
 
         fake_mqtt_client.disconnect()
 

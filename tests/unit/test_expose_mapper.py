@@ -69,6 +69,13 @@ class TestMapExposesToControls:
         controls = map_exposes_to_controls([], device_type="")
         assert "device_type" not in controls
 
+    def test_model_added_when_non_empty(self):
+        controls = map_exposes_to_controls([], model="WB-MSW-ZIGBEE v.4")
+        assert "model" in controls
+        assert controls["model"].type == WbControlType.TEXT
+        assert controls["model"].readonly is True
+        assert controls["model"].title == {"en": "Model", "ru": "Модель"}
+
     def test_assigns_sequential_order_starting_from_1(self):
         exposes = [
             make_expose(property="temperature"),

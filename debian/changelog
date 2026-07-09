@@ -1,3 +1,12 @@
+wb-mqtt-zigbee (1.4.8) stable; urgency=medium
+
+  * Drop the model from the device card name once the device is renamed in
+    zigbee2mqtt: show "{model} {friendly_name}" only while unnamed (friendly_name
+    equals the IEEE address), otherwise just the user's chosen name
+  * Add a readonly "Model" control to every device card
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Wed, 8 Jul 2026 10:00:00 +0300
+
 wb-mqtt-zigbee (1.4.7) stable; urgency=medium
 
   * Show the device model in the WB device card: use "{model} {friendly_name}"

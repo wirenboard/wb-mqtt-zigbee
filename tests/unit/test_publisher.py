@@ -28,7 +28,25 @@ from wb.mqtt_zigbee.wb_converter.publisher import (
     DRIVER_NAME,
     LEGACY_DRIVER_NAMES,
     WbMqttDriver,
+    build_display_name,
 )
+
+
+class TestBuildDisplayName:
+    """
+    The model is prepended only while the device is unnamed (friendly_name == ieee)
+    """
+
+    def test_unnamed_prepends_model(self):
+        # z2m defaults friendly_name to the IEEE address → show "{model} {ieee}".
+        assert build_display_name("WB-MSW", "0xabc123", "0xabc123") == "WB-MSW 0xabc123"
+
+    def test_renamed_drops_model(self):
+        # User renamed the device → keep only their name.
+        assert build_display_name("WB-MSW", "Kitchen", "0xabc123") == "Kitchen"
+
+    def test_no_model_returns_friendly_name(self):
+        assert build_display_name("", "0xabc123", "0xabc123") == "0xabc123"
 
 
 def _make_meta_message(device_id: str, driver: str) -> MQTTMessage:

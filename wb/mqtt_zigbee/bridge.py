@@ -19,6 +19,7 @@ from .z2m.client import Z2MClient
 from .z2m.model import (
     BridgeInfo,
     BridgeLogLevel,
+    BridgeState,
     DeviceEvent,
     DeviceEventType,
     Z2MDevice,
@@ -167,6 +168,10 @@ class Bridge:
     def _on_bridge_state(self, state: str) -> None:
         logger.info("Bridge state: %s", state)
         self._mqtt_driver.publish_bridge_control(BridgeControl.STATE, state)
+        # z2m down → the whole bridge is non-functional: flag the bridge device
+        # ("rw" — no zigbee device can be read or commanded); clear when z2m is back.
+        bridge_error = "" if state == BridgeState.ONLINE else WbControlError.READ + WbControlError.WRITE
+        self._mqtt_driver.publish_bridge_error(bridge_error)
         self._update_stats()
 
     def _on_bridge_info(self, info: BridgeInfo) -> None:

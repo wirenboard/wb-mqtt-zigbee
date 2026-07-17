@@ -142,6 +142,25 @@ class TestBridgeInitialization:
         topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.STATE}"
         assert wb_observer.retained(topic) == "online"
 
+    def test_bridge_offline_sets_bridge_meta_error_and_online_clears(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        z2m down → the bridge device gets meta/error "rw"; back online clears it
+        """
+        bridge.subscribe()
+        error_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta/error"
+
+        z2m_emu.online()
+        assert wb_observer.retained(error_topic) is None
+        z2m_emu.offline()
+        assert wb_observer.retained(error_topic) == "rw"
+        z2m_emu.online()
+        assert wb_observer.retained(error_topic) is None
+
     def test_bridge_info_publishes_version_and_permit_join(
         self,
         bridge: Bridge,

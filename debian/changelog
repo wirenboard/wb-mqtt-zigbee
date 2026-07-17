@@ -3,6 +3,8 @@ wb-mqtt-zigbee (1.4.9) stable; urgency=medium
   * Report device availability via WB meta/error: an unreachable device gets a
     device-level error ("r" for read-only devices, "rw" when it also has writable
     controls), cleared automatically when the device is back online
+  * Flag the bridge device with meta/error "rw" while zigbee2mqtt is offline/errored,
+    cleared when it is back online
 
  -- Victor Fedorov <victor.fedorov@wirenboard.com>  Fri, 17 Jul 2026 13:00:00 +0300
 

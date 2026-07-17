@@ -51,6 +51,12 @@ class WbMqttDriver:
         topic = f"{DEVICES_PREFIX}/{self._device_id}/controls/{control_id}"
         self._publish_retain(topic, value)
 
+    def publish_bridge_error(self, error: str) -> None:
+        """
+        Set the bridge device's WB error state (`/meta/error`); empty string clears it
+        """
+        self.publish_device_error(self._device_id, error)
+
     def publish_device(
         self,
         device_id: str,

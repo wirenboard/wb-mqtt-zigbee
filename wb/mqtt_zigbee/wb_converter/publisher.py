@@ -88,6 +88,12 @@ class WbMqttDriver:
         topic = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}"
         self._publish_retain(topic, value)
 
+    def publish_device_error(self, device_id: str, error: str) -> None:
+        """
+        Set the device-level WB error state (`/meta/error`); empty string clears it
+        """
+        self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta/error", error)
+
     # -- Retained device scan (ghost cleanup) ----------------------------------
 
     def start_retained_scan(self) -> None:
@@ -267,6 +273,7 @@ class WbMqttDriver:
         self._publish_retain(f"{prefix}/name", "")
         self._publish_retain(f"{prefix}/driver", "")
         self._publish_retain(f"{prefix}/model", "")
+        self._publish_retain(f"{prefix}/error", "")
 
     def _publish_control_meta_subtopics(self, device_id: str, control_id: str, meta: ControlMeta) -> None:
         """

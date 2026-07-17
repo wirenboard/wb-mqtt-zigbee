@@ -42,6 +42,16 @@ class WbBoolValue:
     FALSE = "0"
 
 
+class WbControlError:
+    """
+    WB MQTT Conventions: /meta/error flag characters (combinable, e.g. "rw")
+    """
+
+    READ = "r"  # failed to read from device / device reports an error
+    WRITE = "w"  # write to device error
+    PERIOD = "p"  # read period miss
+
+
 class BridgeControl:
     """Control IDs for the zigbee2mqtt bridge virtual device"""
 

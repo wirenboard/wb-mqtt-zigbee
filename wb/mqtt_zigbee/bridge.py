@@ -7,7 +7,7 @@ from typing import Callable, Optional
 from wb_common.mqtt_client import MQTTClient
 
 from .registered_device import PendingCommand, RegisteredDevice
-from .wb_converter.controls import BridgeControl, WbBoolValue
+from .wb_converter.controls import BridgeControl, ControlMeta, WbBoolValue, WbControlError
 from .wb_converter.expose_mapper import SERVICE_CONTROLS, map_exposes_to_controls
 from .wb_converter.publisher import WbMqttDriver, build_display_name
 from .z2m.client import Z2MClient
@@ -79,6 +79,9 @@ class Bridge:
             logger.info("Setting %d devices as unavailable", len(self._known_devices))
         for registered in self._known_devices.values():
             self._mqtt_driver.publish_device_control(registered.device_id, "available", WbBoolValue.FALSE)
+            self._mqtt_driver.publish_device_error(
+                registered.device_id, _device_offline_error(registered.controls)
+            )
 
     def republish(self) -> None:
         self._reconnect_count += 1
@@ -93,6 +96,9 @@ class Bridge:
                 {"available": WbBoolValue.FALSE},
                 model=registered.z2m.model,
                 ieee_address=registered.z2m.ieee_address,
+            )
+            self._mqtt_driver.publish_device_error(
+                registered.device_id, _device_offline_error(registered.controls)
             )
             if registered.z2m.type:
                 self._mqtt_driver.publish_device_control(
@@ -222,6 +228,7 @@ class Bridge:
             model=device.model,
             ieee_address=device.ieee_address,
         )
+        self._mqtt_driver.publish_device_error(device_id, _device_offline_error(controls))
         if device.type:
             self._mqtt_driver.publish_device_control(device_id, "device_type", device.type)
         if device.model:
@@ -293,6 +300,9 @@ class Bridge:
         registered.availability_received = True
         wb_value = WbBoolValue.TRUE if available else WbBoolValue.FALSE
         self._mqtt_driver.publish_device_control(registered.device_id, "available", wb_value)
+        self._mqtt_driver.publish_device_error(
+            registered.device_id, "" if available else _device_offline_error(registered.controls)
+        )
         logger.debug("Device availability: %s = %s", friendly_name, "online" if available else "offline")
 
     def _on_device_state(self, friendly_name: str, state: dict[str, object]) -> None:
@@ -335,6 +345,7 @@ class Bridge:
                 self._mqtt_driver.publish_device_control(registered.device_id, "last_seen", formatted)
         if not registered.availability_received:
             self._mqtt_driver.publish_device_control(registered.device_id, "available", WbBoolValue.TRUE)
+            self._mqtt_driver.publish_device_error(registered.device_id, "")
         self._update_stats()
 
     def _make_device_command_handler(self, registered: RegisteredDevice) -> Callable[[str, str], None]:
@@ -481,6 +492,20 @@ def _build_device_id(model: str, friendly_name: str, ieee_address: str) -> str:
     cold load, so it must carry the same meaningful text as the title.
     """
     return _sanitize_device_id(build_display_name(model, friendly_name, ieee_address))
+
+
+def _device_offline_error(controls: dict[str, ControlMeta]) -> str:
+    """
+    WB meta/error value for an unreachable device.
+
+    Always "r" (its state cannot be read); plus "w" when the device has at least one
+    writable control (a command that also cannot be delivered). A read-only device
+    (e.g. a pure sensor) has nothing to write, so it gets just "r".
+    """
+    has_writable = any(not meta.readonly for meta in controls.values())
+    if has_writable:
+        return WbControlError.READ + WbControlError.WRITE
+    return WbControlError.READ
 
 
 def _format_last_seen(value: object) -> str:

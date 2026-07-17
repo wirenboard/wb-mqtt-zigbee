@@ -283,6 +283,47 @@ class TestDeviceStatePropagation:
         available_topic = f"{DEVICES_PREFIX}/sensor-1/controls/available"
         assert wb_observer.retained(available_topic) == WbBoolValue.TRUE
 
+    def test_readonly_device_offline_gets_r_error(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        Read-only device (sensor) offline → meta/error "r" (nothing to write)
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("sensor-1")])  # temperature only → all controls readonly
+        error_topic = f"{DEVICES_PREFIX}/sensor-1/meta/error"
+
+        # Clear first (isolate the offline branch from the registration default), then offline.
+        z2m_emu.device_availability("sensor-1", online=True)
+        assert wb_observer.retained(error_topic) is None
+        z2m_emu.device_availability("sensor-1", online=False)
+        assert wb_observer.retained(error_topic) == "r"
+
+    def test_writable_device_offline_gets_rw_error_and_online_clears(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        Device with a writable control (switch) offline → "rw"; back online clears it
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_switch("switch-1")])  # writable "state" → "rw"
+        error_topic = f"{DEVICES_PREFIX}/switch-1/meta/error"
+
+        z2m_emu.device_availability("switch-1", online=True)
+        assert wb_observer.retained(error_topic) is None
+        z2m_emu.device_availability("switch-1", online=False)
+        assert wb_observer.retained(error_topic) == "rw"
+
+        z2m_emu.device_availability("switch-1", online=True)
+        # Empty retained payload clears the topic.
+        assert wb_observer.retained(error_topic) is None
+
 
 class TestWbToZ2mCommands:
     """

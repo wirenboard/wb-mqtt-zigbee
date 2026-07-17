@@ -1,3 +1,11 @@
+wb-mqtt-zigbee (1.4.9) stable; urgency=medium
+
+  * Report device availability via WB meta/error: an unreachable device gets a
+    device-level error ("r" for read-only devices, "rw" when it also has writable
+    controls), cleared automatically when the device is back online
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Fri, 17 Jul 2026 13:00:00 +0300
+
 wb-mqtt-zigbee (1.4.8) stable; urgency=medium
 
   * Drop the model from the device card name once the device is renamed in

@@ -5,7 +5,13 @@ from typing import Any, Callable, Optional
 from paho.mqtt.client import Client, MQTTMessage
 from wb_common.mqtt_client import MQTTClient
 
-from .controls import BRIDGE_CONTROLS, BridgeControl, ControlMeta, WbBoolValue
+from .controls import (
+    BRIDGE_CONTROLS,
+    BridgeControl,
+    ControlMeta,
+    WbBoolValue,
+    WbControlError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +62,15 @@ class WbMqttDriver:
         Set the bridge device's WB error state (`/meta/error`); empty string clears it
         """
         self.publish_device_error(self._device_id, error)
+
+    def configure_bridge_lwt(self) -> None:
+        """
+        Register an MQTT Last Will so the broker flags the bridge device with a
+        meta/error if this service dies without a clean disconnect (crash/kill).
+        Must be called before connect().
+        """
+        topic = f"{DEVICES_PREFIX}/{self._device_id}/meta/error"
+        self._client.will_set(topic, WbControlError.READ + WbControlError.WRITE, retain=True)
 
     def publish_device(
         self,

@@ -37,8 +37,12 @@ class FakeMqttClient:
         self.on_disconnect: Optional[Callable[[Any, Any, dict], None]] = None
         self._started = False
         self._stopped = False
+        self.will: Optional[tuple[str, Any, int, bool]] = None
 
     # Production API
+    def will_set(self, topic: str, payload: Any = "", qos: int = 0, retain: bool = False) -> None:
+        self.will = (topic, payload, qos, retain)
+
     def subscribe(self, topic: str) -> None:
         self._subscriptions.append(topic)
         self._broker.subscribe(self._client_id, topic)

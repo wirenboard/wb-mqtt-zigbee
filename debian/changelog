@@ -5,6 +5,8 @@ wb-mqtt-zigbee (1.4.9) stable; urgency=medium
     controls), cleared automatically when the device is back online
   * Flag the bridge device with meta/error "rw" while zigbee2mqtt is offline/errored,
     cleared when it is back online
+  * Register an MQTT Last Will so the broker flags the bridge device with meta/error
+    if the service dies unexpectedly (crash/kill); cleared on restart
 
  -- Victor Fedorov <victor.fedorov@wirenboard.com>  Fri, 17 Jul 2026 13:00:00 +0300
 

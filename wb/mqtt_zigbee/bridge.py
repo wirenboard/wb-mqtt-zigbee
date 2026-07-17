@@ -62,6 +62,7 @@ class Bridge:
             on_device_availability=self._on_device_availability,
         )
         self._mqtt_driver = WbMqttDriver(mqtt_client, device_id, device_name)
+        self._mqtt_driver.configure_bridge_lwt()
         self._bridge_log_min_level = bridge_log_min_level
         self._log_min_rank = BridgeLogLevel.RANK.get(
             bridge_log_min_level, BridgeLogLevel.RANK[BridgeLogLevel.WARNING]

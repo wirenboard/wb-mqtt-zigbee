@@ -119,6 +119,17 @@ class TestBridgeInitialization:
         meta = wb_observer.last_json_on(f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta")
         assert meta == {"driver": DRIVER_NAME, "title": {"en": BRIDGE_NAME, "ru": BRIDGE_NAME}}
 
+    def test_registers_last_will_for_bridge_error(
+        self,
+        bridge: Bridge,
+        fake_mqtt_client: FakeMqttClient,
+    ) -> None:
+        """
+        Constructing the bridge registers an MQTT LWT flagging the bridge on a crash
+        """
+        _ = bridge  # Bridge.__init__ sets the will (before connect)
+        assert fake_mqtt_client.will == (f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta/error", "rw", 0, True)
+
     def test_publishes_log_level_control(
         self,
         bridge: Bridge,

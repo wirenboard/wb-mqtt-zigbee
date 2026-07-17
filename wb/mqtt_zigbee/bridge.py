@@ -7,7 +7,12 @@ from typing import Callable, Optional
 from wb_common.mqtt_client import MQTTClient
 
 from .registered_device import PendingCommand, RegisteredDevice
-from .wb_converter.controls import BridgeControl, ControlMeta, WbBoolValue, WbControlError
+from .wb_converter.controls import (
+    BridgeControl,
+    ControlMeta,
+    WbBoolValue,
+    WbControlError,
+)
 from .wb_converter.expose_mapper import SERVICE_CONTROLS, map_exposes_to_controls
 from .wb_converter.publisher import WbMqttDriver, build_display_name
 from .z2m.client import Z2MClient

@@ -171,7 +171,7 @@ class Bridge:
         self._mqtt_driver.publish_bridge_control(BridgeControl.STATE, state)
         # z2m down → the whole bridge is non-functional: flag the bridge device
         # ("rw" — no zigbee device can be read or commanded); clear when z2m is back.
-        bridge_error = "" if state == BridgeState.ONLINE else WbControlError.READ + WbControlError.WRITE
+        bridge_error = "" if state == BridgeState.ONLINE else WbControlError.READ_WRITE
         self._mqtt_driver.publish_bridge_error(bridge_error)
         self._update_stats()
 
@@ -514,9 +514,7 @@ def _device_offline_error(controls: dict[str, ControlMeta]) -> str:
     (e.g. a pure sensor) has nothing to write, so it gets just "r".
     """
     has_writable = any(not meta.readonly for meta in controls.values())
-    if has_writable:
-        return WbControlError.READ + WbControlError.WRITE
-    return WbControlError.READ
+    return WbControlError.READ_WRITE if has_writable else WbControlError.READ
 
 
 def _format_last_seen(value: object) -> str:

@@ -70,7 +70,7 @@ class WbMqttDriver:
         Must be called before connect().
         """
         topic = f"{DEVICES_PREFIX}/{self._device_id}/meta/error"
-        self._client.will_set(topic, WbControlError.READ + WbControlError.WRITE, retain=True)
+        self._client.will_set(topic, WbControlError.READ_WRITE, retain=True)
 
     def publish_device(
         self,

@@ -5,7 +5,13 @@ from typing import Any, Callable, Optional
 from paho.mqtt.client import Client, MQTTMessage
 from wb_common.mqtt_client import MQTTClient
 
-from .controls import BRIDGE_CONTROLS, BridgeControl, ControlMeta, WbBoolValue
+from .controls import (
+    BRIDGE_CONTROLS,
+    BridgeControl,
+    ControlMeta,
+    WbBoolValue,
+    WbControlError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +57,21 @@ class WbMqttDriver:
         topic = f"{DEVICES_PREFIX}/{self._device_id}/controls/{control_id}"
         self._publish_retain(topic, value)
 
+    def publish_bridge_error(self, error: str) -> None:
+        """
+        Set the bridge device's WB error state (`/meta/error`); empty string clears it
+        """
+        self.publish_device_error(self._device_id, error)
+
+    def configure_bridge_lwt(self) -> None:
+        """
+        Register an MQTT Last Will so the broker flags the bridge device with a
+        meta/error if this service dies without a clean disconnect (crash/kill).
+        Must be called before connect().
+        """
+        topic = f"{DEVICES_PREFIX}/{self._device_id}/meta/error"
+        self._client.will_set(topic, WbControlError.READ_WRITE, retain=True)
+
     def publish_device(
         self,
         device_id: str,
@@ -87,6 +108,12 @@ class WbMqttDriver:
     def publish_device_control(self, device_id: str, control_id: str, value: str) -> None:
         topic = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}"
         self._publish_retain(topic, value)
+
+    def publish_device_error(self, device_id: str, error: str) -> None:
+        """
+        Set the device-level WB error state (`/meta/error`); empty string clears it
+        """
+        self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta/error", error)
 
     # -- Retained device scan (ghost cleanup) ----------------------------------
 
@@ -267,6 +294,7 @@ class WbMqttDriver:
         self._publish_retain(f"{prefix}/name", "")
         self._publish_retain(f"{prefix}/driver", "")
         self._publish_retain(f"{prefix}/model", "")
+        self._publish_retain(f"{prefix}/error", "")
 
     def _publish_control_meta_subtopics(self, device_id: str, control_id: str, meta: ControlMeta) -> None:
         """

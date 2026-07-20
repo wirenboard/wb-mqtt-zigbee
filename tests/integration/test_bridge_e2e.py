@@ -16,7 +16,11 @@ from typing import Any
 import pytest
 
 from wb.mqtt_zigbee.bridge import Bridge
-from wb.mqtt_zigbee.wb_converter.controls import BridgeControl, WbBoolValue
+from wb.mqtt_zigbee.wb_converter.controls import (
+    BridgeControl,
+    WbBoolValue,
+    WbControlError,
+)
 from wb.mqtt_zigbee.wb_converter.publisher import DEVICES_PREFIX, DRIVER_NAME
 
 from .fakes.broker import FakeMqttBroker
@@ -119,6 +123,22 @@ class TestBridgeInitialization:
         meta = wb_observer.last_json_on(f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta")
         assert meta == {"driver": DRIVER_NAME, "title": {"en": BRIDGE_NAME, "ru": BRIDGE_NAME}}
 
+    def test_registers_last_will_for_bridge_error(
+        self,
+        bridge: Bridge,
+        fake_mqtt_client: FakeMqttClient,
+    ) -> None:
+        """
+        Constructing the bridge registers an MQTT LWT flagging the bridge on a crash
+        """
+        _ = bridge  # Bridge.__init__ sets the will (before connect)
+        assert fake_mqtt_client.will == (
+            f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta/error",
+            WbControlError.READ_WRITE,
+            0,
+            True,
+        )
+
     def test_publishes_log_level_control(
         self,
         bridge: Bridge,
@@ -141,6 +161,25 @@ class TestBridgeInitialization:
 
         topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.STATE}"
         assert wb_observer.retained(topic) == "online"
+
+    def test_bridge_offline_sets_bridge_meta_error_and_online_clears(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        z2m down → the bridge device gets meta/error "rw"; back online clears it
+        """
+        bridge.subscribe()
+        error_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta/error"
+
+        z2m_emu.online()
+        assert wb_observer.retained(error_topic) is None
+        z2m_emu.offline()
+        assert wb_observer.retained(error_topic) == WbControlError.READ_WRITE
+        z2m_emu.online()
+        assert wb_observer.retained(error_topic) is None
 
     def test_bridge_info_publishes_version_and_permit_join(
         self,
@@ -282,6 +321,67 @@ class TestDeviceStatePropagation:
 
         available_topic = f"{DEVICES_PREFIX}/sensor-1/controls/available"
         assert wb_observer.retained(available_topic) == WbBoolValue.TRUE
+
+    def test_readonly_device_offline_gets_r_error(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        Read-only device (sensor) offline → meta/error "r" (nothing to write)
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("sensor-1")])  # temperature only → all controls readonly
+        error_topic = f"{DEVICES_PREFIX}/sensor-1/meta/error"
+
+        # Clear first (isolate the offline branch from the registration default), then offline.
+        z2m_emu.device_availability("sensor-1", online=True)
+        assert wb_observer.retained(error_topic) is None
+        z2m_emu.device_availability("sensor-1", online=False)
+        assert wb_observer.retained(error_topic) == WbControlError.READ
+
+    def test_writable_device_offline_gets_rw_error_and_online_clears(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        Device with a writable control (switch) offline → "rw"; back online clears it
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_switch("switch-1")])  # writable "state" → "rw"
+        error_topic = f"{DEVICES_PREFIX}/switch-1/meta/error"
+
+        z2m_emu.device_availability("switch-1", online=True)
+        assert wb_observer.retained(error_topic) is None
+        z2m_emu.device_availability("switch-1", online=False)
+        assert wb_observer.retained(error_topic) == WbControlError.READ_WRITE
+
+        z2m_emu.device_availability("switch-1", online=True)
+        # Empty retained payload clears the topic.
+        assert wb_observer.retained(error_topic) is None
+
+    def test_first_state_clears_device_meta_error(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        A freshly registered device is flagged unreachable until it reports; the first
+        state message (with no availability message) assumes it online and clears the error
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_switch("switch-1")])
+        error_topic = f"{DEVICES_PREFIX}/switch-1/meta/error"
+
+        # Registration default: assumed unreachable → "rw".
+        assert wb_observer.retained(error_topic) == WbControlError.READ_WRITE
+
+        z2m_emu.device_state("switch-1", {"state": "ON"})
+        assert wb_observer.retained(error_topic) is None
 
 
 class TestWbToZ2mCommands:
@@ -456,6 +556,7 @@ class TestDeviceEvents:
         z2m_emu.device_left("sensor-1", ieee_address="0x0001")
 
         assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta") is None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta/error") is None  # error cleared too
         assert (
             wb_observer.retained(f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.LAST_LEFT}")
             == "sensor-1"
@@ -608,3 +709,4 @@ class TestReconnectFlow:
         bridge.set_all_unavailable()
 
         assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/available") == WbBoolValue.FALSE
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta/error") == WbControlError.READ

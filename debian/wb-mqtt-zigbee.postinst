@@ -16,8 +16,8 @@ for path in "$WB_RULES_DIR"/${OLD_SCRIPT_NAME}*; do
     fi
 done
 
-if [ "$NEED_RESTART_WBRULES" = true ] && [ -d /run/systemd/system ]; then
-    systemctl restart wb-rules 2>/dev/null || true
+if [ "$NEED_RESTART_WBRULES" = true ]; then
+    deb-systemd-invoke try-restart wb-rules 2>/dev/null || true
 fi
 
 # Enable device availability in zigbee2mqtt if not already configured.
@@ -34,9 +34,7 @@ availability:
     backoff: true
 EOF
     echo "Added availability section to $Z2M_CONFIG"
-    if [ -d /run/systemd/system ]; then
-        systemctl restart zigbee2mqtt 2>/dev/null || true
-    fi
+    deb-systemd-invoke try-restart zigbee2mqtt 2>/dev/null || true
 fi
 
 #DEBHELPER#

@@ -13,7 +13,8 @@ _MQTT_UNSAFE_CHARS = ("+", "#", "/")
 
 
 def payload_too_large(message: MQTTMessage, topic_name: str) -> bool:
-    """Return True (and log) if the raw payload exceeds MAX_PAYLOAD_BYTES.
+    """
+    Return True (and log) if the raw payload exceeds MAX_PAYLOAD_BYTES
 
     Checked on the raw bytes before decoding/parsing, so an oversized retained message
     cannot force an unbounded allocation. len(message.payload) is O(1).
@@ -26,7 +27,8 @@ def payload_too_large(message: MQTTMessage, topic_name: str) -> bool:
 
 
 def is_safe_topic_name(name: str) -> bool:
-    """Check that a device name is safe to embed in an MQTT topic path.
+    """
+    Check that a device name is safe to embed in an MQTT topic path
 
     Rejects empty names and names containing the MQTT wildcard/separator characters
     ('+', '#', '/'). An unchecked name (e.g. a zigbee2mqtt rename to "#") would turn a
@@ -38,7 +40,8 @@ def is_safe_topic_name(name: str) -> bool:
 
 
 def decode_payload(message: MQTTMessage) -> str:
-    """Decode an MQTT payload to text, replacing invalid bytes.
+    """
+    Decode an MQTT payload to text, replacing invalid bytes
 
     Uses errors="replace" so a malformed (non-UTF-8) payload on any subscribed
     topic degrades to replacement characters instead of raising UnicodeDecodeError

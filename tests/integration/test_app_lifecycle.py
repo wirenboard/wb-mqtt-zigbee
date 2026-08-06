@@ -1,16 +1,16 @@
 """
-Integration tests for `wb.mqtt_zigbee.app.WbZigbee2Mqtt` lifecycle.
+Integration tests for wb.mqtt_zigbee.app.WbZigbee2Mqtt lifecycle.
 
 Exercises the MQTT connect/disconnect flow at the application level: the
-real `MQTTClient` constructor is replaced with one returning the per-test
-`FakeMqttClient`, and `signal.signal` is stubbed to a no-op so the test
+real MQTTClient constructor is replaced with one returning the per-test
+FakeMqttClient, and signal.signal is stubbed to a no-op so the test
 process is not affected by SIGINT/SIGTERM/SIGHUP handlers.
 
-Connection events are triggered by calling `FakeMqttClient.connect(rc=...)`
-and `FakeMqttClient.disconnect()`, which dispatch the `on_connect` /
-`on_disconnect` callbacks `WbZigbee2Mqtt` registers in its constructor.
+Connection events are triggered by calling FakeMqttClient.connect(rc=...)
+and FakeMqttClient.disconnect(), which dispatch the on_connect /
+on_disconnect callbacks WbZigbee2Mqtt registers in its constructor.
 
-`fake_clock` is included so any time-based logic in `Bridge` (stats
+fake_clock is included so any time-based logic in Bridge (stats
 throttling, command debounce) is deterministic.
 """
 
@@ -44,10 +44,10 @@ def app(
     fake_clock: "list[float]",
 ) -> WbZigbee2Mqtt:
     """
-    Construct WbZigbee2Mqtt with `MQTTClient` and `signal.signal` stubbed.
+    Construct WbZigbee2Mqtt with MQTTClient and signal.signal stubbed.
 
-    The `MQTTClient(...)` call inside `WbZigbee2Mqtt.__init__` is rerouted to
-    return the shared `FakeMqttClient` from the test fixtures. `signal.signal`
+    The MQTTClient(...) call inside WbZigbee2Mqtt.__init__ is rerouted to
+    return the shared FakeMqttClient from the test fixtures. signal.signal
     is replaced with a no-op so installing SIGINT/SIGTERM/SIGHUP handlers
     cannot interfere with the test runner.
     """
@@ -162,7 +162,7 @@ class TestReconnect:
 
 class TestConnectFailureModes:
     """
-    Non-zero `rc` codes from MQTT CONNACK
+    Non-zero rc codes from MQTT CONNACK
     """
 
     def test_auth_failure_stops_client_and_sets_exit_code(
@@ -205,7 +205,7 @@ class TestConnectFailureModes:
 
 class TestRun:
     """
-    `WbZigbee2Mqtt.run()` error handling.
+    WbZigbee2Mqtt.run() error handling
     """
 
     def test_loop_error_returns_exit_failure(
@@ -214,7 +214,9 @@ class TestRun:
         fake_mqtt_client: FakeMqttClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """An unexpected error in the MQTT loop is caught and mapped to EXIT_FAILURE."""
+        """
+        An unexpected error in the MQTT loop is caught and mapped to EXIT_FAILURE
+        """
 
         def boom() -> None:
             raise RuntimeError("loop blew up")

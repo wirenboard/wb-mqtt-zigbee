@@ -5,6 +5,7 @@ from typing import Any, Callable, Optional, Union
 from paho.mqtt.client import Client, MQTTMessage
 from wb_common.mqtt_client import MQTTClient
 
+from ..mqtt_utils import decode_payload
 from .model import (
     BridgeInfo,
     BridgeState,
@@ -149,7 +150,7 @@ class Z2MClient:
 
     def _handle_bridge_state(self, _client: Client, _userdata: Any, message: MQTTMessage) -> None:
         """Parse bridge/state: may be plain string or JSON {"state": "..."}"""
-        raw = message.payload.decode("utf-8").strip()
+        raw = decode_payload(message).strip()
         try:
             data = json.loads(raw)
             state = data.get("state", raw) if isinstance(data, dict) else raw
@@ -174,19 +175,31 @@ class Z2MClient:
 
     def _handle_bridge_log(self, _client: Client, _userdata: Any, message: MQTTMessage) -> None:
         """Parse bridge/logging JSON, extract level and message. Falls back to raw string on error"""
+        raw = decode_payload(message)
         try:
-            data = json.loads(message.payload.decode("utf-8"))
-            log_level: str = data.get("level", "info")
-            log_message: str = str(data.get("message", ""))
+            data = json.loads(raw)
         except json.JSONDecodeError:
+            data = None
+        if isinstance(data, dict):
+            log_level = data.get("level", "info")
+            log_message = str(data.get("message", ""))
+        else:
             log_level = "info"
-            log_message = message.payload.decode("utf-8")
+            log_message = raw
         self._on_bridge_log(log_level, log_message or "")
 
     def _handle_bridge_devices(self, _client: Client, _userdata: Any, message: MQTTMessage) -> None:
         """Parse bridge/devices JSON array into Z2MDevice list (excluding Coordinator)"""
-        data = _parse_json_payload(message, "bridge/devices")
+        data = _parse_json_payload(message, "bridge/devices", list)
         if data is None:
+            return
+        # A malformed list must NOT be treated as an authoritative device list — that
+        # runs stale-removal and wipes every device (e.g. "[{}]" yields a device with an
+        # empty friendly_name, marking all real devices stale). Every real z2m entry is
+        # an object with an ieee_address, so reject the whole message unless all entries
+        # look like real devices. A genuinely empty list "[]" still clears normally.
+        if not all(isinstance(device_data, dict) and device_data.get("ieee_address") for device_data in data):
+            logger.warning("Ignoring malformed bridge/devices payload")
             return
         devices = []
         for device_data in data:
@@ -206,6 +219,9 @@ class Z2MClient:
             return
         event_type = data.get("type")
         device_data = data.get("data", {})
+        if not isinstance(device_data, dict):
+            logger.warning("Ignoring bridge/event with non-object data field")
+            return
         event_map = {
             Z2MEventType.DEVICE_JOINED: DeviceEventType.JOINED,
             Z2MEventType.DEVICE_LEAVE: DeviceEventType.LEFT,
@@ -233,20 +249,33 @@ class Z2MClient:
         if data is None:
             return
         if data.get("status") == "ok":
-            name = data.get("data", {}).get("id", "")
-            self._on_device_event(DeviceEvent(type=DeviceEventType.REMOVED, name=name))
+            inner = data.get("data", {})
+            if not isinstance(inner, dict):
+                return
+            self._on_device_event(DeviceEvent(type=DeviceEventType.REMOVED, name=inner.get("id", "")))
 
 
-def _parse_json_payload(message: MQTTMessage, topic_name: str) -> Optional[Union[dict, list]]:
-    """Decode MQTT message payload as JSON. Returns None and logs warning on failure"""
-    payload = message.payload.decode("utf-8")
+def _parse_json_payload(
+    message: MQTTMessage, topic_name: str, expected_type: type = dict
+) -> Optional[Union[dict, list]]:
+    """Decode payload as JSON of the expected top-level type.
+
+    Returns None (and logs a warning) on invalid JSON or a top-level type that is not
+    `expected_type` (e.g. a bare number/string/array where a dict is expected). This
+    keeps handlers that assume a dict/list from raising on a malformed shape.
+    """
+    payload = decode_payload(message)
     if not payload:
         return None
     try:
-        return json.loads(payload)
+        data = json.loads(payload)
     except json.JSONDecodeError:
         logger.warning("Failed to parse %s payload", topic_name)
         return None
+    if not isinstance(data, expected_type):
+        logger.warning("Unexpected %s payload type: %s", topic_name, type(data).__name__)
+        return None
+    return data
 
 
 def _resolve_device_name(device_data: dict) -> str:

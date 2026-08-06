@@ -25,8 +25,16 @@ class TestParseJsonPayload:
     def test_valid_dict(self):
         assert _parse_json_payload(_make_message('{"a": 1}'), "test") == {"a": 1}
 
-    def test_valid_list(self):
-        assert _parse_json_payload(_make_message("[1, 2]"), "test") == [1, 2]
+    def test_valid_list_when_expected(self):
+        assert _parse_json_payload(_make_message("[1, 2]"), "test", list) == [1, 2]
+
+    def test_wrong_top_level_type_returns_none_with_warning(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="wb.mqtt_zigbee.z2m.client"):
+            # dict is expected by default; a list / bare scalar is rejected, not raised
+            assert _parse_json_payload(_make_message("[1, 2]"), "my/topic") is None
+            assert _parse_json_payload(_make_message("5"), "my/topic") is None
+            assert _parse_json_payload(_make_message('"x"'), "my/topic") is None
+        assert "Unexpected my/topic payload type" in caplog.text
 
     def test_empty_payload_returns_none_silently(self, caplog):
         with caplog.at_level(logging.WARNING, logger="wb.mqtt_zigbee.z2m.client"):

@@ -118,6 +118,16 @@ class TestBridgeLog:
         z2m_emu.log_raw("not json at all")
         assert rec.bridge_logs == [("info", "not json at all")]
 
+    def test_valid_non_dict_json_falls_back_to_raw(
+        self, fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator
+    ) -> None:
+        # Valid JSON that is not an object (number/array/string) must not raise on
+        # .get(); it falls back to the raw payload at info level.
+        _client, rec = _make_client(fake_mqtt_client)
+        z2m_emu.log_raw("5")
+        z2m_emu.log_raw("[1, 2]")
+        assert rec.bridge_logs == [("info", "5"), ("info", "[1, 2]")]
+
 
 class TestBridgeDevices:
     """

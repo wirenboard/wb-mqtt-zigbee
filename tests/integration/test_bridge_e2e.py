@@ -710,3 +710,69 @@ class TestReconnectFlow:
 
         assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/available") == WbBoolValue.FALSE
         assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta/error") == WbControlError.READ
+
+
+class TestMalformedPayloads:
+    """
+    Non-UTF-8 / garbage payloads on any subscribed topic must not crash the daemon.
+    """
+
+    def test_non_utf8_payload_does_not_crash_and_bridge_stays_functional(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_switch("switch-1")])
+
+        # Invalid UTF-8 on a JSON topic, a plain-string topic, and a command topic —
+        # none may raise UnicodeDecodeError out of the handler.
+        garbage = b"\xff\xfe\x00"
+        fake_broker.inject(f"{BASE}/bridge/devices", garbage, retain=True)
+        fake_broker.inject(f"{BASE}/bridge/state", garbage, retain=True)
+        fake_broker.inject(f"{BASE}/bridge/info", garbage, retain=True)
+        fake_broker.inject(f"{DEVICES_PREFIX}/switch-1/controls/state/on", garbage)
+
+        # Reaching here proves no inject raised. The bridge is still alive and
+        # processing valid messages afterwards.
+        z2m_emu.online()
+        state_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.STATE}"
+        assert wb_observer.retained(state_topic) == "online"
+
+    def test_wrong_top_level_json_type_does_not_crash(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_switch("switch-1")])
+
+        # Valid JSON but the wrong top-level shape for each handler (object where a
+        # list is expected, bare scalar/array where a dict is expected) must not raise
+        # AttributeError/TypeError out of the callback.
+        for payload in (b"{}", b"5", b'"x"', b"[1, 2, 3]", b"null", b"[{}]", b'[{"x": 1}]'):
+            fake_broker.inject(f"{BASE}/bridge/devices", payload, retain=True)
+            fake_broker.inject(f"{BASE}/bridge/info", payload, retain=True)
+            fake_broker.inject(f"{BASE}/bridge/event", payload)
+            fake_broker.inject(f"{BASE}/bridge/logging", payload)
+            fake_broker.inject(f"{BASE}/bridge/response/device/remove", payload)
+            fake_broker.inject(f"{BASE}/switch-1/availability", payload)
+
+        # Top-level-valid dicts whose nested "data" field is the wrong shape must not
+        # raise out of the event / remove-response handlers either.
+        fake_broker.inject(f"{BASE}/bridge/event", b'{"type": "deviceLeave", "data": "x"}')
+        fake_broker.inject(f"{BASE}/bridge/response/device/remove", b'{"status": "ok", "data": 5}')
+
+        # A malformed bridge/devices — including a list of objects that are not real
+        # device descriptors (no ieee_address, e.g. "[{}]") — must NOT be treated as an
+        # authoritative list and wipe the registered device.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/switch-1/meta") is not None
+
+        # Still alive and processing valid messages.
+        z2m_emu.online()
+        state_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.STATE}"
+        assert wb_observer.retained(state_topic) == "online"

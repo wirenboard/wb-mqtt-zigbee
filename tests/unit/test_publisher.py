@@ -73,6 +73,16 @@ class TestRetainedDeviceMetaFilter:
         )
         assert "dev1" in driver._scanned_our_ids  # pylint: disable=protected-access
 
+    def test_non_dict_meta_payload_is_ignored(self):
+        # Valid JSON but wrong top-level shape (list, scalar, string) must not raise
+        # AttributeError on .get() and must not be collected.
+        driver = self._make_driver()
+        for payload in (b"[1, 2]", b"5", b'"x"', b"null"):
+            msg = MQTTMessage(topic=b"/devices/dev1/meta")
+            msg.payload = payload
+            driver._on_retained_device_meta(None, None, msg)  # pylint: disable=protected-access
+        assert "dev1" not in driver._scanned_our_ids  # pylint: disable=protected-access
+
     def test_legacy_driver_name_is_collected(self):
         driver = self._make_driver()
         for legacy_name in LEGACY_DRIVER_NAMES:

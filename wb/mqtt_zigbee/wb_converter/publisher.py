@@ -5,6 +5,7 @@ from typing import Any, Callable, Optional
 from paho.mqtt.client import Client, MQTTMessage
 from wb_common.mqtt_client import MQTTClient
 
+from ..mqtt_utils import decode_payload
 from .controls import (
     BRIDGE_CONTROLS,
     BridgeControl,
@@ -153,14 +154,14 @@ class WbMqttDriver:
         """
         Callback for /devices/+/meta: collect device_ids with our driver
         """
-        payload = message.payload.decode("utf-8").strip()
+        payload = decode_payload(message).strip()
         if not payload:
             return
         try:
             meta = json.loads(payload)
         except (json.JSONDecodeError, ValueError):
             return
-        if meta.get("driver") not in _KNOWN_DRIVER_NAMES:
+        if not isinstance(meta, dict) or meta.get("driver") not in _KNOWN_DRIVER_NAMES:
             return
         # topic: /devices/{device_id}/meta
         parts = message.topic.split("/")
@@ -171,7 +172,7 @@ class WbMqttDriver:
         """
         Callback for /devices/+/controls/+/meta: collect control_ids per device
         """
-        payload = message.payload.decode("utf-8").strip()
+        payload = decode_payload(message).strip()
         if not payload:
             return
         # topic: /devices/{device_id}/controls/{control_id}/meta
@@ -199,7 +200,7 @@ class WbMqttDriver:
         self._client.subscribe(update_devices_topic)
 
         def handle_permit_join(_client: Client, _userdata: Any, message: MQTTMessage) -> None:
-            value = message.payload.decode("utf-8").strip()
+            value = decode_payload(message).strip()
             on_permit_join(value == WbBoolValue.TRUE)
 
         def handle_update_devices(_client: Client, _userdata: Any, _message: MQTTMessage) -> None:
@@ -327,7 +328,7 @@ def _make_command_handler(control_id: str, on_command: Callable[[str, str], None
     """
 
     def handler(_client: Client, _userdata: Any, message: MQTTMessage) -> None:
-        value = message.payload.decode("utf-8").strip()
+        value = decode_payload(message).strip()
         on_command(control_id, value)
 
     return handler

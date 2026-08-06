@@ -1,6 +1,8 @@
 """Unit tests for wb.mqtt_zigbee.mqtt_utils."""
 
-from wb.mqtt_zigbee.mqtt_utils import decode_payload
+import pytest
+
+from wb.mqtt_zigbee.mqtt_utils import decode_payload, is_safe_topic_name
 
 
 class _Msg:
@@ -20,3 +22,15 @@ def test_decode_invalid_bytes_are_replaced_not_raised():
     result = decode_payload(_Msg(b"\xff\xfe\x00"))
     assert isinstance(result, str)
     assert "�" in result
+
+
+@pytest.mark.parametrize("name", ["sensor-1", "living room", "Дверь_в_ванной", "a.b"])
+def test_safe_topic_names_accepted(name):
+    assert is_safe_topic_name(name) is True
+
+
+@pytest.mark.parametrize("name", ["", "#", "+", "a/b", "foo#", "a+b", "x/#"])
+def test_unsafe_topic_names_rejected(name):
+    # Empty names and MQTT wildcard/separator chars must be rejected so a z2m
+    # rename to e.g. "#" cannot inject a wildcard subscription.
+    assert is_safe_topic_name(name) is False

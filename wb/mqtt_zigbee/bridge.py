@@ -6,6 +6,7 @@ from typing import Callable, Optional
 
 from wb_common.mqtt_client import MQTTClient
 
+from .mqtt_utils import is_safe_topic_name
 from .registered_device import PendingCommand, RegisteredDevice
 from .wb_converter.controls import (
     BridgeControl,
@@ -202,7 +203,7 @@ class Bridge:
             self._retained_scan_active = False
 
     def _register_device(self, device: Z2MDevice) -> None:
-        if not _is_safe_topic_name(device.friendly_name):
+        if not is_safe_topic_name(device.friendly_name):
             logger.warning("Device '%s' has unsafe name for MQTT topics, skipping", device.friendly_name)
             return
         if device.friendly_name in self._known_devices:
@@ -431,6 +432,12 @@ class Bridge:
         return self._ieee_to_name.get(ieee_address)
 
     def _on_device_renamed(self, old_name: str, new_name: str) -> None:
+        # The bridge/event rename path delivers new_name straight from the z2m payload
+        # (data["to"]); reject unsafe names here so a rename to "#"/"+"/"a/b" cannot turn
+        # a device subscription into a wildcard or inject a topic level. Keep the old name.
+        if not is_safe_topic_name(new_name):
+            logger.warning("Ignoring rename '%s' -> '%s': unsafe name for MQTT topics", old_name, new_name)
+            return
         registered = self._known_devices.pop(old_name, None)
         if registered is None:
             logger.warning("Rename event for unknown device '%s' -> '%s'", old_name, new_name)
@@ -472,16 +479,6 @@ class Bridge:
             old_device_id,
             new_device_id,
         )
-
-
-_MQTT_UNSAFE_CHARS = {"+", "#", "/"}
-
-
-def _is_safe_topic_name(name: str) -> bool:
-    """Check that a device name is safe to use in MQTT topic paths."""
-    if not name:
-        return False
-    return not any(ch in name for ch in _MQTT_UNSAFE_CHARS)
 
 
 def _sanitize_device_id(name: str) -> str:

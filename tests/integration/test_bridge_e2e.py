@@ -599,6 +599,30 @@ class TestDeviceEvents:
         z2m_emu.device_state("new-name", {"temperature": 22.5})
         assert wb_observer.retained(f"{DEVICES_PREFIX}/new-name/controls/temperature") == "22.5"
 
+    def test_device_renamed_to_unsafe_name_is_rejected(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+        fake_mqtt_client: FakeMqttClient,
+    ) -> None:
+        """
+        A bridge/event rename delivers new_name straight from the z2m payload. A name
+        with an MQTT wildcard/separator ('#', '+', '/') must be rejected: no wildcard
+        subscription, and the device keeps its original safe registration.
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("old-name")])
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/old-name/meta") is not None
+
+        z2m_emu.device_renamed("old-name", "#")
+
+        # No wildcard subscription was created from the injected name.
+        assert f"{BASE}/#" not in fake_mqtt_client.subscriptions
+        assert not any(s.endswith("/#") or s.endswith("/+") for s in fake_mqtt_client.subscriptions)
+        # The original device is untouched — still registered under its safe name.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/old-name/meta") is not None
+
     def test_device_remove_response_removes_wb_device(
         self,
         bridge: Bridge,

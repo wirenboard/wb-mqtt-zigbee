@@ -2,6 +2,8 @@ wb-mqtt-zigbee (1.4.11) stable; urgency=medium
 
   * Harden MQTT handlers against malformed payloads (non-UTF-8, unexpected JSON
     shape, deeply nested or oversized) so a bad message can no longer crash the daemon
+  * Reject device renames to names containing MQTT wildcards/separators, which could
+    hijack a device's topic subscription
 
  -- Victor Fedorov <victor.fedorov@wirenboard.com>  Wed, 05 Aug 2026 14:00:00 +0300
 

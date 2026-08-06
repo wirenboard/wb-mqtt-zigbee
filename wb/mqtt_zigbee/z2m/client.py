@@ -5,7 +5,7 @@ from typing import Any, Callable, Optional, Union
 from paho.mqtt.client import Client, MQTTMessage
 from wb_common.mqtt_client import MQTTClient
 
-from ..mqtt_utils import decode_payload
+from ..mqtt_utils import decode_payload, is_safe_topic_name
 from .model import (
     BridgeInfo,
     BridgeState,
@@ -103,6 +103,9 @@ class Z2MClient:
 
     def subscribe_device(self, friendly_name: str) -> None:
         """Subscribe to a device's state topic"""
+        if not is_safe_topic_name(friendly_name):
+            logger.warning("Refusing to subscribe device with unsafe name '%s'", friendly_name)
+            return
         if friendly_name in self._subscribed_devices:
             logger.debug("Already subscribed to '%s', skipping", friendly_name)
             return
@@ -123,10 +126,16 @@ class Z2MClient:
 
     def request_device_state(self, friendly_name: str) -> None:
         """Request current state from a device via zigbee2mqtt/{device}/get"""
+        if not is_safe_topic_name(friendly_name):
+            logger.warning("Refusing state request for device with unsafe name '%s'", friendly_name)
+            return
         self._client.publish(f"{self._base_topic}/{friendly_name}/get", "{}")
 
     def set_device_state(self, friendly_name: str, payload: dict) -> None:
         """Send command to a device via zigbee2mqtt/{device}/set"""
+        if not is_safe_topic_name(friendly_name):
+            logger.warning("Refusing command for device with unsafe name '%s'", friendly_name)
+            return
         self._client.publish(f"{self._base_topic}/{friendly_name}/set", json.dumps(payload))
 
     def _make_device_state_handler(self, friendly_name: str):

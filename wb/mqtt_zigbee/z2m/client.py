@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 PERMIT_JOIN_TIME_SEC = 254
 PERMIT_JOIN_TIME_SEC_DISABLED = 0
 
+# Upper bound for a JSON payload we will try to parse. A real bridge/devices dump is
+# ~30 KB for a handful of devices and grows slowly; this cap is far above any genuine
+# payload and only rejects pathological input before it reaches json.loads.
+_MAX_PAYLOAD_BYTES = 4 * 1024 * 1024
+
 
 class Z2MClient:
     """Subscribes to zigbee2mqtt MQTT topics and parses incoming messages into typed callbacks"""
@@ -267,10 +272,18 @@ def _parse_json_payload(
     payload = decode_payload(message)
     if not payload:
         return None
+    if len(payload) > _MAX_PAYLOAD_BYTES:
+        logger.warning("Ignoring oversized %s payload (%d bytes)", topic_name, len(payload))
+        return None
     try:
         data = json.loads(payload)
     except json.JSONDecodeError:
         logger.warning("Failed to parse %s payload", topic_name)
+        return None
+    except RecursionError:
+        # json.loads recurses per nesting level; a deeply nested payload raises here
+        # instead of JSONDecodeError. Reject it rather than let it unwind the loop.
+        logger.warning("Ignoring deeply nested %s payload", topic_name)
         return None
     if not isinstance(data, expected_type):
         logger.warning("Unexpected %s payload type: %s", topic_name, type(data).__name__)

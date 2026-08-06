@@ -1,7 +1,7 @@
 wb-mqtt-zigbee (1.4.11) stable; urgency=medium
 
   * Harden MQTT handlers against malformed payloads (non-UTF-8, unexpected JSON
-    shape) so a bad message can no longer crash the daemon
+    shape, deeply nested or oversized) so a bad message can no longer crash the daemon
 
  -- Victor Fedorov <victor.fedorov@wirenboard.com>  Wed, 05 Aug 2026 14:00:00 +0300
 

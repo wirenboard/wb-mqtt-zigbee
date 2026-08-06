@@ -2,7 +2,12 @@
 
 import pytest
 
-from wb.mqtt_zigbee.mqtt_utils import decode_payload, is_safe_topic_name
+from wb.mqtt_zigbee.mqtt_utils import (
+    MAX_PAYLOAD_BYTES,
+    decode_payload,
+    is_safe_topic_name,
+    payload_too_large,
+)
 
 
 class _Msg:
@@ -34,3 +39,9 @@ def test_unsafe_topic_names_rejected(name):
     # Empty names and MQTT wildcard/separator chars must be rejected so a z2m
     # rename to e.g. "#" cannot inject a wildcard subscription.
     assert is_safe_topic_name(name) is False
+
+
+def test_payload_too_large_boundary():
+    # At the limit is allowed; one byte over is rejected (guards json.loads OOM).
+    assert payload_too_large(_Msg(b"x" * MAX_PAYLOAD_BYTES), "t") is False
+    assert payload_too_large(_Msg(b"x" * (MAX_PAYLOAD_BYTES + 1)), "t") is True

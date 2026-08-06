@@ -5,7 +5,7 @@ from typing import Any, Callable, Optional
 from paho.mqtt.client import Client, MQTTMessage
 from wb_common.mqtt_client import MQTTClient
 
-from ..mqtt_utils import decode_payload
+from ..mqtt_utils import decode_payload, payload_too_large
 from .controls import (
     BRIDGE_CONTROLS,
     BridgeControl,
@@ -154,6 +154,8 @@ class WbMqttDriver:
         """
         Callback for /devices/+/meta: collect device_ids with our driver
         """
+        if payload_too_large(message, "/devices/+/meta"):
+            return
         payload = decode_payload(message).strip()
         if not payload:
             return

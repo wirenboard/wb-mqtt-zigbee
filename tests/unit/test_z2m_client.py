@@ -12,10 +12,8 @@ if "wb_common" not in sys.modules:
     sys.modules["wb_common"] = wb_common
     sys.modules["wb_common.mqtt_client"] = wb_common_mqtt
 
-from wb.mqtt_zigbee.z2m.client import (  # noqa: E402
-    _MAX_PAYLOAD_BYTES,
-    _parse_json_payload,
-)
+from wb.mqtt_zigbee.mqtt_utils import MAX_PAYLOAD_BYTES  # noqa: E402
+from wb.mqtt_zigbee.z2m.client import _parse_json_payload  # noqa: E402
 
 
 def _make_message(payload: str) -> MagicMock:
@@ -61,7 +59,7 @@ class TestParseJsonPayload:
         assert "Ignoring deeply nested my/topic payload" in caplog.text
 
     def test_oversized_payload_rejected_before_parse(self, caplog):
-        oversized = "a" * (_MAX_PAYLOAD_BYTES + 1)
+        oversized = "a" * (MAX_PAYLOAD_BYTES + 1)
         with caplog.at_level(logging.WARNING, logger="wb.mqtt_zigbee.z2m.client"):
             result = _parse_json_payload(_make_message(oversized), "my/topic")
         assert result is None

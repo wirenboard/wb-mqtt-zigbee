@@ -5,7 +5,7 @@ from typing import Any, Callable, Optional, Union
 from paho.mqtt.client import Client, MQTTMessage
 from wb_common.mqtt_client import MQTTClient
 
-from ..mqtt_utils import decode_payload, is_safe_topic_name
+from ..mqtt_utils import decode_payload, is_safe_topic_name, payload_too_large
 from .model import (
     BridgeInfo,
     BridgeState,
@@ -20,11 +20,6 @@ logger = logging.getLogger(__name__)
 
 PERMIT_JOIN_TIME_SEC = 254
 PERMIT_JOIN_TIME_SEC_DISABLED = 0
-
-# Upper bound for a JSON payload we will try to parse. A real bridge/devices dump is
-# ~30 KB for a handful of devices and grows slowly; this cap is far above any genuine
-# payload and only rejects pathological input before it reaches json.loads.
-_MAX_PAYLOAD_BYTES = 4 * 1024 * 1024
 
 
 class Z2MClient:
@@ -164,6 +159,8 @@ class Z2MClient:
 
     def _handle_bridge_state(self, _client: Client, _userdata: Any, message: MQTTMessage) -> None:
         """Parse bridge/state: may be plain string or JSON {"state": "..."}"""
+        if payload_too_large(message, "bridge/state"):
+            return
         raw = decode_payload(message).strip()
         try:
             data = json.loads(raw)
@@ -189,6 +186,8 @@ class Z2MClient:
 
     def _handle_bridge_log(self, _client: Client, _userdata: Any, message: MQTTMessage) -> None:
         """Parse bridge/logging JSON, extract level and message. Falls back to raw string on error"""
+        if payload_too_large(message, "bridge/logging"):
+            return
         raw = decode_payload(message)
         try:
             data = json.loads(raw)
@@ -278,11 +277,10 @@ def _parse_json_payload(
     `expected_type` (e.g. a bare number/string/array where a dict is expected). This
     keeps handlers that assume a dict/list from raising on a malformed shape.
     """
+    if payload_too_large(message, topic_name):
+        return None
     payload = decode_payload(message)
     if not payload:
-        return None
-    if len(payload) > _MAX_PAYLOAD_BYTES:
-        logger.warning("Ignoring oversized %s payload (%d bytes)", topic_name, len(payload))
         return None
     try:
         data = json.loads(payload)

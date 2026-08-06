@@ -188,7 +188,7 @@ class Bridge:
     def _on_bridge_log(self, level: str, message: str) -> None:
         self._update_stats()
         if BridgeLogLevel.RANK.get(level, 0) >= self._log_min_rank:
-            self._mqtt_driver.publish_bridge_control(BridgeControl.LOG, message)
+            self._mqtt_driver.publish_bridge_control(BridgeControl.LOG, _strip_control_chars(message))
 
     def _on_devices(self, devices: list[Z2MDevice]) -> None:
         logger.info("Devices: %d", len(devices))
@@ -508,6 +508,18 @@ class Bridge:
             old_device_id,
             new_device_id,
         )
+
+
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def _strip_control_chars(text: str) -> str:
+    """Replace C0/C1 control characters (incl. CR/LF/NUL) with spaces.
+
+    The z2m log message is forwarded verbatim into the retained WB "Log" control;
+    stray control characters would corrupt the single-line value shown in the UI.
+    """
+    return _CONTROL_CHARS_RE.sub(" ", text)
 
 
 def _sanitize_device_id(name: str) -> str:

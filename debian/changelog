@@ -6,6 +6,8 @@ wb-mqtt-zigbee (1.4.11) stable; urgency=medium
     hijack a device's topic subscription
   * Disambiguate device IDs that collide after name sanitization (e.g. "lamp.1" vs
     "lamp 1"), preventing retained-topic clobbering and command misrouting
+  * Strip control characters from the zigbee2mqtt log text before publishing it to the
+    bridge Log control
 
  -- Victor Fedorov <victor.fedorov@wirenboard.com>  Wed, 05 Aug 2026 14:00:00 +0300
 

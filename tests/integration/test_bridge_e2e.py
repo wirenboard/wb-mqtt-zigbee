@@ -225,6 +225,23 @@ class TestBridgeInitialization:
 
         assert wb_observer.retained(log_topic) == "warn message"
 
+    def test_bridge_log_control_chars_are_stripped(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        z2m log text is forwarded verbatim into the retained "Log" control; control
+        characters (CR/LF/NUL/...) must be replaced so they cannot corrupt the value.
+        """
+        bridge.subscribe()
+        log_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.LOG}"
+
+        z2m_emu.log("warning", "line1\r\nline2\tval\x00end")
+
+        assert wb_observer.retained(log_topic) == "line1  line2 val end"
+
 
 class TestDeviceRegistration:
     """

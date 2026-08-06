@@ -4,6 +4,8 @@ wb-mqtt-zigbee (1.4.11) stable; urgency=medium
     shape, deeply nested or oversized) so a bad message can no longer crash the daemon
   * Reject device renames to names containing MQTT wildcards/separators, which could
     hijack a device's topic subscription
+  * Disambiguate device IDs that collide after name sanitization (e.g. "lamp.1" vs
+    "lamp 1"), preventing retained-topic clobbering and command misrouting
 
  -- Victor Fedorov <victor.fedorov@wirenboard.com>  Wed, 05 Aug 2026 14:00:00 +0300
 

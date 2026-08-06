@@ -198,7 +198,7 @@ class Bridge:
             self._register_device(device)
         self._remove_stale_devices(devices)
         if self._retained_scan_active:
-            self._remove_ghost_devices(devices)
+            self._remove_ghost_devices()
             self._mqtt_driver.stop_retained_scan()
             self._retained_scan_active = False
 
@@ -225,7 +225,7 @@ class Bridge:
         if sum(1 for _control in controls if _control not in SERVICE_CONTROLS) == 0:
             logger.warning("Device '%s' has no mappable exposes, skipping", device.friendly_name)
             return
-        device_id = _build_device_id(device.model, device.friendly_name, device.ieee_address)
+        device_id = self._resolve_device_id(device.model, device.friendly_name, device.ieee_address)
         registered = RegisteredDevice(z2m=device, controls=controls, device_id=device_id)
         logger.info(
             "Registering device '%s' as '%s' (%d controls)", device.friendly_name, device_id, len(controls)
@@ -417,9 +417,38 @@ class Bridge:
             self._mqtt_driver.remove_device(registered.device_id, registered.controls)
             logger.info("Removed stale WB device '%s' (%s)", name, registered.device_id)
 
-    def _remove_ghost_devices(self, devices: list[Z2MDevice]) -> None:
-        """Remove retained WB devices from previous runs that are no longer in zigbee2mqtt."""
-        current_device_ids = {_build_device_id(d.model, d.friendly_name, d.ieee_address) for d in devices}
+    def _resolve_device_id(self, model: str, friendly_name: str, ieee_address: str) -> str:
+        """
+        Build the WB device_id, disambiguating sanitizer collisions.
+
+        _sanitize_device_id can map two distinct z2m names to the same id (e.g. "lamp.1"
+        and "lamp 1" both become "lamp_1"), which would clobber each other's retained
+        topics and misroute commands (message_callback_add overwrites an identical
+        filter). If the base id is already held by a device with a different
+        ieee_address, append the (unique) ieee_address to keep them distinct.
+        """
+        base = _build_device_id(model, friendly_name, ieee_address)
+        for registered in self._known_devices.values():
+            if registered.device_id == base and registered.z2m.ieee_address != ieee_address:
+                disambiguated = f"{base}_{_sanitize_device_id(ieee_address)}"
+                logger.warning(
+                    "device_id '%s' collides (%s vs %s); using '%s'",
+                    base,
+                    registered.z2m.ieee_address,
+                    ieee_address,
+                    disambiguated,
+                )
+                return disambiguated
+        return base
+
+    def _remove_ghost_devices(self) -> None:
+        """
+        Remove retained WB devices from previous runs that are no longer in zigbee2mqtt
+        """
+        # Use the ids actually assigned during registration (which include any collision
+        # disambiguation) rather than recomputing, so a disambiguated device is not
+        # mistaken for a ghost. All current devices are registered before this runs.
+        current_device_ids = {registered.device_id for registered in self._known_devices.values()}
         scanned_ids = self._mqtt_driver.get_scanned_device_ids()
         ghost_ids = scanned_ids - current_device_ids
         for device_id in ghost_ids:
@@ -443,7 +472,7 @@ class Bridge:
             logger.warning("Rename event for unknown device '%s' -> '%s'", old_name, new_name)
             return
         old_device_id = registered.device_id
-        new_device_id = _build_device_id(registered.z2m.model, new_name, registered.z2m.ieee_address)
+        new_device_id = self._resolve_device_id(registered.z2m.model, new_name, registered.z2m.ieee_address)
         self._z2m.unsubscribe_device(old_name)
         self._mqtt_driver.unsubscribe_device_commands(old_device_id, registered.controls)
         self._mqtt_driver.remove_device(old_device_id, registered.controls)

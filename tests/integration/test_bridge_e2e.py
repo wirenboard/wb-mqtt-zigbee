@@ -289,6 +289,34 @@ class TestDeviceRegistration:
 
         assert wb_observer.retained(f"{DEVICES_PREFIX}/bad_name/meta") is None
 
+    def test_sanitizer_id_collision_is_disambiguated_by_ieee(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        Two distinct z2m names that sanitize to the same id ("lamp.1" and "lamp 1"
+        both -> "lamp_1") must not clobber each other: the first keeps the clean id,
+        the second is disambiguated with its ieee_address. Both stay registered.
+        """
+        bridge.subscribe()
+
+        z2m_emu.devices(
+            [
+                _z2m_sensor("lamp.1", ieee="0x0001"),
+                _z2m_sensor("lamp 1", ieee="0x0009"),
+            ]
+        )
+
+        # First device keeps the clean sanitized id.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is not None
+        # Second device is disambiguated by ieee, not lost or clobbered.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x0009/meta") is not None
+        # Both are counted — two separate WB devices.
+        count_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.DEVICE_COUNT}"
+        assert wb_observer.retained(count_topic) == "2"
+
 
 class TestDeviceStatePropagation:
     """

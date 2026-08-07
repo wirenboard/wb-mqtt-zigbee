@@ -747,6 +747,28 @@ class TestGhostCleanup:
 
         assert wb_observer.retained(f"{DEVICES_PREFIX}/ghost/meta") is None
 
+    def test_present_but_skipped_device_is_not_ghosted(
+        self,
+        bridge: Bridge,
+        fake_broker: FakeMqttBroker,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        A device present in bridge/devices but skipped at registration this cycle (e.g.
+        mid-interview: empty exposes) must NOT be wiped as a ghost — its prior-run
+        retained topics survive until it reports exposes and registers.
+        """
+        prior_meta = json.dumps({"driver": DRIVER_NAME, "title": {"en": "S", "ru": "S"}})
+        fake_broker.inject(f"{DEVICES_PREFIX}/sensor-1/meta", prior_meta, retain=True)
+
+        bridge.subscribe()
+        skipped = _z2m_sensor("sensor-1")
+        skipped["definition"]["exposes"] = []  # still interviewing -> skipped, not gone
+        z2m_emu.devices([skipped])
+
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta") is not None
+
 
 class TestReconnectFlow:
     """

@@ -198,7 +198,7 @@ class Bridge:
             self._register_device(device)
         self._remove_stale_devices(devices)
         if self._retained_scan_active:
-            self._remove_ghost_devices()
+            self._remove_ghost_devices(devices)
             self._mqtt_driver.stop_retained_scan()
             self._retained_scan_active = False
 
@@ -441,14 +441,17 @@ class Bridge:
                 return disambiguated
         return base
 
-    def _remove_ghost_devices(self) -> None:
+    def _remove_ghost_devices(self, devices: list[Z2MDevice]) -> None:
         """
         Remove retained WB devices from previous runs that are no longer in zigbee2mqtt
         """
-        # Use the ids actually assigned during registration (which include any collision
-        # disambiguation) rather than recomputing, so a disambiguated device is not
-        # mistaken for a ghost. All current devices are registered before this runs.
+        # Keep two sources so a device that is present in z2m but skipped at registration
+        # (no/empty exposes yet, e.g. mid-interview) is NOT wiped as a ghost:
+        #  - ids actually assigned to registered devices (include collision disambiguation,
+        #    so a disambiguated device is not mistaken for a ghost);
+        #  - base ids of every incoming device, covering the skipped ones.
         current_device_ids = {registered.device_id for registered in self._known_devices.values()}
+        current_device_ids |= {_build_device_id(d.model, d.friendly_name, d.ieee_address) for d in devices}
         scanned_ids = self._mqtt_driver.get_scanned_device_ids()
         ghost_ids = scanned_ids - current_device_ids
         for device_id in ghost_ids:

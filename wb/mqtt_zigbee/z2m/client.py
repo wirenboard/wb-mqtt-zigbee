@@ -165,7 +165,9 @@ class Z2MClient:
         try:
             data = json.loads(raw)
             state = data.get("state", raw) if isinstance(data, dict) else raw
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
+            # RecursionError: a deeply nested payload is not a usable state; fall back to
+            # raw so it is rejected as an unknown state rather than escaping the callback.
             state = raw
         if state not in (BridgeState.ONLINE, BridgeState.OFFLINE, BridgeState.ERROR):
             logger.warning("Unknown bridge state: %s", state)
@@ -191,7 +193,9 @@ class Z2MClient:
         raw = decode_payload(message)
         try:
             data = json.loads(raw)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
+            # RecursionError on a deeply nested payload: treat as non-dict and fall back
+            # to the raw string, same as any other non-JSON log line.
             data = None
         if isinstance(data, dict):
             log_level = data.get("level", "info")

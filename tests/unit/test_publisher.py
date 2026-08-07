@@ -113,3 +113,12 @@ class TestRetainedDeviceMetaFilter:
         msg.payload = b"not json"
         driver._on_retained_device_meta(None, None, msg)  # pylint: disable=protected-access
         assert not driver._scanned_our_ids  # pylint: disable=protected-access
+
+    def test_deeply_nested_payload_is_ignored(self):
+        # A deeply nested payload raises RecursionError in json.loads (not
+        # JSONDecodeError); it must be caught and ignored, not escape the callback.
+        driver = self._make_driver()
+        msg = MQTTMessage(topic=b"/devices/dev5/meta")
+        msg.payload = (b"[" * 20000) + (b"]" * 20000)
+        driver._on_retained_device_meta(None, None, msg)  # pylint: disable=protected-access
+        assert not driver._scanned_our_ids  # pylint: disable=protected-access

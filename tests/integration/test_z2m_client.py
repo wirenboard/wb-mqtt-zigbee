@@ -75,6 +75,15 @@ class TestBridgeState:
         z2m_emu.state_raw("starting", retain=True)
         assert not rec.bridge_states
 
+    def test_deeply_nested_payload_does_not_raise(
+        self, fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator
+    ) -> None:
+        # RecursionError from json.loads (deeply nested payload) must be caught and fall
+        # back to raw — rejected as an unknown state — not escape the callback.
+        _client, rec = _make_client(fake_mqtt_client)
+        z2m_emu.state_raw("[" * 20000 + "]" * 20000, retain=True)
+        assert not rec.bridge_states
+
 
 class TestBridgeInfo:
     """
@@ -127,6 +136,16 @@ class TestBridgeLog:
         z2m_emu.log_raw("5")
         z2m_emu.log_raw("[1, 2]")
         assert rec.bridge_logs == [("info", "5"), ("info", "[1, 2]")]
+
+    def test_deeply_nested_payload_falls_back_to_raw(
+        self, fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator
+    ) -> None:
+        # RecursionError from json.loads must be caught; the message falls back to raw
+        # at info level instead of escaping the callback.
+        _client, rec = _make_client(fake_mqtt_client)
+        z2m_emu.log_raw("[" * 20000 + "]" * 20000)
+        assert len(rec.bridge_logs) == 1
+        assert rec.bridge_logs[0][0] == "info"
 
 
 class TestBridgeDevices:
@@ -284,6 +303,33 @@ class TestPerDeviceState:
         client.subscribe_device("lamp")
         # Second call must NOT add another `zigbee2mqtt/lamp` subscription
         assert fake_mqtt_client.subscriptions == subs_after_first
+
+
+class TestUnsafeDeviceNameGuards:
+    """
+    Defense-in-depth: z2m methods refuse device names unsafe for MQTT topics, so a name
+    like "#" or "a/b" cannot create a wildcard subscription or an injected topic path.
+    """
+
+    def test_subscribe_device_refuses_wildcard_name(self, fake_mqtt_client: FakeMqttClient) -> None:
+        client, _rec = _make_client(fake_mqtt_client)
+        before = list(fake_mqtt_client.subscriptions)
+        client.subscribe_device("#")
+        assert fake_mqtt_client.subscriptions == before
+
+    def test_request_device_state_refuses_unsafe_name(
+        self, fake_mqtt_client: FakeMqttClient, wb_observer: WbObserver
+    ) -> None:
+        client, _rec = _make_client(fake_mqtt_client)
+        client.request_device_state("a/b")
+        assert wb_observer.last_on(f"{BASE}/a/b/get") is None
+
+    def test_set_device_state_refuses_unsafe_name(
+        self, fake_mqtt_client: FakeMqttClient, wb_observer: WbObserver
+    ) -> None:
+        client, _rec = _make_client(fake_mqtt_client)
+        client.set_device_state("a/b", {"state": "ON"})
+        assert wb_observer.last_on(f"{BASE}/a/b/set") is None
 
 
 class TestOutgoingCommands:

@@ -166,8 +166,7 @@ class Z2MClient:
             data = json.loads(raw)
             state = data.get("state", raw) if isinstance(data, dict) else raw
         except (json.JSONDecodeError, RecursionError):
-            # RecursionError: a deeply nested payload is not a usable state; fall back to
-            # raw so it is rejected as an unknown state rather than escaping the callback.
+            # RecursionError (deeply nested payload): fall back to raw -> unknown state.
             state = raw
         if state not in (BridgeState.ONLINE, BridgeState.OFFLINE, BridgeState.ERROR):
             logger.warning("Unknown bridge state: %s", state)
@@ -194,8 +193,7 @@ class Z2MClient:
         try:
             data = json.loads(raw)
         except (json.JSONDecodeError, RecursionError):
-            # RecursionError on a deeply nested payload: treat as non-dict and fall back
-            # to the raw string, same as any other non-JSON log line.
+            # RecursionError (deeply nested payload): treat as non-dict, fall back to raw.
             data = None
         if isinstance(data, dict):
             log_level = data.get("level", "info")
@@ -210,11 +208,9 @@ class Z2MClient:
         data = _parse_json_payload(message, "bridge/devices", list)
         if data is None:
             return
-        # A malformed list must NOT be treated as an authoritative device list — that
-        # runs stale-removal and wipes every device (e.g. "[{}]" yields a device with an
-        # empty friendly_name, marking all real devices stale). Every real z2m entry is
-        # an object with an ieee_address, so reject the whole message unless all entries
-        # look like real devices. A genuinely empty list "[]" still clears normally.
+        # Reject a malformed list wholesale: treated as authoritative it would run
+        # stale-removal and wipe every real device (e.g. "[{}]"). Real entries are objects
+        # with an ieee_address; a genuinely empty "[]" still clears normally.
         if not all(isinstance(device_data, dict) and device_data.get("ieee_address") for device_data in data):
             logger.warning("Ignoring malformed bridge/devices payload")
             return
@@ -292,8 +288,7 @@ def _parse_json_payload(
         logger.warning("Failed to parse %s payload", topic_name)
         return None
     except RecursionError:
-        # json.loads recurses per nesting level; a deeply nested payload raises here
-        # instead of JSONDecodeError. Reject it rather than let it unwind the loop.
+        # json.loads recurses per level; a deeply nested payload raises RecursionError.
         logger.warning("Ignoring deeply nested %s payload", topic_name)
         return None
     if not isinstance(data, expected_type):

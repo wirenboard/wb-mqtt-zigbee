@@ -162,8 +162,7 @@ class WbMqttDriver:
         try:
             meta = json.loads(payload)
         except (json.JSONDecodeError, ValueError, RecursionError):
-            # RecursionError: a deeply nested retained meta payload is ignored silently,
-            # like any other unparseable meta during the retained scan.
+            # RecursionError (deeply nested payload): ignored silently, like bad meta.
             return
         if not isinstance(meta, dict) or meta.get("driver") not in _KNOWN_DRIVER_NAMES:
             return

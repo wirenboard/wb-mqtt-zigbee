@@ -445,11 +445,9 @@ class Bridge:
         """
         Remove retained WB devices from previous runs that are no longer in zigbee2mqtt
         """
-        # Keep two sources so a device that is present in z2m but skipped at registration
-        # (no/empty exposes yet, e.g. mid-interview) is NOT wiped as a ghost:
-        #  - ids actually assigned to registered devices (include collision disambiguation,
-        #    so a disambiguated device is not mistaken for a ghost);
-        #  - base ids of every incoming device, covering the skipped ones.
+        # Union registered ids (as assigned, incl. collision disambiguation) with base ids
+        # of every incoming device, so a device present in z2m but skipped at registration
+        # (no exposes yet, e.g. mid-interview) is not wiped as a ghost.
         current_device_ids = {registered.device_id for registered in self._known_devices.values()}
         current_device_ids |= {_build_device_id(d.model, d.friendly_name, d.ieee_address) for d in devices}
         scanned_ids = self._mqtt_driver.get_scanned_device_ids()
@@ -464,9 +462,8 @@ class Bridge:
         return self._ieee_to_name.get(ieee_address)
 
     def _on_device_renamed(self, old_name: str, new_name: str) -> None:
-        # The bridge/event rename path delivers new_name straight from the z2m payload
-        # (data["to"]); reject unsafe names here so a rename to "#"/"+"/"a/b" cannot turn
-        # a device subscription into a wildcard or inject a topic level. Keep the old name.
+        # new_name comes straight from the z2m payload (data["to"]); reject unsafe names so
+        # a rename to "#"/"+"/"a/b" cannot hijack a subscription. Keep the old name.
         if not is_safe_topic_name(new_name):
             logger.warning("Ignoring rename '%s' -> '%s': unsafe name for MQTT topics", old_name, new_name)
             return

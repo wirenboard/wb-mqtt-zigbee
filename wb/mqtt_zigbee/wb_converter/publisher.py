@@ -5,7 +5,7 @@ from typing import Any, Callable, Optional
 from paho.mqtt.client import Client, MQTTMessage
 from wb_common.mqtt_client import MQTTClient
 
-from ..mqtt_utils import decode_payload, payload_too_large
+from ..mqtt_utils import decode_payload, log_callback_errors, payload_too_large
 from .controls import (
     BRIDGE_CONTROLS,
     BridgeControl,
@@ -126,8 +126,12 @@ class WbMqttDriver:
         self._scanned_controls.clear()
         self._client.subscribe(_DEVICE_META_WILDCARD)
         self._client.subscribe(_CONTROL_META_WILDCARD)
-        self._client.message_callback_add(_DEVICE_META_WILDCARD, self._on_retained_device_meta)
-        self._client.message_callback_add(_CONTROL_META_WILDCARD, self._on_retained_control_meta)
+        self._client.message_callback_add(
+            _DEVICE_META_WILDCARD, log_callback_errors(self._on_retained_device_meta)
+        )
+        self._client.message_callback_add(
+            _CONTROL_META_WILDCARD, log_callback_errors(self._on_retained_control_meta)
+        )
 
     def stop_retained_scan(self) -> None:
         """
@@ -209,8 +213,8 @@ class WbMqttDriver:
         def handle_update_devices(_client: Client, _userdata: Any, _message: MQTTMessage) -> None:
             on_update_devices()
 
-        self._client.message_callback_add(permit_join_topic, handle_permit_join)
-        self._client.message_callback_add(update_devices_topic, handle_update_devices)
+        self._client.message_callback_add(permit_join_topic, log_callback_errors(handle_permit_join))
+        self._client.message_callback_add(update_devices_topic, log_callback_errors(handle_update_devices))
 
     def subscribe_device_commands(
         self,
@@ -231,7 +235,9 @@ class WbMqttDriver:
                 continue
             topic = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/on"
             self._client.subscribe(topic)
-            self._client.message_callback_add(topic, _make_command_handler(control_id, on_command))
+            self._client.message_callback_add(
+                topic, log_callback_errors(_make_command_handler(control_id, on_command))
+            )
             logger.debug("Subscribed to device command: %s", topic)
 
     def unsubscribe_device_commands(self, device_id: str, controls: dict[str, ControlMeta]) -> None:

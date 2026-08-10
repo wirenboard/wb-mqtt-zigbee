@@ -36,10 +36,11 @@ class WbZigbee2Mqtt:  # pylint: disable=too-few-public-methods
         signal.signal(signal.SIGHUP, self._signal_handler)
 
         self._client = MQTTClient("wb-mqtt-zigbee", broker_url=config.broker_url, is_threaded=False)
-        # Route paho's internal logs into our logger so suppressed exceptions stay visible.
+        # Route paho's internal logs (connect/reconnect/disconnect) into our logger.
         self._client.enable_logger(logger)
-        # Don't let one bad-payload callback kill the loop; paho logs it (see above).
-        self._client.suppress_exceptions = True
+        # Message callbacks are individually wrapped with log_callback_errors so a bad
+        # message can't crash the loop. on_connect stays unguarded on purpose: a failed
+        # subscribe() must exit non-zero (run's except) so systemd restarts us.
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
 

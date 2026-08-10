@@ -5,7 +5,12 @@ from typing import Any, Callable, Optional, Union
 from paho.mqtt.client import Client, MQTTMessage
 from wb_common.mqtt_client import MQTTClient
 
-from ..mqtt_utils import decode_payload, is_safe_topic_name, payload_too_large
+from ..mqtt_utils import (
+    decode_payload,
+    is_safe_topic_name,
+    log_callback_errors,
+    payload_too_large,
+)
 from .model import (
     BridgeInfo,
     BridgeState,
@@ -77,10 +82,12 @@ class Z2MClient:
         ]
         for topic, handler in subscriptions:
             self._client.subscribe(topic)
-            self._client.message_callback_add(topic, handler)
+            self._client.message_callback_add(topic, log_callback_errors(handler))
         availability_topic = f"{self._base_topic}/+/availability"
         self._client.subscribe(availability_topic)
-        self._client.message_callback_add(availability_topic, self._handle_device_availability)
+        self._client.message_callback_add(
+            availability_topic, log_callback_errors(self._handle_device_availability)
+        )
         self._subscribed_devices.clear()
 
     def set_permit_join(self, enabled: bool) -> None:
@@ -94,7 +101,7 @@ class Z2MClient:
         topic = f"{self._base_topic}/bridge/devices"
         self._client.unsubscribe(topic)
         self._client.subscribe(topic)
-        self._client.message_callback_add(topic, self._handle_bridge_devices)
+        self._client.message_callback_add(topic, log_callback_errors(self._handle_bridge_devices))
 
     def subscribe_device(self, friendly_name: str) -> None:
         """Subscribe to a device's state topic"""
@@ -106,7 +113,9 @@ class Z2MClient:
             return
         topic = f"{self._base_topic}/{friendly_name}"
         self._client.subscribe(topic)
-        self._client.message_callback_add(topic, self._make_device_state_handler(friendly_name))
+        self._client.message_callback_add(
+            topic, log_callback_errors(self._make_device_state_handler(friendly_name))
+        )
         self._subscribed_devices.add(friendly_name)
 
     def unsubscribe_device(self, friendly_name: str) -> None:

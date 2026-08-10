@@ -7,6 +7,7 @@ outgoing commands publish the expected JSON to the expected topics.
 """
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -415,3 +416,38 @@ class TestSubscriptionTopology:
         assert fake_mqtt_client.subscriptions[-1] == devices_topic
         # And after re-subscribe, the retained payload is replayed.
         assert len(rec.devices_calls) == 2
+
+
+class TestCallbackErrorBackstop:
+    """
+    A message callback that raises a logic error (not a payload-parse issue) must not
+    escape the paho loop: log_callback_errors logs it with topic + traceback and the
+    loop survives. Regression: relying on a global suppress_exceptions instead.
+    """
+
+    def test_raising_callback_is_caught_and_logged(
+        self,
+        fake_mqtt_client: FakeMqttClient,
+        z2m_emu: Z2mEmulator,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        def explode(_state: str) -> None:
+            raise ValueError("callback logic bug")
+
+        client = Z2MClient(
+            mqtt_client=fake_mqtt_client,
+            base_topic=BASE,
+            on_bridge_state=explode,
+            on_bridge_info=lambda *_: None,
+            on_bridge_log=lambda *_: None,
+            on_devices=lambda *_: None,
+            on_device_event=lambda *_: None,
+            on_device_state=lambda *_: None,
+            on_device_availability=lambda *_: None,
+        )
+        client.subscribe()
+        with caplog.at_level(logging.ERROR):
+            # A valid message that trips a bug in the callback must not raise out.
+            z2m_emu.state_raw("online", retain=True)
+        assert f"{BASE}/bridge/state" in caplog.text
+        assert "callback logic bug" in caplog.text

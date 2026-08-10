@@ -202,6 +202,25 @@ class TestConnectFailureModes:
         assert fake_mqtt_client._stopped is False  # pylint: disable=protected-access
         assert app._exit_code == EXIT_SUCCESS
 
+    def test_subscribe_failure_propagates_not_swallowed(
+        self,
+        app: WbZigbee2Mqtt,
+        fake_mqtt_client: FakeMqttClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        A failure inside on_connect (here Bridge.subscribe) must propagate out of the
+        MQTT loop so run() maps it to EXIT_FAILURE and systemd restarts us. Regression:
+        a global suppress_exceptions swallowed it, leaving a live-but-idle daemon.
+        """
+
+        def boom() -> None:
+            raise RuntimeError("subscribe failed")
+
+        monkeypatch.setattr(app._bridge, "subscribe", boom)  # pylint: disable=protected-access
+        with pytest.raises(RuntimeError, match="subscribe failed"):
+            fake_mqtt_client.connect(rc=0)
+
 
 class TestRun:
     """

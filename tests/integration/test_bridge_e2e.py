@@ -307,7 +307,7 @@ class TestDeviceRegistration:
         # The failure is logged and names the culprit.
         assert "sensor-bad" in caplog.text
 
-    def test_non_string_friendly_name_does_not_abort_batch(
+    def test_malformed_device_field_type_does_not_abort_batch(
         self,
         bridge: Bridge,
         z2m_emu: Z2mEmulator,
@@ -315,29 +315,29 @@ class TestDeviceRegistration:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
-        A device with a non-string friendly_name (malformed bridge/devices payload) must
-        be isolated, not abort the whole batch. Regression guard: device-id assignment
-        runs before the per-device try/except, so it must tolerate bad field types — a
-        raise there would drop every device plus the stale/ghost cleanup.
+        A device with a malformed field type (non-string friendly_name) is rejected in
+        Z2MDevice.from_dict and dropped by _handle_bridge_devices, so it never reaches the
+        bridge loop. The valid device still registers AND the post-loop stale removal
+        still runs. Regression guard: an unhashable name would otherwise crash
+        _remove_stale_devices (which builds a set of names) outside any isolation, leaving
+        the removed device stranded in WB. The bridge/devices shape check passes such payloads.
         """
         bridge.subscribe()
-        bad = _z2m_sensor("placeholder", ieee="0x00b2")
-        bad["friendly_name"] = 123  # non-string: unsafe topic name, must be skipped
+        # A device that must be stale-removed once it drops out of the next batch.
+        z2m_emu.devices([_z2m_sensor("gone-later", ieee="0x00e0")])
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/gone-later/meta") is not None
+
+        bad = _z2m_sensor("placeholder", ieee="0x00e2")
+        bad["friendly_name"] = ["not", "a", "string"]  # unhashable: would crash the batch pre-fix
 
         with caplog.at_level(logging.WARNING):
-            z2m_emu.devices(
-                [
-                    _z2m_sensor("sensor-1", ieee="0x00b1"),
-                    bad,
-                    _z2m_sensor("sensor-3", ieee="0x00b3"),
-                ]
-            )
+            z2m_emu.devices([_z2m_sensor("keep-me", ieee="0x00e1"), bad])
 
-        # The good devices before AND after the malformed one both register.
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta") is not None
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-3/meta") is not None
-        # The malformed device is skipped as an unsafe name, not crashed on.
-        assert "unsafe name" in caplog.text
+        # The valid device registers; the malformed one is dropped at parse time.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/keep-me/meta") is not None
+        assert "Failed to parse device" in caplog.text
+        # Post-loop stale removal ran: the device absent from this batch is gone.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/gone-later/meta") is None
 
     def test_unnamed_device_carries_model_in_id_and_title(
         self,

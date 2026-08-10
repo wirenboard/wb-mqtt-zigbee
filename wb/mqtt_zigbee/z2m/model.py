@@ -118,11 +118,26 @@ class Z2MDevice:
     @staticmethod
     def from_dict(data: dict) -> "Z2MDevice":
         definition = data.get("definition") or {}
+        ieee_address = data.get("ieee_address", "")
+        friendly_name = data.get("friendly_name", "")
+        model = definition.get("model", "")
+        # ieee_address, friendly_name and model flow into MQTT topic paths and WB
+        # device_ids downstream; a non-string value (a malformed payload that still passes
+        # the bridge/devices shape check) would crash id-building or the stale/ghost
+        # cleanup, which run outside any per-device isolation. Reject it here — the caller
+        # (_handle_bridge_devices) catches the raise and drops just this one device.
+        for field_name, value in (
+            ("ieee_address", ieee_address),
+            ("friendly_name", friendly_name),
+            ("model", model),
+        ):
+            if not isinstance(value, str):
+                raise TypeError(f"z2m device {field_name} must be a string, got {type(value).__name__}")
         return Z2MDevice(
-            ieee_address=data.get("ieee_address", ""),
-            friendly_name=data.get("friendly_name", ""),
+            ieee_address=ieee_address,
+            friendly_name=friendly_name,
             type=data.get("type", ""),
-            model=definition.get("model", ""),
+            model=model,
             vendor=definition.get("vendor", ""),
             description=definition.get("description", ""),
             power_source=data.get("power_source", ""),

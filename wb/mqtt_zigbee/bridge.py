@@ -441,6 +441,10 @@ class Bridge:
         devices the smallest ieee_address keeps the base id and the rest get an ieee
         suffix. An id already held by a live device is never reassigned — a fresh collision
         takes the suffix instead. Returns {ieee_address: device_id}.
+
+        Every device's model/friendly_name/ieee_address is already str-validated by
+        Z2MDevice.from_dict, so id-building here (and the stale/ghost cleanup after the
+        registration loop) can't raise on a malformed field type.
         """
         assigned: dict[str, str] = {}
         # Include every known id (even not-yet-removed stale ones) so a fresh device never
@@ -448,26 +452,19 @@ class Bridge:
         taken = {registered.device_id for registered in self._known_devices.values()}
         new_by_base: dict[str, list[Z2MDevice]] = {}
         for device in devices:
-            try:
-                known = self._known_devices.get(device.friendly_name)
-                if known is not None:
-                    assigned[device.ieee_address] = known.device_id  # keep live device's id
-                    continue
-                if not is_safe_topic_name(device.friendly_name):
-                    continue  # skipped at registration; must not reserve a base id
-                if self._find_old_name(device.ieee_address) is not None:
-                    continue  # rename: _on_device_renamed resolves its own id
-                base = _build_device_id(device.model, device.friendly_name, device.ieee_address)
-            except Exception:  # pylint: disable=broad-except
-                # This runs before the per-device isolation in _on_devices, so a malformed
-                # field type (non-string/unhashable friendly_name or model) must not abort
-                # the whole batch here. Skip it; _register_device logs and isolates it
-                # inside the loop's try/except, and stale/ghost cleanup still runs.
+            known = self._known_devices.get(device.friendly_name)
+            if known is not None:
+                assigned[device.ieee_address] = known.device_id  # keep live device's id
                 continue
+            if not is_safe_topic_name(device.friendly_name):
+                continue  # skipped at registration; must not reserve a base id
+            if self._find_old_name(device.ieee_address) is not None:
+                continue  # rename: _on_device_renamed resolves its own id
+            base = _build_device_id(device.model, device.friendly_name, device.ieee_address)
             new_by_base.setdefault(base, []).append(device)
         for base, group in new_by_base.items():
             base_free = base not in taken
-            for index, device in enumerate(sorted(group, key=lambda d: str(d.ieee_address))):
+            for index, device in enumerate(sorted(group, key=lambda d: d.ieee_address)):
                 if base_free and index == 0:
                     device_id = base
                 else:

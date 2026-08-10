@@ -195,7 +195,14 @@ class Bridge:
         self._mqtt_driver.publish_bridge_control(BridgeControl.DEVICE_COUNT, str(len(devices)))
         self._update_stats()
         for device in devices:
-            self._register_device(device)
+            try:
+                self._register_device(device)
+            except Exception:  # pylint: disable=broad-except
+                # Isolate a bad device: malformed field types (e.g. non-string
+                # friendly_name, bad access/value_min) pass the JSON-shape check but
+                # break control mapping. Log it and keep going, so later devices and the
+                # stale/ghost cleanup below still run (arc42 "Устойчивость к ошибкам").
+                logger.exception("Failed to register device '%s'", device.friendly_name)
         self._remove_stale_devices(devices)
         if self._retained_scan_active:
             self._remove_ghost_devices(devices)

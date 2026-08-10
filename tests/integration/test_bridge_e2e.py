@@ -11,6 +11,7 @@ by monkey-patching `time.monotonic` in `wb.mqtt_zigbee.bridge`.
 """
 
 import json
+import logging
 from typing import Any
 
 import pytest
@@ -75,6 +76,17 @@ def _z2m_sensor(friendly_name: str, ieee: str = "0x0001") -> dict[str, Any]:
             ],
         },
     }
+
+
+def _z2m_broken_sensor(friendly_name: str, ieee: str) -> dict[str, Any]:
+    """
+    Z2M device that survives the JSON-shape check and Z2MDevice.from_dict but breaks
+    control mapping: a numeric expose with a non-numeric value_min. from_dict stores
+    "low" verbatim; expose_mapper then evaluates "low" * scale -> TypeError.
+    """
+    dev = _z2m_sensor(friendly_name, ieee=ieee)
+    dev["definition"]["exposes"][0]["value_min"] = "low"
+    return dev
 
 
 def _z2m_switch(friendly_name: str, ieee: str = "0x0002") -> dict[str, Any]:
@@ -263,6 +275,37 @@ class TestDeviceRegistration:
         assert meta["driver"] == DRIVER_NAME
         temp_meta = wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/temperature/meta")
         assert temp_meta is not None
+
+    def test_broken_device_is_isolated_and_later_devices_still_register(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """
+        A device whose field types break control mapping must not abort the loop: the
+        devices before AND after it still register (list order must not decide who
+        appears), and only one error is logged (arc42 "Устойчивость к ошибкам").
+        """
+        bridge.subscribe()
+
+        with caplog.at_level(logging.ERROR):
+            z2m_emu.devices(
+                [
+                    _z2m_sensor("sensor-1", ieee="0x0001"),
+                    _z2m_broken_sensor("sensor-bad", ieee="0x0002"),
+                    _z2m_sensor("sensor-3", ieee="0x0003"),
+                ]
+            )
+
+        # The device AFTER the broken one is the regression: it must still register.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta") is not None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-3/meta") is not None
+        # The broken device is skipped, not registered.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-bad/meta") is None
+        # The failure is logged and names the culprit.
+        assert "sensor-bad" in caplog.text
 
     def test_unnamed_device_carries_model_in_id_and_title(
         self,

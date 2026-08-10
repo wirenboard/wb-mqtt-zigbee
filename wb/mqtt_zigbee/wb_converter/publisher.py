@@ -179,8 +179,10 @@ class WbMqttDriver:
         """
         Callback for /devices/+/controls/+/meta: collect control_ids per device
         """
-        payload = decode_payload(message).strip()
-        if not payload:
+        # We only need the topic segments here, never the JSON body, so don't decode the
+        # payload at all — this wildcard also catches other drivers' (potentially large)
+        # control metas. An empty (cleared) retained value means no control to collect.
+        if not message.payload.strip():
             return
         # topic: /devices/{device_id}/controls/{control_id}/meta
         parts = message.topic.split("/")

@@ -435,7 +435,7 @@ class TestDeviceRegistration:
         assert clean["title"]["en"] == "lamp.1"
         assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x0009/meta") is not None
 
-    def test_id_collision_incumbent_keeps_clean_id_across_batches(
+    def test_id_collision_existing_device_keeps_clean_id_across_batches(
         self,
         bridge: Bridge,
         z2m_emu: Z2mEmulator,
@@ -443,15 +443,16 @@ class TestDeviceRegistration:
     ) -> None:
         """
         A device already holding the clean id keeps it when a colliding NEW device arrives
-        in a later batch — even if the newcomer has the smaller ieee_address. Incumbency
-        wins over the min-ieee rule; a live device's id is never reassigned.
+        in a later batch — even if the newcomer has the smaller ieee_address. The
+        already-registered device wins over the min-ieee rule; a live device's id is
+        never reassigned.
         """
         bridge.subscribe()
         # First batch: lamp.1 alone -> clean "lamp_1".
         z2m_emu.devices([_z2m_sensor("lamp.1", ieee="0x0005")])
         assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1/meta")["title"]["en"] == "lamp.1"
 
-        # Second batch: incumbent lamp.1 plus a NEW colliding "lamp 1" with a SMALLER ieee.
+        # Second batch: already-registered lamp.1 plus a NEW colliding "lamp 1", smaller ieee.
         z2m_emu.devices(
             [
                 _z2m_sensor("lamp.1", ieee="0x0005"),
@@ -459,7 +460,7 @@ class TestDeviceRegistration:
             ]
         )
 
-        # Incumbent (0x0005) keeps the clean id despite the newcomer's smaller ieee.
+        # The existing device (0x0005) keeps the clean id despite the newcomer's smaller ieee.
         assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1/meta")["title"]["en"] == "lamp.1"
         # Newcomer is suffixed, not given the base id.
         assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x0001/meta") is not None
@@ -473,7 +474,7 @@ class TestDeviceRegistration:
         """
         Renaming a device to a name that sanitizes to another live device's id must be
         disambiguated by ieee (the rename path uses _resolve_device_id), not clobber the
-        incumbent's retained topics.
+        existing device's retained topics.
         """
         bridge.subscribe()
         z2m_emu.devices(
@@ -488,7 +489,7 @@ class TestDeviceRegistration:
         # Rename lamp.2 -> "lamp 1", which sanitizes to "lamp_1" and collides with lamp.1.
         z2m_emu.device_renamed("lamp.2", "lamp 1")
 
-        # Incumbent keeps the clean id; the renamed device is disambiguated by its ieee.
+        # The existing device keeps the clean id; the renamed device is disambiguated by ieee.
         assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is not None
         assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x000b/meta") is not None
         # The renamed device's old id is cleared.

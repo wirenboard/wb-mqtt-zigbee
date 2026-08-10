@@ -194,9 +194,12 @@ class Bridge:
         logger.info("Devices: %d", len(devices))
         self._mqtt_driver.publish_bridge_control(BridgeControl.DEVICE_COUNT, str(len(devices)))
         self._update_stats()
+        # Resolve device_ids for the whole batch up front so collision disambiguation is
+        # deterministic (by ieee_address), not dependent on this list's order.
+        device_ids = self._assign_device_ids(devices)
         for device in devices:
             try:
-                self._register_device(device)
+                self._register_device(device, device_ids.get(device.ieee_address))
             except Exception:  # pylint: disable=broad-except
                 # Isolate a bad device: malformed field types (e.g. non-string
                 # friendly_name, bad access/value_min) pass the JSON-shape check but
@@ -209,7 +212,7 @@ class Bridge:
             self._mqtt_driver.stop_retained_scan()
             self._retained_scan_active = False
 
-    def _register_device(self, device: Z2MDevice) -> None:
+    def _register_device(self, device: Z2MDevice, device_id: Optional[str] = None) -> None:
         if not is_safe_topic_name(device.friendly_name):
             logger.warning("Device '%s' has unsafe name for MQTT topics, skipping", device.friendly_name)
             return
@@ -232,7 +235,10 @@ class Bridge:
         if sum(1 for _control in controls if _control not in SERVICE_CONTROLS) == 0:
             logger.warning("Device '%s' has no mappable exposes, skipping", device.friendly_name)
             return
-        device_id = self._resolve_device_id(device.model, device.friendly_name, device.ieee_address)
+        if device_id is None:
+            # Not pre-resolved by _assign_device_ids (defensive; a registerable device
+            # always has an entry). Fall back to the single-device resolver.
+            device_id = self._resolve_device_id(device.model, device.friendly_name, device.ieee_address)
         registered = RegisteredDevice(z2m=device, controls=controls, device_id=device_id)
         logger.info(
             "Registering device '%s' as '%s' (%d controls)", device.friendly_name, device_id, len(controls)
@@ -423,6 +429,51 @@ class Bridge:
             self._mqtt_driver.unsubscribe_device_commands(registered.device_id, registered.controls)
             self._mqtt_driver.remove_device(registered.device_id, registered.controls)
             logger.info("Removed stale WB device '%s' (%s)", name, registered.device_id)
+
+    def _assign_device_ids(self, devices: list[Z2MDevice]) -> dict[str, str]:
+        """
+        Resolve WB device_ids for a whole bridge/devices batch, deterministically.
+
+        _sanitize_device_id can map two distinct z2m names to the same id ("lamp.1" and
+        "lamp 1" both -> "lamp_1"). Which one keeps the clean id must NOT depend on the
+        order z2m happens to list them (that order can flip on a remove+re-add), or their
+        retained topics would swap and break wb-rules references. So among colliding *new*
+        devices the smallest ieee_address keeps the base id and the rest get an ieee
+        suffix. An id already held by a live device is never reassigned — a fresh collision
+        takes the suffix instead. Returns {ieee_address: device_id}.
+        """
+        assigned: dict[str, str] = {}
+        # Include every known id (even not-yet-removed stale ones) so a fresh device never
+        # reuses an id whose retained topics a later _remove_stale_devices would then wipe.
+        taken = {registered.device_id for registered in self._known_devices.values()}
+        new_by_base: dict[str, list[Z2MDevice]] = {}
+        for device in devices:
+            known = self._known_devices.get(device.friendly_name)
+            if known is not None:
+                assigned[device.ieee_address] = known.device_id  # keep live device's id
+                continue
+            if not is_safe_topic_name(device.friendly_name):
+                continue  # skipped at registration; must not reserve a base id
+            if self._find_old_name(device.ieee_address) is not None:
+                continue  # rename: _on_device_renamed resolves its own id
+            base = _build_device_id(device.model, device.friendly_name, device.ieee_address)
+            new_by_base.setdefault(base, []).append(device)
+        for base, group in new_by_base.items():
+            base_free = base not in taken
+            for index, device in enumerate(sorted(group, key=lambda d: d.ieee_address)):
+                if base_free and index == 0:
+                    device_id = base
+                else:
+                    device_id = f"{base}_{_sanitize_device_id(device.ieee_address)}"
+                    logger.warning(
+                        "device_id '%s' collides; assigning '%s' to ieee %s",
+                        base,
+                        device_id,
+                        device.ieee_address,
+                    )
+                assigned[device.ieee_address] = device_id
+                taken.add(device_id)
+        return assigned
 
     def _resolve_device_id(self, model: str, friendly_name: str, ieee_address: str) -> str:
         """

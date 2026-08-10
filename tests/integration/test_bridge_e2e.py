@@ -357,8 +357,8 @@ class TestDeviceRegistration:
     ) -> None:
         """
         Two distinct z2m names that sanitize to the same id ("lamp.1" and "lamp 1"
-        both -> "lamp_1") must not clobber each other: the first keeps the clean id,
-        the second is disambiguated with its ieee_address. Both stay registered.
+        both -> "lamp_1") must not clobber each other: the smaller ieee_address keeps
+        the clean id, the larger is disambiguated with its ieee. Both stay registered.
         """
         bridge.subscribe()
 
@@ -369,13 +369,39 @@ class TestDeviceRegistration:
             ]
         )
 
-        # First device keeps the clean sanitized id.
+        # Smaller ieee (0x0001) keeps the clean sanitized id.
         assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is not None
-        # Second device is disambiguated by ieee, not lost or clobbered.
+        # Larger ieee (0x0009) is disambiguated, not lost or clobbered.
         assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x0009/meta") is not None
         # Both are counted — two separate WB devices.
         count_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.DEVICE_COUNT}"
         assert wb_observer.retained(count_topic) == "2"
+
+    @pytest.mark.parametrize("order", [("0x0001", "0x0009"), ("0x0009", "0x0001")])
+    def test_id_collision_owner_is_independent_of_list_order(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+        order: "tuple[str, str]",
+    ) -> None:
+        """
+        The clean id always goes to the smaller ieee_address regardless of the order z2m
+        lists the two colliding devices. Otherwise a remove+re-add that flips the ordering
+        would swap their retained topics and orphan the previous owner into ghost cleanup.
+        """
+        bridge.subscribe()
+        by_ieee = {
+            "0x0001": _z2m_sensor("lamp.1", ieee="0x0001"),
+            "0x0009": _z2m_sensor("lamp 1", ieee="0x0009"),
+        }
+
+        z2m_emu.devices([by_ieee[order[0]], by_ieee[order[1]]])
+
+        # "lamp.1" (ieee 0x0001, the smaller) owns the clean id in either ordering.
+        clean = wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1/meta")
+        assert clean["title"]["en"] == "lamp.1"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x0009/meta") is not None
 
 
 class TestDeviceStatePropagation:

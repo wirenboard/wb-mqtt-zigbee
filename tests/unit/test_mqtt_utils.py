@@ -50,6 +50,12 @@ class TestIsSafeTopicName:
         # rename to e.g. "#" cannot inject a wildcard subscription.
         assert is_safe_topic_name(name) is False
 
+    @pytest.mark.parametrize("name", [123, 4.2, None, ["x"], {"a": 1}])
+    def test_non_string_names_rejected_not_raised(self, name):
+        # A malformed (non-string) friendly_name from bridge/devices must be rejected,
+        # never raise — the check runs on the untrusted payload path.
+        assert is_safe_topic_name(name) is False
+
 
 class TestPayloadTooLarge:
     def test_boundary(self):

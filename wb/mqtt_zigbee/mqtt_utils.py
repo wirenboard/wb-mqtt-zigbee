@@ -32,11 +32,12 @@ def is_safe_topic_name(name: str) -> bool:
     """
     Check that a device name is safe to embed in an MQTT topic path
 
-    Rejects empty names and names containing the MQTT wildcard/separator characters
-    ('+', '#', '/'). An unchecked name (e.g. a zigbee2mqtt rename to "#") would turn a
-    device topic into a wildcard subscription or inject an extra topic level.
+    Rejects non-string, empty, and names containing the MQTT wildcard/separator
+    characters ('+', '#', '/'). An unchecked name (e.g. a zigbee2mqtt rename to "#")
+    would turn a device topic into a wildcard subscription or inject an extra topic
+    level; a non-string friendly_name (malformed payload) is likewise never a safe topic.
     """
-    if not name:
+    if not isinstance(name, str) or not name:
         return False
     return not any(ch in name for ch in _MQTT_UNSAFE_CHARS)
 

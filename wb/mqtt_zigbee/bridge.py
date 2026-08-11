@@ -34,6 +34,11 @@ _EVENT_TYPE_TO_CONTROL = {
     DeviceEventType.REMOVED: BridgeControl.LAST_REMOVED,
 }
 
+# Appending the (unique) ieee_address resolves a device_id clash in one round; a second
+# round only matters when a name sanitizes to an already-suffixed id. The bound keeps an
+# unforeseen input from looping forever.
+_MAX_ID_DISAMBIGUATION_ROUNDS = 5
+
 
 class Bridge:
     """Orchestrates data flow between zigbee2mqtt and the Wiren Board MQTT broker.
@@ -73,6 +78,10 @@ class Bridge:
         self._last_stats_publish = 0.0
         self._known_devices: dict[str, RegisteredDevice] = {}  # friendly_name → RegisteredDevice
         self._ieee_to_name: dict[str, str] = {}  # ieee_address → friendly_name
+        # Last bridge/devices list, so a standalone rename can recompute the device_id
+        # layout over the same set — including devices present in z2m but not registered
+        # (still interviewing, no exposes yet), which still take part in id collisions.
+        self._last_devices: list[Z2MDevice] = []
         self._retained_scan_active = False
         self._reconnect_count = 0
 
@@ -194,9 +203,22 @@ class Bridge:
         logger.info("Devices: %d", len(devices))
         self._mqtt_driver.publish_bridge_control(BridgeControl.DEVICE_COUNT, str(len(devices)))
         self._update_stats()
-        # Resolve device_ids for the whole batch up front so collision disambiguation is
-        # deterministic (by ieee_address), not dependent on this list's order.
-        device_ids = self._assign_device_ids(devices)
+        # Resolve device_ids for the whole batch up front: the layout is a pure function of
+        # this list, so it does not depend on list order or on what we happened to register
+        # earlier (which would differ after a restart).
+        device_ids = self._compute_device_ids(devices)
+        self._last_devices = devices
+        # Order matters here, and every step must run before the registration loop:
+        #   1. stale removal, so a departing device releases its device_id before anyone
+        #      else is published under it (it matches on ieee_address, so renames are safe);
+        #   2. renames, so a device filed under its old friendly_name is moved before
+        #      anything looks it up (otherwise a newcomer taking the freed name is merged
+        #      into the renamed device's record and ends up driving the wrong hardware);
+        #   3. reassignments, so devices that lose or regain the bare id release it.
+        # Doing any of these after the loop would tear down topics just published.
+        self._remove_stale_devices(devices)
+        self._apply_renames(devices, device_ids)
+        self._apply_device_ids(device_ids)
         for device in devices:
             try:
                 self._register_device(device, device_ids.get(device.ieee_address))
@@ -204,15 +226,14 @@ class Bridge:
                 # Isolate a bad device: malformed field types (e.g. non-string
                 # friendly_name, bad access/value_min) pass the JSON-shape check but
                 # break control mapping. Log it and keep going, so later devices and the
-                # stale/ghost cleanup below still run (arc42 "Устойчивость к ошибкам").
+                # ghost cleanup below still run (arc42 "Устойчивость к ошибкам").
                 logger.exception("Failed to register device '%s'", device.friendly_name)
-        self._remove_stale_devices(devices)
         if self._retained_scan_active:
-            self._remove_ghost_devices(devices)
+            self._remove_ghost_devices(device_ids)
             self._mqtt_driver.stop_retained_scan()
             self._retained_scan_active = False
 
-    def _register_device(self, device: Z2MDevice, device_id: Optional[str] = None) -> None:
+    def _register_device(self, device: Z2MDevice, device_id: Optional[str]) -> None:
         if not is_safe_topic_name(device.friendly_name):
             logger.warning("Device '%s' has unsafe name for MQTT topics, skipping", device.friendly_name)
             return
@@ -236,37 +257,80 @@ class Bridge:
             logger.warning("Device '%s' has no mappable exposes, skipping", device.friendly_name)
             return
         if device_id is None:
-            # Not pre-resolved by _assign_device_ids (defensive; a registerable device
-            # always has an entry). Fall back to the single-device resolver.
-            device_id = self._resolve_device_id(device.model, device.friendly_name, device.ieee_address)
+            # Defensive: a registerable device always gets an entry from
+            # _compute_device_ids (only unsafe names are dropped, and those returned above).
+            logger.warning("No device_id resolved for '%s', skipping", device.friendly_name)
+            return
         registered = RegisteredDevice(z2m=device, controls=controls, device_id=device_id)
         logger.info(
             "Registering device '%s' as '%s' (%d controls)", device.friendly_name, device_id, len(controls)
         )
         self._known_devices[device.friendly_name] = registered
         self._ieee_to_name[device.ieee_address] = device.friendly_name
+        self._publish_device_topics(registered, initial_values={"available": WbBoolValue.FALSE})
+        self._mqtt_driver.publish_device_error(device_id, _device_offline_error(controls))
+        self._z2m.subscribe_device(device.friendly_name)
+        self._z2m.request_device_state(device.friendly_name)
+
+    def _publish_device_topics(
+        self, registered: RegisteredDevice, initial_values: Optional[dict[str, str]] = None
+    ) -> None:
+        """
+        Publish a registered device's WB topics under its current device_id and subscribe
+        its command topics. Shared by registration, rename, and device_id reassignment.
+        """
+        device = registered.z2m
         self._mqtt_driver.publish_device(
-            device_id,
+            registered.device_id,
             device.friendly_name,
-            controls,
-            {"available": WbBoolValue.FALSE},
+            registered.controls,
+            initial_values,
             model=device.model,
             ieee_address=device.ieee_address,
         )
-        self._mqtt_driver.publish_device_error(device_id, _device_offline_error(controls))
         if device.type:
-            self._mqtt_driver.publish_device_control(device_id, "device_type", device.type)
+            self._mqtt_driver.publish_device_control(registered.device_id, "device_type", device.type)
         if device.model:
-            self._mqtt_driver.publish_device_control(device_id, "model", device.model)
+            self._mqtt_driver.publish_device_control(registered.device_id, "model", device.model)
         if device.power_source:
-            self._mqtt_driver.publish_device_control(device_id, "power_source", device.power_source)
+            self._mqtt_driver.publish_device_control(
+                registered.device_id, "power_source", device.power_source
+            )
         self._mqtt_driver.subscribe_device_commands(
-            device_id,
-            controls,
+            registered.device_id,
+            registered.controls,
             self._make_device_command_handler(registered),
         )
-        self._z2m.subscribe_device(device.friendly_name)
-        self._z2m.request_device_state(device.friendly_name)
+
+    def _teardown_device_id(self, registered: RegisteredDevice) -> None:
+        """Unsubscribe commands and clear all retained WB topics of the current device_id"""
+        self._mqtt_driver.unsubscribe_device_commands(registered.device_id, registered.controls)
+        self._mqtt_driver.remove_device(registered.device_id, registered.controls)
+
+    def _republish_device(self, registered: RegisteredDevice) -> None:
+        """
+        Republish a device under its current device_id after its old topics were torn down
+        (rename or device_id reassignment).
+
+        The new topics start out empty, so restore what we already know: the last
+        availability we saw, or "unreachable" if we have never heard from the device. z2m
+        only republishes availability when it changes, so publishing a blanket "offline"
+        here would leave a healthy device flagged with an error until it next changes state
+        — a false alarm on an ordinary rename. Also ask z2m for the current state so the
+        control values come back at once instead of staying blank.
+        """
+        # pending_commands are deliberately kept: they expire on their own and still
+        # suppress a pre-command echo from z2m, so a command issued just before the move
+        # is not visibly reverted.
+        is_online = bool(registered.is_online)
+        if registered.is_online is None:
+            registered.availability_received = False
+        available = WbBoolValue.TRUE if is_online else WbBoolValue.FALSE
+        self._publish_device_topics(registered, initial_values={"available": available})
+        self._mqtt_driver.publish_device_error(
+            registered.device_id, "" if is_online else _device_offline_error(registered.controls)
+        )
+        self._z2m.request_device_state(registered.z2m.friendly_name)
 
     def _update_device(self, device: Z2MDevice) -> None:
         """Update metadata and controls for an already-registered device.
@@ -323,6 +387,7 @@ class Bridge:
             logger.debug("Availability update for unknown device '%s', skipping", friendly_name)
             return
         registered.availability_received = True
+        registered.is_online = available
         wb_value = WbBoolValue.TRUE if available else WbBoolValue.FALSE
         self._mqtt_driver.publish_device_control(registered.device_id, "available", wb_value)
         self._mqtt_driver.publish_device_error(
@@ -369,6 +434,7 @@ class Bridge:
             if formatted:
                 self._mqtt_driver.publish_device_control(registered.device_id, "last_seen", formatted)
         if not registered.availability_received:
+            registered.is_online = True
             self._mqtt_driver.publish_device_control(registered.device_id, "available", WbBoolValue.TRUE)
             self._mqtt_driver.publish_device_error(registered.device_id, "")
         self._update_stats()
@@ -419,99 +485,112 @@ class Bridge:
         self._update_stats()
 
     def _remove_stale_devices(self, devices: list[Z2MDevice]) -> None:
-        """Remove devices that are registered locally but no longer present in zigbee2mqtt."""
-        current_names = {d.friendly_name for d in devices}
-        stale_names = [name for name in self._known_devices if name not in current_names]
-        for name in stale_names:
-            registered = self._known_devices.pop(name)
+        """
+        Remove devices that are registered locally but no longer present in zigbee2mqtt.
+
+        Presence is decided by ieee_address, not friendly_name: the name changes on a
+        rename (and we may refuse a rename to an unsafe name), while the ieee_address is
+        stable. Matching on names would drop a device that is merely renamed, and would
+        force this to run after the renames — too late, because a renamed device can land
+        on the device_id a departing one still holds and have its fresh topics wiped.
+        """
+        current_ieee = {device.ieee_address for device in devices}
+        stale = [
+            (name, registered)
+            for name, registered in self._known_devices.items()
+            if registered.z2m.ieee_address not in current_ieee
+        ]
+        for name, registered in stale:
+            self._detach_device(name, registered)
             self._ieee_to_name.pop(registered.z2m.ieee_address, None)
-            self._z2m.unsubscribe_device(name)
-            self._mqtt_driver.unsubscribe_device_commands(registered.device_id, registered.controls)
-            self._mqtt_driver.remove_device(registered.device_id, registered.controls)
             logger.info("Removed stale WB device '%s' (%s)", name, registered.device_id)
 
-    def _assign_device_ids(self, devices: list[Z2MDevice]) -> dict[str, str]:
+    def _compute_device_ids(self, devices: list[Z2MDevice]) -> dict[str, str]:
         """
-        Resolve WB device_ids for a whole bridge/devices batch, deterministically.
+        Map {ieee_address: device_id} for exactly this set of devices.
 
         _sanitize_device_id can map two distinct z2m names to the same id ("lamp.1" and
-        "lamp 1" both -> "lamp_1"). Which one keeps the clean id must NOT depend on the
-        order z2m happens to list them (that order can flip on a remove+re-add), or their
-        retained topics would swap and break wb-rules references. So among colliding *new*
-        devices the smallest ieee_address keeps the base id and the rest get an ieee
-        suffix. An id already held by a live device is never reassigned — a fresh collision
-        takes the suffix instead. Returns {ieee_address: device_id}.
+        "lamp 1" both -> "lamp_1"). When that happens NO device keeps the bare id: every
+        member of the colliding group gets an ieee_address suffix. The ambiguous id then
+        simply does not exist, so a wb-rules reference to it breaks loudly (empty topic)
+        instead of silently reading whichever device happened to win.
+
+        The result depends only on the devices passed in — not on registration order and
+        not on what we registered before a restart — so the same z2m device list always
+        produces the same layout.
 
         Every device's model/friendly_name/ieee_address is already str-validated by
-        Z2MDevice.from_dict, so id-building here (and the stale/ghost cleanup after the
-        registration loop) can't raise on a malformed field type.
+        Z2MDevice.from_dict, so id-building here can't raise on a malformed field type.
         """
         assigned: dict[str, str] = {}
-        # Include every known id (even not-yet-removed stale ones) so a fresh device never
-        # reuses an id whose retained topics a later _remove_stale_devices would then wipe.
-        taken = {registered.device_id for registered in self._known_devices.values()}
-        new_by_base: dict[str, list[Z2MDevice]] = {}
         for device in devices:
-            known = self._known_devices.get(device.friendly_name)
-            if known is not None:
-                assigned[device.ieee_address] = known.device_id  # keep live device's id
-                continue
             if not is_safe_topic_name(device.friendly_name):
-                continue  # skipped at registration; must not reserve a base id
-            if self._find_old_name(device.ieee_address) is not None:
-                continue  # rename: _on_device_renamed resolves its own id
-            base = _build_device_id(device.model, device.friendly_name, device.ieee_address)
-            new_by_base.setdefault(base, []).append(device)
-        for base, group in new_by_base.items():
-            base_free = base not in taken
-            for index, device in enumerate(sorted(group, key=lambda d: d.ieee_address)):
-                if base_free and index == 0:
-                    device_id = base
-                else:
-                    device_id = f"{base}_{_sanitize_device_id(device.ieee_address)}"
-                    logger.warning(
-                        "device_id '%s' collides; assigning '%s' to ieee %s",
-                        base,
-                        device_id,
-                        device.ieee_address,
-                    )
-                assigned[device.ieee_address] = device_id
-                taken.add(device_id)
+                continue  # skipped at registration; must not claim an id
+            assigned[device.ieee_address] = _build_device_id(
+                device.model, device.friendly_name, device.ieee_address
+            )
+        # Suffix every member of a colliding group, then re-check: a suffixed id can itself
+        # equal another device's id (a friendly_name that sanitizes to "<base>_<ieee>"), so
+        # repeat until every device holds an id of its own. ieee_address is unique, so this
+        # converges; the bound only guards against an unforeseen input.
+        for _round in range(_MAX_ID_DISAMBIGUATION_ROUNDS):
+            by_id: dict[str, list[str]] = {}
+            for ieee, device_id in assigned.items():
+                by_id.setdefault(device_id, []).append(ieee)
+            ambiguous = {device_id: ieees for device_id, ieees in by_id.items() if len(ieees) > 1}
+            if not ambiguous:
+                break
+            for device_id, ieees in ambiguous.items():
+                logger.warning(
+                    "device_id '%s' is ambiguous between %s; none keeps it, all get an ieee suffix",
+                    device_id,
+                    sorted(ieees),
+                )
+                for ieee in ieees:
+                    assigned[ieee] = f"{device_id}_{_sanitize_device_id(ieee)}"
+        else:
+            logger.error("Could not make device_ids unique after %d rounds", _MAX_ID_DISAMBIGUATION_ROUNDS)
         return assigned
 
-    def _resolve_device_id(self, model: str, friendly_name: str, ieee_address: str) -> str:
+    def _apply_device_ids(self, assigned: dict[str, str]) -> None:
         """
-        Build the WB device_id, disambiguating sanitizer collisions.
+        Move already-registered devices whose assigned device_id changed.
 
-        _sanitize_device_id can map two distinct z2m names to the same id (e.g. "lamp.1"
-        and "lamp 1" both become "lamp_1"), which would clobber each other's retained
-        topics and misroute commands (message_callback_add overwrites an identical
-        filter). If the base id is already held by a device with a different
-        ieee_address, append the (unique) ieee_address to keep them distinct.
+        A device loses the bare id when a colliding neighbour appears and regains it when
+        that neighbour leaves, so the id is not fixed for the lifetime of the process. Tear
+        every outgoing id down first and only then publish the new ones, so no device
+        publishes into topics another one is still holding.
+
+        Renames must be applied before this runs: a device still filed under its old
+        friendly_name would otherwise be republished with a stale name.
         """
-        base = _build_device_id(model, friendly_name, ieee_address)
-        for registered in self._known_devices.values():
-            if registered.device_id == base and registered.z2m.ieee_address != ieee_address:
-                disambiguated = f"{base}_{_sanitize_device_id(ieee_address)}"
-                logger.warning(
-                    "device_id '%s' collides (%s vs %s); using '%s'",
-                    base,
-                    registered.z2m.ieee_address,
-                    ieee_address,
-                    disambiguated,
-                )
-                return disambiguated
-        return base
+        changes = [
+            (registered, assigned[registered.z2m.ieee_address])
+            for registered in self._known_devices.values()
+            if registered.z2m.ieee_address in assigned
+            and assigned[registered.z2m.ieee_address] != registered.device_id
+        ]
+        for registered, _new_id in changes:
+            self._teardown_device_id(registered)
+        for registered, new_id in changes:
+            logger.info(
+                "Reassigning device '%s': device_id '%s' -> '%s'",
+                registered.z2m.friendly_name,
+                registered.device_id,
+                new_id,
+            )
+            registered.device_id = new_id
+            self._republish_device(registered)
 
-    def _remove_ghost_devices(self, devices: list[Z2MDevice]) -> None:
+    def _remove_ghost_devices(self, device_ids: dict[str, str]) -> None:
         """
         Remove retained WB devices from previous runs that are no longer in zigbee2mqtt
         """
-        # Union registered ids (as assigned, incl. collision disambiguation) with base ids
-        # of every incoming device, so a device present in z2m but skipped at registration
-        # (no exposes yet, e.g. mid-interview) is not wiped as a ghost.
+        # Union registered ids with the ids assigned to every incoming device, so a device
+        # present in z2m but skipped at registration (no exposes yet, e.g. mid-interview)
+        # is not wiped as a ghost.
         current_device_ids = {registered.device_id for registered in self._known_devices.values()}
-        current_device_ids |= {_build_device_id(d.model, d.friendly_name, d.ieee_address) for d in devices}
+        current_device_ids |= set(device_ids.values())
         scanned_ids = self._mqtt_driver.get_scanned_device_ids()
         ghost_ids = scanned_ids - current_device_ids
         for device_id in ghost_ids:
@@ -523,53 +602,131 @@ class Bridge:
         """Find friendly_name of a known device by ieee_address, or None. O(1) lookup."""
         return self._ieee_to_name.get(ieee_address)
 
-    def _on_device_renamed(self, old_name: str, new_name: str) -> None:
-        # new_name comes straight from the z2m payload (data["to"]); reject unsafe names so
-        # a rename to "#"/"+"/"a/b" cannot hijack a subscription. Keep the old name.
-        if not is_safe_topic_name(new_name):
-            logger.warning("Ignoring rename '%s' -> '%s': unsafe name for MQTT topics", old_name, new_name)
-            return
-        registered = self._known_devices.pop(old_name, None)
-        if registered is None:
-            logger.warning("Rename event for unknown device '%s' -> '%s'", old_name, new_name)
-            return
-        old_device_id = registered.device_id
-        new_device_id = self._resolve_device_id(registered.z2m.model, new_name, registered.z2m.ieee_address)
-        self._z2m.unsubscribe_device(old_name)
-        self._mqtt_driver.unsubscribe_device_commands(old_device_id, registered.controls)
-        self._mqtt_driver.remove_device(old_device_id, registered.controls)
+    def _mark_device_unusable(self, registered: RegisteredDevice) -> None:
+        """
+        Flag a device we can no longer address, and stop accepting commands for it.
+
+        Reached when z2m renamed a device to a name we refuse to put in a topic. The device
+        keeps its previous WB card, but that card is now detached from reality: z2m talks
+        under the new name, so nothing updates it, and a command would be echoed
+        optimistically and then dropped on the floor. Show it as unavailable with a device
+        error and drop the command subscriptions, so the problem is visible instead of the
+        card looking healthy and responsive. A later rename to a safe name republishes it.
+        """
+        registered.is_online = False
+        registered.availability_received = False
+        self._mqtt_driver.unsubscribe_device_commands(registered.device_id, registered.controls)
+        self._mqtt_driver.publish_device_control(registered.device_id, "available", WbBoolValue.FALSE)
+        self._mqtt_driver.publish_device_error(
+            registered.device_id, _device_offline_error(registered.controls)
+        )
+
+    def _apply_renames(self, devices: list[Z2MDevice], device_ids: dict[str, str]) -> None:
+        """
+        Re-file every device of this batch whose friendly_name changed since we saw it.
+
+        Collected up front, then detached in one pass and re-attached in another: two
+        devices can swap names in a single batch, and re-attaching one before detaching the
+        other would drop whichever record the first insert landed on.
+        """
+        renames = []
+        for device in devices:
+            old_name = self._find_old_name(device.ieee_address)
+            if old_name is None or old_name == device.friendly_name:
+                continue
+            registered = self._known_devices.get(old_name)
+            if registered is None:
+                continue
+            if not is_safe_topic_name(device.friendly_name):
+                # Same rule as the bridge/event path: keep the old name rather than let a
+                # wildcard/separator into our topics, and flag the device as unusable.
+                logger.warning(
+                    "Ignoring rename '%s' -> '%s': unsafe name for MQTT topics",
+                    old_name,
+                    device.friendly_name,
+                )
+                self._mark_device_unusable(registered)
+                continue
+            renames.append((registered, old_name, device.friendly_name))
+        for registered, old_name, _new_name in renames:
+            self._detach_device(old_name, registered)
+        for registered, old_name, new_name in renames:
+            self._rename_device(registered, old_name, new_name, device_ids)
+
+    def _detach_device(self, name: str, registered: RegisteredDevice) -> None:
+        """
+        Drop a device's WB presence and z2m subscription, keeping its RegisteredDevice.
+
+        Used before re-filing a device under another name/device_id. Detaching every
+        renamed device before re-attaching any of them is what makes a name swap between
+        two devices safe: neither insert can land on a name the other still holds.
+        """
+        self._known_devices.pop(name, None)
+        self._z2m.unsubscribe_device(name)
+        self._teardown_device_id(registered)
+
+    def _attach_device(self, registered: RegisteredDevice, new_name: str, device_id: str) -> None:
+        """File a detached device under new_name/device_id, subscribe it and publish it"""
+        occupant = self._known_devices.get(new_name)
+        if occupant is not None and occupant is not registered:
+            # z2m keeps friendly_names unique, so the holder is on its way out (removed in
+            # this same batch). Clear it now, or its retained topics would be orphaned.
+            logger.warning(
+                "Name '%s' still held by ieee %s; removing it", new_name, occupant.z2m.ieee_address
+            )
+            self._detach_device(new_name, occupant)
+            self._ieee_to_name.pop(occupant.z2m.ieee_address, None)
         registered.z2m.friendly_name = new_name
-        registered.device_id = new_device_id
+        registered.device_id = device_id
         self._known_devices[new_name] = registered
         self._ieee_to_name[registered.z2m.ieee_address] = new_name
         self._z2m.subscribe_device(new_name)
-        self._mqtt_driver.publish_device(
-            new_device_id,
-            new_name,
-            registered.controls,
-            model=registered.z2m.model,
-            ieee_address=registered.z2m.ieee_address,
+        self._republish_device(registered)
+
+    def _rename_device(
+        self, registered: RegisteredDevice, old_name: str, new_name: str, assigned: dict[str, str]
+    ) -> None:
+        """Re-file an already-detached device under new_name, using the given id layout"""
+        old_device_id = registered.device_id
+        device_id = assigned.get(
+            registered.z2m.ieee_address,
+            _build_device_id(registered.z2m.model, new_name, registered.z2m.ieee_address),
         )
-        if registered.z2m.type:
-            self._mqtt_driver.publish_device_control(new_device_id, "device_type", registered.z2m.type)
-        if registered.z2m.model:
-            self._mqtt_driver.publish_device_control(new_device_id, "model", registered.z2m.model)
-        if registered.z2m.power_source:
-            self._mqtt_driver.publish_device_control(
-                new_device_id, "power_source", registered.z2m.power_source
-            )
-        self._mqtt_driver.subscribe_device_commands(
-            new_device_id,
-            registered.controls,
-            self._make_device_command_handler(registered),
-        )
+        self._attach_device(registered, new_name, device_id)
         logger.info(
             "Renamed device '%s' -> '%s' (device_id: %s -> %s)",
             old_name,
             new_name,
             old_device_id,
-            new_device_id,
+            registered.device_id,
         )
+
+    def _on_device_renamed(self, old_name: str, new_name: str) -> None:
+        """Handle a standalone bridge/event rename (batched renames go through _on_devices)"""
+        registered = self._known_devices.get(old_name)
+        if registered is None:
+            logger.warning("Rename event for unknown device '%s' -> '%s'", old_name, new_name)
+            return
+        # new_name comes straight from the z2m payload (data["to"]); reject unsafe names so
+        # a rename to "#"/"+"/"a/b" cannot hijack a subscription. Keep the old name, but
+        # flag the device — under the new name we can no longer reach it.
+        if not is_safe_topic_name(new_name):
+            logger.warning("Ignoring rename '%s' -> '%s': unsafe name for MQTT topics", old_name, new_name)
+            self._mark_device_unusable(registered)
+            return
+        self._detach_device(old_name, registered)
+        # Recompute over the last device list (with the new name applied): the new name may
+        # now collide with another device — then both move to suffixed ids — and the freed
+        # name may let a former partner take the bare id back. Using the last list rather
+        # than just the registered devices keeps unregistered-but-present devices in the
+        # picture, so registered ones don't flap to the bare id and back on the next list.
+        registered.z2m.friendly_name = new_name
+        known = self._last_devices or [known.z2m for known in self._known_devices.values()]
+        assigned = self._compute_device_ids(
+            known if registered.z2m in known else list(known) + [registered.z2m]
+        )
+        self._rename_device(registered, old_name, new_name, assigned)
+        self._apply_device_ids(assigned)
 
 
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")

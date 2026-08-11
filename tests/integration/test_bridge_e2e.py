@@ -381,16 +381,17 @@ class TestDeviceRegistration:
 
         assert wb_observer.retained(f"{DEVICES_PREFIX}/bad_name/meta") is None
 
-    def test_sanitizer_id_collision_is_disambiguated_by_ieee(
+    def test_sanitizer_id_collision_suffixes_all_and_leaves_base_unused(
         self,
         bridge: Bridge,
         z2m_emu: Z2mEmulator,
         wb_observer: WbObserver,
     ) -> None:
         """
-        Two distinct z2m names that sanitize to the same id ("lamp.1" and "lamp 1"
-        both -> "lamp_1") must not clobber each other: the smaller ieee_address keeps
-        the clean id, the larger is disambiguated with its ieee. Both stay registered.
+        Two distinct z2m names that sanitize to the same id ("lamp.1" and "lamp 1" both ->
+        "lamp_1") must not clobber each other, and NEITHER may keep the bare id: both get
+        an ieee suffix. The ambiguous "lamp_1" must not exist at all, so a wb-rules rule
+        pointing at it breaks loudly instead of silently reading whichever device won.
         """
         bridge.subscribe()
 
@@ -401,16 +402,17 @@ class TestDeviceRegistration:
             ]
         )
 
-        # Smaller ieee (0x0001) keeps the clean sanitized id.
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is not None
-        # Larger ieee (0x0009) is disambiguated, not lost or clobbered.
+        # Both devices are addressable, each under its own unambiguous id.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x0001/meta") is not None
         assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x0009/meta") is not None
+        # The ambiguous base id belongs to nobody.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is None
         # Both are counted — two separate WB devices.
         count_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.DEVICE_COUNT}"
         assert wb_observer.retained(count_topic) == "2"
 
     @pytest.mark.parametrize("order", [("0x0001", "0x0009"), ("0x0009", "0x0001")])
-    def test_id_collision_owner_is_independent_of_list_order(
+    def test_id_layout_is_independent_of_list_order(
         self,
         bridge: Bridge,
         z2m_emu: Z2mEmulator,
@@ -418,9 +420,9 @@ class TestDeviceRegistration:
         order: "tuple[str, str]",
     ) -> None:
         """
-        The clean id always goes to the smaller ieee_address regardless of the order z2m
-        lists the two colliding devices. Otherwise a remove+re-add that flips the ordering
-        would swap their retained topics and orphan the previous owner into ghost cleanup.
+        The layout is identical whichever order z2m lists the colliding devices in — the
+        order can flip on a remove+re-add, and a layout that followed it would swap the
+        devices' retained topics.
         """
         bridge.subscribe()
         by_ieee = {
@@ -430,29 +432,94 @@ class TestDeviceRegistration:
 
         z2m_emu.devices([by_ieee[order[0]], by_ieee[order[1]]])
 
-        # "lamp.1" (ieee 0x0001, the smaller) owns the clean id in either ordering.
-        clean = wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1/meta")
-        assert clean["title"]["en"] == "lamp.1"
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x0009/meta") is not None
+        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1_0x0001/meta")["title"]["en"] == "lamp.1"
+        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1_0x0009/meta")["title"]["en"] == "lamp 1"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is None
 
-    def test_id_collision_existing_device_keeps_clean_id_across_batches(
+    def test_id_layout_is_identical_after_restart(
+        self,
+        fake_mqtt_client: FakeMqttClient,
+        fake_clock: "list[float]",
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        A fresh Bridge (restart: empty _known_devices) must produce the same layout for the
+        same z2m device list. Otherwise the base id silently moves to another device across
+        a restart while the retained topic stays put, and a wb-rules reference starts
+        reading its neighbour.
+        """
+        _ = fake_clock
+        devices = [_z2m_sensor("lamp.1", ieee="0x0009"), _z2m_sensor("lamp 1", ieee="0x0001")]
+
+        def run_bridge() -> dict[str, str]:
+            bridge = Bridge(
+                mqtt_client=fake_mqtt_client,
+                base_topic=BASE,
+                device_id=BRIDGE_ID,
+                device_name=BRIDGE_NAME,
+                bridge_log_min_level="warning",
+                command_debounce_sec=5.0,
+            )
+            bridge.subscribe()
+            z2m_emu.devices(devices)
+            return {
+                topic: wb_observer.last_json_on(topic)["title"]["en"]
+                for topic in (
+                    f"{DEVICES_PREFIX}/lamp_1_0x0001/meta",
+                    f"{DEVICES_PREFIX}/lamp_1_0x0009/meta",
+                )
+            }
+
+        first = run_bridge()
+        # Second Bridge instance over the same retained list — as after a service restart.
+        second = run_bridge()
+
+        assert first == second
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is None
+
+    def test_device_reclaims_base_id_when_collision_partner_disappears(
         self,
         bridge: Bridge,
         z2m_emu: Z2mEmulator,
         wb_observer: WbObserver,
     ) -> None:
         """
-        A device already holding the clean id keeps it when a colliding NEW device arrives
-        in a later batch — even if the newcomer has the smaller ieee_address. The
-        already-registered device wins over the min-ieee rule; a live device's id is
-        never reassigned.
+        Once the colliding neighbour is gone the name is unambiguous again, so the survivor
+        moves back to the bare id — and its suffixed topics are cleaned up, not orphaned.
         """
         bridge.subscribe()
-        # First batch: lamp.1 alone -> clean "lamp_1".
-        z2m_emu.devices([_z2m_sensor("lamp.1", ieee="0x0005")])
-        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1/meta")["title"]["en"] == "lamp.1"
+        z2m_emu.devices(
+            [
+                _z2m_sensor("lamp.1", ieee="0x0001"),
+                _z2m_sensor("lamp 1", ieee="0x0009"),
+            ]
+        )
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x0001/meta") is not None
 
-        # Second batch: already-registered lamp.1 plus a NEW colliding "lamp 1", smaller ieee.
+        # "lamp 1" leaves z2m; "lamp.1" is alone and unambiguous again.
+        z2m_emu.devices([_z2m_sensor("lamp.1", ieee="0x0001")])
+
+        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1/meta")["title"]["en"] == "lamp.1"
+        # No orphaned retained topics under either suffixed id.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x0001/meta") is None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x0009/meta") is None
+
+    def test_existing_device_gives_up_base_id_when_collision_appears(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        A device holding the bare id must give it up when a colliding device shows up in a
+        later batch, with its old topics cleared — the layout depends only on the current
+        device list, never on who registered first.
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("lamp.1", ieee="0x0005")])
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is not None
+
         z2m_emu.devices(
             [
                 _z2m_sensor("lamp.1", ieee="0x0005"),
@@ -460,21 +527,267 @@ class TestDeviceRegistration:
             ]
         )
 
-        # The existing device (0x0005) keeps the clean id despite the newcomer's smaller ieee.
-        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1/meta")["title"]["en"] == "lamp.1"
-        # Newcomer is suffixed, not given the base id.
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x0001/meta") is not None
+        # The bare id is vacated (no stale retained meta left behind) and both are suffixed.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is None
+        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1_0x0005/meta")["title"]["en"] == "lamp.1"
+        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1_0x0001/meta")["title"]["en"] == "lamp 1"
 
-    def test_rename_into_colliding_id_is_disambiguated(
+    def test_id_migration_restores_availability_and_error_state(
         self,
         bridge: Bridge,
         z2m_emu: Z2mEmulator,
         wb_observer: WbObserver,
     ) -> None:
         """
-        Renaming a device to a name that sanitizes to another live device's id must be
-        disambiguated by ieee (the rename path uses _resolve_device_id), not clobber the
-        existing device's retained topics.
+        Moving a device to a new device_id must not leave it blank: the new topics start
+        empty, so availability and meta/error have to be re-established. Otherwise an
+        unreachable device shows up healthy in WB (empty error, empty available) and never
+        recovers, because z2m only republishes availability on a change.
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("lamp.1", ieee="0x0005")])
+        z2m_emu.device_availability("lamp.1", online=False)
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta/error") == WbControlError.READ
+
+        # A colliding neighbour appears -> lamp.1 migrates to the suffixed id.
+        z2m_emu.devices(
+            [
+                _z2m_sensor("lamp.1", ieee="0x0005"),
+                _z2m_sensor("lamp 1", ieee="0x0001"),
+            ]
+        )
+
+        moved = f"{DEVICES_PREFIX}/lamp_1_0x0005"
+        # Not silently "healthy": marked unavailable with the matching device error.
+        assert wb_observer.retained(f"{moved}/controls/available") == WbBoolValue.FALSE
+        assert wb_observer.retained(f"{moved}/meta/error") == WbControlError.READ
+        # And a fresh state request went out, so real values come back at once.
+        assert wb_observer.has_publish_on(f"{BASE}/lamp.1/get")
+        # A later availability update is still honoured after the move.
+        z2m_emu.device_availability("lamp.1", online=True)
+        assert wb_observer.retained(f"{moved}/controls/available") == WbBoolValue.TRUE
+        assert wb_observer.retained(f"{moved}/meta/error") is None
+
+    def test_online_device_stays_online_across_id_migration(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        Moving a healthy device to a new device_id must not flag it unavailable: z2m only
+        republishes availability on a change, so a blanket "offline" would leave a working
+        device showing an error badge until it happens to change state.
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("lamp.1", ieee="0x0005")])
+        z2m_emu.device_availability("lamp.1", online=True)
+
+        z2m_emu.devices(
+            [
+                _z2m_sensor("lamp.1", ieee="0x0005"),
+                _z2m_sensor("lamp 1", ieee="0x0001"),
+            ]
+        )
+
+        moved = f"{DEVICES_PREFIX}/lamp_1_0x0005"
+        assert wb_observer.retained(f"{moved}/controls/available") == WbBoolValue.TRUE
+        assert wb_observer.retained(f"{moved}/meta/error") is None
+
+    @pytest.mark.parametrize("newcomer_first", [True, False])
+    def test_rename_frees_id_taken_by_newcomer_in_same_batch(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+        newcomer_first: bool,
+    ) -> None:
+        """
+        One batch both renames a device away from an id and introduces a new device that
+        takes it (as replayed after a reconnect). Renames are applied before registration,
+        so the outcome must not depend on the list order: previously the renamed device's
+        teardown wiped the newcomer, or the newcomer was merged into the renamed device's
+        record and ended up commanding the wrong physical device.
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("lamp.1", ieee="0x000b")])
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is not None
+
+        newcomer = _z2m_sensor("lamp 1", ieee="0x000a")  # sanitizes to the freed lamp_1
+        renamed = _z2m_sensor("kitchen", ieee="0x000b")
+        z2m_emu.devices([newcomer, renamed] if newcomer_first else [renamed, newcomer])
+
+        # Both devices exist, each under its own id and its own z2m name.
+        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1/meta")["title"]["en"] == "lamp 1"
+        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/kitchen/meta")["title"]["en"] == "kitchen"
+        # Each WB device is wired to its own z2m device — no crossed identities.
+        z2m_emu.device_state("lamp 1", {"temperature": 11.1})
+        z2m_emu.device_state("kitchen", {"temperature": 22.2})
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/controls/temperature") == "11.1"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/kitchen/controls/temperature") == "22.2"
+
+    def test_rename_onto_departing_device_id_is_not_wiped(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        One batch removes a device and renames another onto a name that sanitizes to the
+        departing device's id. Stale removal matches on ieee_address and runs first, so the
+        departing device releases the id before the renamed one is published under it —
+        otherwise the rename's fresh topics are torn down again and never republished.
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("lamp.1", ieee="0x00aa"), _z2m_sensor("desk", ieee="0x00bb")])
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is not None
+
+        # 0x00aa is gone; 0x00bb renamed "desk" -> "lamp 1", which sanitizes to lamp_1.
+        z2m_emu.devices([_z2m_sensor("lamp 1", ieee="0x00bb")])
+
+        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1/meta")["title"]["en"] == "lamp 1"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/controls/temperature/meta") is not None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/desk/meta") is None
+
+    def test_rename_to_unsafe_name_in_batch_keeps_device(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+        fake_mqtt_client: FakeMqttClient,
+    ) -> None:
+        """
+        A batch renaming a device to an unsafe name is refused, and the device keeps its
+        previous registration — the same outcome as the bridge/event rename path. Presence
+        is tracked by ieee_address, so refusing the rename no longer makes the device look
+        departed and silently delete it.
+        """
+        bridge.subscribe()
+        # A writable device, so the dropped command subscription is observable.
+        z2m_emu.devices([_z2m_switch("lamp", ieee="0x00aa")])
+
+        unsafe = _z2m_switch("placeholder", ieee="0x00aa")
+        unsafe["friendly_name"] = "kitchen/lamp"
+        z2m_emu.devices([unsafe])
+
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp/meta") is not None
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/kitchen_lamp/meta") is None
+        # The card must not look healthy: we can no longer reach the device under its new
+        # z2m name, so it is flagged and its command topics are dropped.
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp/controls/available") == WbBoolValue.FALSE
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp/meta/error") == WbControlError.READ_WRITE
+        assert f"{DEVICES_PREFIX}/lamp/controls/state/on" in fake_mqtt_client.unsubscriptions
+
+    def test_name_swap_between_devices_in_one_batch(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        Two devices exchange friendly_names in one batch. Renames are detached in one pass
+        and re-attached in another, so neither insert lands on a name the other still holds
+        — otherwise one of the two records is dropped and its card disappears.
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("lamp", ieee="0x00aa"), _z2m_sensor("kitchen", ieee="0x00bb")])
+
+        z2m_emu.devices([_z2m_sensor("kitchen", ieee="0x00aa"), _z2m_sensor("lamp", ieee="0x00bb")])
+
+        # Both cards exist and each is wired to the device that now carries that name.
+        z2m_emu.device_state("kitchen", {"temperature": 11.1})  # now 0x00aa
+        z2m_emu.device_state("lamp", {"temperature": 22.2})  # now 0x00bb
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/kitchen/controls/temperature") == "11.1"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp/controls/temperature") == "22.2"
+
+    def test_rename_colliding_with_newcomer_suffixes_both(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        A rename inside a batch must use that batch's layout, which also covers devices not
+        registered yet. Recomputing over known devices alone would hand the renamed device
+        the bare id, which then silently moves to another device on the next restart.
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("old-name", ieee="0x000a")])
+
+        # Same batch: 0x000a renamed to "lamp 1" and a brand-new "lamp.1" appears.
+        z2m_emu.devices(
+            [
+                _z2m_sensor("lamp 1", ieee="0x000a"),
+                _z2m_sensor("lamp.1", ieee="0x000c"),
+            ]
+        )
+
+        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1_0x000a/meta")["title"]["en"] == "lamp 1"
+        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1_0x000c/meta")["title"]["en"] == "lamp.1"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is None
+
+    def test_departing_device_does_not_wipe_newcomer_inheriting_its_id(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        A device leaves z2m and a different one whose name sanitizes to the same id arrives
+        in the same batch. Stale removal runs before registration, so the departing device
+        releases the id first instead of clearing the newcomer's freshly published topics.
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("lamp.1", ieee="0x00a0")])
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is not None
+
+        # 0x00a0 is gone; 0x00b0 ("lamp 1") sanitizes to the same lamp_1.
+        z2m_emu.devices([_z2m_sensor("lamp 1", ieee="0x00b0")])
+
+        meta = wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1/meta")
+        assert meta is not None and meta["title"]["en"] == "lamp 1"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/controls/temperature/meta") is not None
+
+    def test_suffixed_id_colliding_with_another_name_is_disambiguated_further(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        The ieee suffix itself can clash with a device whose name sanitizes to that exact
+        id. Every device must still end up with an id of its own, or two of them would share
+        retained topics and command subscriptions.
+        """
+        bridge.subscribe()
+
+        z2m_emu.devices(
+            [
+                _z2m_sensor("lamp.1", ieee="0x0001"),
+                _z2m_sensor("lamp 1", ieee="0x0002"),
+                _z2m_sensor("lamp 1 0x0001", ieee="0x0003"),  # sanitizes to lamp_1_0x0001
+            ]
+        )
+
+        metas = {
+            topic: meta["title"]["en"]
+            for topic, payload in wb_observer.retained_under(f"{DEVICES_PREFIX}/").items()
+            if topic.endswith("/meta") and (meta := json.loads(payload)).get("driver") == DRIVER_NAME
+        }
+        device_titles = [title for topic, title in metas.items() if BRIDGE_ID not in topic]
+        # Three devices, three distinct ids — none sharing a topic tree.
+        assert sorted(device_titles) == ["lamp 1", "lamp 1 0x0001", "lamp.1"]
+
+    def test_rename_into_colliding_id_suffixes_both_devices(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        Renaming a device into another device's sanitized id makes that id ambiguous, so
+        BOTH move to ieee-suffixed ids and the bare id is vacated — the rename path applies
+        the same layout rule as a bridge/devices batch.
         """
         bridge.subscribe()
         z2m_emu.devices(
@@ -484,14 +797,14 @@ class TestDeviceRegistration:
             ]
         )
         assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is not None
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_2/meta") is not None
 
         # Rename lamp.2 -> "lamp 1", which sanitizes to "lamp_1" and collides with lamp.1.
         z2m_emu.device_renamed("lamp.2", "lamp 1")
 
-        # The existing device keeps the clean id; the renamed device is disambiguated by ieee.
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is not None
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1_0x000b/meta") is not None
+        # Both devices are suffixed; the now-ambiguous bare id belongs to nobody.
+        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1_0x000a/meta")["title"]["en"] == "lamp.1"
+        assert wb_observer.last_json_on(f"{DEVICES_PREFIX}/lamp_1_0x000b/meta")["title"]["en"] == "lamp 1"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_1/meta") is None
         # The renamed device's old id is cleared.
         assert wb_observer.retained(f"{DEVICES_PREFIX}/lamp_2/meta") is None
 

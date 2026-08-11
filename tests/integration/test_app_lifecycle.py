@@ -18,6 +18,7 @@ import pytest
 
 from wb.mqtt_zigbee import app as app_module
 from wb.mqtt_zigbee.app import (
+    EXIT_FAILURE,
     EXIT_NOSTART,
     EXIT_SUCCESS,
     MQTT_RC_AUTH_FAILURE,
@@ -200,3 +201,56 @@ class TestConnectFailureModes:
         # Client was not stopped (only auth failure stops it).
         assert fake_mqtt_client._stopped is False  # pylint: disable=protected-access
         assert app._exit_code == EXIT_SUCCESS
+
+    def test_subscribe_failure_propagates_not_swallowed(
+        self,
+        app: WbZigbee2Mqtt,
+        fake_mqtt_client: FakeMqttClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        A failure inside on_connect (here Bridge.subscribe) must propagate out of the
+        MQTT loop so run() maps it to EXIT_FAILURE and systemd restarts us. Regression:
+        a global suppress_exceptions swallowed it, leaving a live-but-idle daemon.
+        """
+
+        def boom() -> None:
+            raise RuntimeError("subscribe failed")
+
+        monkeypatch.setattr(app._bridge, "subscribe", boom)  # pylint: disable=protected-access
+        with pytest.raises(RuntimeError, match="subscribe failed"):
+            fake_mqtt_client.connect(rc=0)
+
+
+class TestRun:
+    """
+    WbZigbee2Mqtt.run() error handling
+    """
+
+    def test_loop_error_returns_exit_failure(
+        self,
+        app: WbZigbee2Mqtt,
+        fake_mqtt_client: FakeMqttClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        An unexpected error in the MQTT loop is caught and mapped to EXIT_FAILURE
+        """
+
+        def boom() -> None:
+            raise RuntimeError("loop blew up")
+
+        monkeypatch.setattr(fake_mqtt_client, "loop_forever", boom)
+        assert app.run() == EXIT_FAILURE
+
+    def test_connection_error_returns_exit_failure(
+        self,
+        app: WbZigbee2Mqtt,
+        fake_mqtt_client: FakeMqttClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def boom() -> None:
+            raise ConnectionError("no broker")
+
+        monkeypatch.setattr(fake_mqtt_client, "loop_forever", boom)
+        assert app.run() == EXIT_FAILURE

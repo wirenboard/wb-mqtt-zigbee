@@ -43,6 +43,9 @@ class FakeMqttClient:
     def will_set(self, topic: str, payload: Any = "", qos: int = 0, retain: bool = False) -> None:
         self.will = (topic, payload, qos, retain)
 
+    def enable_logger(self, logger: Any = None) -> None:
+        pass
+
     def subscribe(self, topic: str) -> None:
         self._subscriptions.append(topic)
         self._broker.subscribe(self._client_id, topic)

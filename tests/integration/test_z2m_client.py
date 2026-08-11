@@ -7,6 +7,7 @@ outgoing commands publish the expected JSON to the expected topics.
 """
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -75,6 +76,15 @@ class TestBridgeState:
         z2m_emu.state_raw("starting", retain=True)
         assert not rec.bridge_states
 
+    def test_deeply_nested_payload_does_not_raise(
+        self, fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator
+    ) -> None:
+        # RecursionError from json.loads (deeply nested payload) must be caught and fall
+        # back to raw — rejected as an unknown state — not escape the callback.
+        _client, rec = _make_client(fake_mqtt_client)
+        z2m_emu.state_raw("[" * 20000 + "]" * 20000, retain=True)
+        assert not rec.bridge_states
+
 
 class TestBridgeInfo:
     """
@@ -117,6 +127,26 @@ class TestBridgeLog:
         _client, rec = _make_client(fake_mqtt_client)
         z2m_emu.log_raw("not json at all")
         assert rec.bridge_logs == [("info", "not json at all")]
+
+    def test_valid_non_dict_json_falls_back_to_raw(
+        self, fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator
+    ) -> None:
+        # Valid JSON that is not an object (number/array/string) must not raise on
+        # .get(); it falls back to the raw payload at info level.
+        _client, rec = _make_client(fake_mqtt_client)
+        z2m_emu.log_raw("5")
+        z2m_emu.log_raw("[1, 2]")
+        assert rec.bridge_logs == [("info", "5"), ("info", "[1, 2]")]
+
+    def test_deeply_nested_payload_falls_back_to_raw(
+        self, fake_mqtt_client: FakeMqttClient, z2m_emu: Z2mEmulator
+    ) -> None:
+        # RecursionError from json.loads must be caught; the message falls back to raw
+        # at info level instead of escaping the callback.
+        _client, rec = _make_client(fake_mqtt_client)
+        z2m_emu.log_raw("[" * 20000 + "]" * 20000)
+        assert len(rec.bridge_logs) == 1
+        assert rec.bridge_logs[0][0] == "info"
 
 
 class TestBridgeDevices:
@@ -276,6 +306,33 @@ class TestPerDeviceState:
         assert fake_mqtt_client.subscriptions == subs_after_first
 
 
+class TestUnsafeDeviceNameGuards:
+    """
+    Defense-in-depth: z2m methods refuse device names unsafe for MQTT topics, so a name
+    like "#" or "a/b" cannot create a wildcard subscription or an injected topic path.
+    """
+
+    def test_subscribe_device_refuses_wildcard_name(self, fake_mqtt_client: FakeMqttClient) -> None:
+        client, _rec = _make_client(fake_mqtt_client)
+        before = list(fake_mqtt_client.subscriptions)
+        client.subscribe_device("#")
+        assert fake_mqtt_client.subscriptions == before
+
+    def test_request_device_state_refuses_unsafe_name(
+        self, fake_mqtt_client: FakeMqttClient, wb_observer: WbObserver
+    ) -> None:
+        client, _rec = _make_client(fake_mqtt_client)
+        client.request_device_state("a/b")
+        assert wb_observer.last_on(f"{BASE}/a/b/get") is None
+
+    def test_set_device_state_refuses_unsafe_name(
+        self, fake_mqtt_client: FakeMqttClient, wb_observer: WbObserver
+    ) -> None:
+        client, _rec = _make_client(fake_mqtt_client)
+        client.set_device_state("a/b", {"state": "ON"})
+        assert wb_observer.last_on(f"{BASE}/a/b/set") is None
+
+
 class TestOutgoingCommands:
     """
     `set_permit_join`, `request_device_state`, `set_device_state` publishes
@@ -359,3 +416,38 @@ class TestSubscriptionTopology:
         assert fake_mqtt_client.subscriptions[-1] == devices_topic
         # And after re-subscribe, the retained payload is replayed.
         assert len(rec.devices_calls) == 2
+
+
+class TestCallbackErrorBackstop:
+    """
+    A message callback that raises a logic error (not a payload-parse issue) must not
+    escape the paho loop: log_callback_errors logs it with topic + traceback and the
+    loop survives. Regression: relying on a global suppress_exceptions instead.
+    """
+
+    def test_raising_callback_is_caught_and_logged(
+        self,
+        fake_mqtt_client: FakeMqttClient,
+        z2m_emu: Z2mEmulator,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        def explode(_state: str) -> None:
+            raise ValueError("callback logic bug")
+
+        client = Z2MClient(
+            mqtt_client=fake_mqtt_client,
+            base_topic=BASE,
+            on_bridge_state=explode,
+            on_bridge_info=lambda *_: None,
+            on_bridge_log=lambda *_: None,
+            on_devices=lambda *_: None,
+            on_device_event=lambda *_: None,
+            on_device_state=lambda *_: None,
+            on_device_availability=lambda *_: None,
+        )
+        client.subscribe()
+        with caplog.at_level(logging.ERROR):
+            # A valid message that trips a bug in the callback must not raise out.
+            z2m_emu.state_raw("online", retain=True)
+        assert f"{BASE}/bridge/state" in caplog.text
+        assert "callback logic bug" in caplog.text

@@ -5,6 +5,7 @@ from typing import Any, Callable, Optional
 from paho.mqtt.client import Client, MQTTMessage
 from wb_common.mqtt_client import MQTTClient
 
+from ..mqtt_utils import decode_payload, log_callback_errors, payload_too_large
 from .controls import (
     BRIDGE_CONTROLS,
     BridgeControl,
@@ -125,8 +126,12 @@ class WbMqttDriver:
         self._scanned_controls.clear()
         self._client.subscribe(_DEVICE_META_WILDCARD)
         self._client.subscribe(_CONTROL_META_WILDCARD)
-        self._client.message_callback_add(_DEVICE_META_WILDCARD, self._on_retained_device_meta)
-        self._client.message_callback_add(_CONTROL_META_WILDCARD, self._on_retained_control_meta)
+        self._client.message_callback_add(
+            _DEVICE_META_WILDCARD, log_callback_errors(self._on_retained_device_meta)
+        )
+        self._client.message_callback_add(
+            _CONTROL_META_WILDCARD, log_callback_errors(self._on_retained_control_meta)
+        )
 
     def stop_retained_scan(self) -> None:
         """
@@ -153,14 +158,17 @@ class WbMqttDriver:
         """
         Callback for /devices/+/meta: collect device_ids with our driver
         """
-        payload = message.payload.decode("utf-8").strip()
+        if payload_too_large(message, "/devices/+/meta"):
+            return
+        payload = decode_payload(message).strip()
         if not payload:
             return
         try:
             meta = json.loads(payload)
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError, RecursionError):
+            # RecursionError (deeply nested payload): ignored silently, like bad meta.
             return
-        if meta.get("driver") not in _KNOWN_DRIVER_NAMES:
+        if not isinstance(meta, dict) or meta.get("driver") not in _KNOWN_DRIVER_NAMES:
             return
         # topic: /devices/{device_id}/meta
         parts = message.topic.split("/")
@@ -171,8 +179,10 @@ class WbMqttDriver:
         """
         Callback for /devices/+/controls/+/meta: collect control_ids per device
         """
-        payload = message.payload.decode("utf-8").strip()
-        if not payload:
+        # We only need the topic segments here, never the JSON body, so don't decode the
+        # payload at all — this wildcard also catches other drivers' (potentially large)
+        # control metas. An empty (cleared) retained value means no control to collect.
+        if not message.payload.strip():
             return
         # topic: /devices/{device_id}/controls/{control_id}/meta
         parts = message.topic.split("/")
@@ -199,14 +209,14 @@ class WbMqttDriver:
         self._client.subscribe(update_devices_topic)
 
         def handle_permit_join(_client: Client, _userdata: Any, message: MQTTMessage) -> None:
-            value = message.payload.decode("utf-8").strip()
+            value = decode_payload(message).strip()
             on_permit_join(value == WbBoolValue.TRUE)
 
         def handle_update_devices(_client: Client, _userdata: Any, _message: MQTTMessage) -> None:
             on_update_devices()
 
-        self._client.message_callback_add(permit_join_topic, handle_permit_join)
-        self._client.message_callback_add(update_devices_topic, handle_update_devices)
+        self._client.message_callback_add(permit_join_topic, log_callback_errors(handle_permit_join))
+        self._client.message_callback_add(update_devices_topic, log_callback_errors(handle_update_devices))
 
     def subscribe_device_commands(
         self,
@@ -227,7 +237,9 @@ class WbMqttDriver:
                 continue
             topic = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/on"
             self._client.subscribe(topic)
-            self._client.message_callback_add(topic, _make_command_handler(control_id, on_command))
+            self._client.message_callback_add(
+                topic, log_callback_errors(_make_command_handler(control_id, on_command))
+            )
             logger.debug("Subscribed to device command: %s", topic)
 
     def unsubscribe_device_commands(self, device_id: str, controls: dict[str, ControlMeta]) -> None:
@@ -327,7 +339,7 @@ def _make_command_handler(control_id: str, on_command: Callable[[str, str], None
     """
 
     def handler(_client: Client, _userdata: Any, message: MQTTMessage) -> None:
-        value = message.payload.decode("utf-8").strip()
+        value = decode_payload(message).strip()
         on_command(control_id, value)
 
     return handler

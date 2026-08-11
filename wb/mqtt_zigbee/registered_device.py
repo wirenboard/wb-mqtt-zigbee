@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Optional
 
 from .wb_converter.controls import ControlMeta
 from .z2m.model import Z2MDevice
@@ -21,3 +22,7 @@ class RegisteredDevice:
     device_id: str
     pending_commands: dict[str, PendingCommand] = field(default_factory=dict)
     availability_received: bool = False
+    # Last availability we published, kept so a rename or device_id change can restore it:
+    # the new topics start empty and z2m only republishes availability when it changes.
+    # None means we have never heard from the device.
+    is_online: Optional[bool] = None

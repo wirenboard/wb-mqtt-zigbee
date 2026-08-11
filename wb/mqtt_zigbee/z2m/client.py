@@ -5,6 +5,12 @@ from typing import Any, Callable, Optional, Union
 from paho.mqtt.client import Client, MQTTMessage
 from wb_common.mqtt_client import MQTTClient
 
+from ..mqtt_utils import (
+    decode_payload,
+    is_safe_topic_name,
+    log_callback_errors,
+    payload_too_large,
+)
 from .model import (
     BridgeInfo,
     BridgeState,
@@ -76,10 +82,12 @@ class Z2MClient:
         ]
         for topic, handler in subscriptions:
             self._client.subscribe(topic)
-            self._client.message_callback_add(topic, handler)
+            self._client.message_callback_add(topic, log_callback_errors(handler))
         availability_topic = f"{self._base_topic}/+/availability"
         self._client.subscribe(availability_topic)
-        self._client.message_callback_add(availability_topic, self._handle_device_availability)
+        self._client.message_callback_add(
+            availability_topic, log_callback_errors(self._handle_device_availability)
+        )
         self._subscribed_devices.clear()
 
     def set_permit_join(self, enabled: bool) -> None:
@@ -93,16 +101,21 @@ class Z2MClient:
         topic = f"{self._base_topic}/bridge/devices"
         self._client.unsubscribe(topic)
         self._client.subscribe(topic)
-        self._client.message_callback_add(topic, self._handle_bridge_devices)
+        self._client.message_callback_add(topic, log_callback_errors(self._handle_bridge_devices))
 
     def subscribe_device(self, friendly_name: str) -> None:
         """Subscribe to a device's state topic"""
+        if not is_safe_topic_name(friendly_name):
+            logger.warning("Refusing to subscribe device with unsafe name '%s'", friendly_name)
+            return
         if friendly_name in self._subscribed_devices:
             logger.debug("Already subscribed to '%s', skipping", friendly_name)
             return
         topic = f"{self._base_topic}/{friendly_name}"
         self._client.subscribe(topic)
-        self._client.message_callback_add(topic, self._make_device_state_handler(friendly_name))
+        self._client.message_callback_add(
+            topic, log_callback_errors(self._make_device_state_handler(friendly_name))
+        )
         self._subscribed_devices.add(friendly_name)
 
     def unsubscribe_device(self, friendly_name: str) -> None:
@@ -117,10 +130,16 @@ class Z2MClient:
 
     def request_device_state(self, friendly_name: str) -> None:
         """Request current state from a device via zigbee2mqtt/{device}/get"""
+        if not is_safe_topic_name(friendly_name):
+            logger.warning("Refusing state request for device with unsafe name '%s'", friendly_name)
+            return
         self._client.publish(f"{self._base_topic}/{friendly_name}/get", "{}")
 
     def set_device_state(self, friendly_name: str, payload: dict) -> None:
         """Send command to a device via zigbee2mqtt/{device}/set"""
+        if not is_safe_topic_name(friendly_name):
+            logger.warning("Refusing command for device with unsafe name '%s'", friendly_name)
+            return
         self._client.publish(f"{self._base_topic}/{friendly_name}/set", json.dumps(payload))
 
     def _make_device_state_handler(self, friendly_name: str):
@@ -149,11 +168,14 @@ class Z2MClient:
 
     def _handle_bridge_state(self, _client: Client, _userdata: Any, message: MQTTMessage) -> None:
         """Parse bridge/state: may be plain string or JSON {"state": "..."}"""
-        raw = message.payload.decode("utf-8").strip()
+        if payload_too_large(message, "bridge/state"):
+            return
+        raw = decode_payload(message).strip()
         try:
             data = json.loads(raw)
             state = data.get("state", raw) if isinstance(data, dict) else raw
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
+            # RecursionError (deeply nested payload): fall back to raw -> unknown state.
             state = raw
         if state not in (BridgeState.ONLINE, BridgeState.OFFLINE, BridgeState.ERROR):
             logger.warning("Unknown bridge state: %s", state)
@@ -174,19 +196,32 @@ class Z2MClient:
 
     def _handle_bridge_log(self, _client: Client, _userdata: Any, message: MQTTMessage) -> None:
         """Parse bridge/logging JSON, extract level and message. Falls back to raw string on error"""
+        if payload_too_large(message, "bridge/logging"):
+            return
+        raw = decode_payload(message)
         try:
-            data = json.loads(message.payload.decode("utf-8"))
-            log_level: str = data.get("level", "info")
-            log_message: str = str(data.get("message", ""))
-        except json.JSONDecodeError:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, RecursionError):
+            # RecursionError (deeply nested payload): treat as non-dict, fall back to raw.
+            data = None
+        if isinstance(data, dict):
+            log_level = data.get("level", "info")
+            log_message = str(data.get("message", ""))
+        else:
             log_level = "info"
-            log_message = message.payload.decode("utf-8")
+            log_message = raw
         self._on_bridge_log(log_level, log_message or "")
 
     def _handle_bridge_devices(self, _client: Client, _userdata: Any, message: MQTTMessage) -> None:
         """Parse bridge/devices JSON array into Z2MDevice list (excluding Coordinator)"""
-        data = _parse_json_payload(message, "bridge/devices")
+        data = _parse_json_payload(message, "bridge/devices", list)
         if data is None:
+            return
+        # Reject a malformed list wholesale: treated as authoritative it would run
+        # stale-removal and wipe every real device (e.g. "[{}]"). Real entries are objects
+        # with an ieee_address; a genuinely empty "[]" still clears normally.
+        if not all(isinstance(device_data, dict) and device_data.get("ieee_address") for device_data in data):
+            logger.warning("Ignoring malformed bridge/devices payload")
             return
         devices = []
         for device_data in data:
@@ -206,6 +241,9 @@ class Z2MClient:
             return
         event_type = data.get("type")
         device_data = data.get("data", {})
+        if not isinstance(device_data, dict):
+            logger.warning("Ignoring bridge/event with non-object data field")
+            return
         event_map = {
             Z2MEventType.DEVICE_JOINED: DeviceEventType.JOINED,
             Z2MEventType.DEVICE_LEAVE: DeviceEventType.LEFT,
@@ -233,20 +271,39 @@ class Z2MClient:
         if data is None:
             return
         if data.get("status") == "ok":
-            name = data.get("data", {}).get("id", "")
-            self._on_device_event(DeviceEvent(type=DeviceEventType.REMOVED, name=name))
+            inner = data.get("data", {})
+            if not isinstance(inner, dict):
+                return
+            self._on_device_event(DeviceEvent(type=DeviceEventType.REMOVED, name=inner.get("id", "")))
 
 
-def _parse_json_payload(message: MQTTMessage, topic_name: str) -> Optional[Union[dict, list]]:
-    """Decode MQTT message payload as JSON. Returns None and logs warning on failure"""
-    payload = message.payload.decode("utf-8")
+def _parse_json_payload(
+    message: MQTTMessage, topic_name: str, expected_type: type = dict
+) -> Optional[Union[dict, list]]:
+    """Decode payload as JSON of the expected top-level type.
+
+    Returns None (and logs a warning) on invalid JSON or a top-level type that is not
+    `expected_type` (e.g. a bare number/string/array where a dict is expected). This
+    keeps handlers that assume a dict/list from raising on a malformed shape.
+    """
+    if payload_too_large(message, topic_name):
+        return None
+    payload = decode_payload(message)
     if not payload:
         return None
     try:
-        return json.loads(payload)
+        data = json.loads(payload)
     except json.JSONDecodeError:
         logger.warning("Failed to parse %s payload", topic_name)
         return None
+    except RecursionError:
+        # json.loads recurses per level; a deeply nested payload raises RecursionError.
+        logger.warning("Ignoring deeply nested %s payload", topic_name)
+        return None
+    if not isinstance(data, expected_type):
+        logger.warning("Unexpected %s payload type: %s", topic_name, type(data).__name__)
+        return None
+    return data
 
 
 def _resolve_device_name(device_data: dict) -> str:

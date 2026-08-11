@@ -1,3 +1,19 @@
+wb-mqtt-zigbee (1.4.11) stable; urgency=medium
+
+  * Harden MQTT handlers against malformed payloads (non-UTF-8, unexpected JSON
+    shape, deeply nested or oversized) so a bad message can no longer crash the daemon
+  * Reject device renames to names containing MQTT wildcards/separators, which could
+    hijack a device's topic subscription
+  * Give every device whose ID collides after name sanitization (e.g. "lamp.1" vs
+    "lamp 1") an IEEE-suffixed ID, leaving the ambiguous ID unpublished, so retained
+    topics and commands can no longer be clobbered or misrouted. The ID layout depends
+    only on the current device list, so it stays the same across restarts
+  * Keep devices and their availability intact across renames and ID changes
+  * Strip control characters from the zigbee2mqtt log text before publishing it to the
+    bridge Log control
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Tue, 11 Aug 2026 09:48:33 +0300
+
 wb-mqtt-zigbee (1.4.10) stable; urgency=medium
 
   * Fix postinst script

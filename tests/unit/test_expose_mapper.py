@@ -112,6 +112,21 @@ class TestMapExposesToControls:
         assert controls["last_seen"].type == WbControlType.TEXT
         assert controls["last_seen"].readonly is True
 
+    def test_numbered_endpoint_inherits_base_title_and_enum_labels(self):
+        """A property on a numbered endpoint takes both the title and the value labels of
+        its base property — before, each fell back to English on its own."""
+        controls = map_exposes_to_controls(
+            [
+                make_expose(type=ExposeType.ENUM, property="switch_type_1", values=["rocker"]),
+                make_expose(type=ExposeType.ENUM, property="power_type", values=["full"]),
+            ]
+        )
+
+        assert controls["switch_type_1"].title == {"en": "Switch Type 1", "ru": "Тип выключателя 1"}
+        assert controls["switch_type_1"].enum == {"rocker": {"en": "Rocker", "ru": "Клавишный"}}
+        assert controls["power_type"].title == {"en": "Power Type", "ru": "Питание"}
+        assert controls["power_type"].enum == {"full": {"en": "Full", "ru": "Полное"}}
+
     def test_expose_without_property_does_not_break_order(self):
         exposes = [
             make_expose(property=""),  # skipped — no property
@@ -552,8 +567,7 @@ class TestLocalizedTitle:
             ("voltage_l3", {"en": "Voltage L3", "ru": "Напряжение L3"}),
             ("current_a", {"en": "Current A", "ru": "Ток A"}),
             ("state_l2", {"en": "State L2", "ru": "Состояние L2"}),
-            # Bare numeric endpoint index — multi-gang devices such as YNDX_00537
-            # spell it without the leading "l".
+            # Bare numeric endpoint index: some converters spell it without the "l".
             ("switch_type_1", {"en": "Switch Type 1", "ru": "Тип выключателя 1"}),
             ("state_1", {"en": "State 1", "ru": "Состояние 1"}),
             ("power_on_behavior_2", {"en": "Power-On Behavior 2", "ru": "Поведение при включении 2"}),
@@ -573,27 +587,6 @@ class TestLocalizedTitle:
     )
     def test_falls_back_to_english_only(self, prop, expected):
         assert _localized_title(prop) == expected
-
-
-class TestNumberedEndpointDevice:
-    """
-    The YNDX_00537 case from the support request, end to end: before this change the
-    numbered endpoint missed the curated title and no enum value was ever translated, so
-    the control read "Switch Type 1" with raw English options
-    """
-
-    def test_numbered_endpoint_gets_title_and_translated_values(self):
-        controls = map_exposes_to_controls(
-            [
-                make_expose(type=ExposeType.ENUM, property="switch_type_1", values=["rocker"]),
-                make_expose(type=ExposeType.ENUM, property="power_type", values=["full"]),
-            ]
-        )
-
-        assert controls["switch_type_1"].title == {"en": "Switch Type 1", "ru": "Тип выключателя 1"}
-        assert controls["switch_type_1"].enum == {"rocker": {"en": "Rocker", "ru": "Клавишный"}}
-        assert controls["power_type"].title == {"en": "Power Type", "ru": "Питание"}
-        assert controls["power_type"].enum == {"full": {"en": "Full", "ru": "Полное"}}
 
 
 class TestResolveWbType:

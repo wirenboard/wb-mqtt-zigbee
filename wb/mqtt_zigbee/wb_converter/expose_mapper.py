@@ -102,10 +102,8 @@ PROPERTY_TITLES: dict[str, dict[str, str]] = {
     "backlight_mode": {"en": "Backlight Mode", "ru": "Режим подсветки"},
     "led_disabled_night": {"en": "Disable LED At Night", "ru": "Отключать LED ночью"},
     "switch_type": {"en": "Switch Type", "ru": "Тип выключателя"},
-    # Deliberately neutral: converters use this property for two different things — a
-    # writable supply level (YNDX_00537: full/low/medium/high) and a read-only supply
-    # indicator (NAS-AB02B0: battery_*/usb) — and one title has to serve both. Also must
-    # not repeat the power_source service control's «Тип питания».
+    # Neutral on purpose: converters use it both as a supply level (full/low/…) and as
+    # a supply indicator (battery_*/usb). Must not repeat power_source's «Тип питания».
     "power_type": {"en": "Power Type", "ru": "Питание"},
     "operation_mode": {"en": "Operation Mode", "ru": "Режим работы"},
     # --- Climate / thermostat ---
@@ -180,18 +178,10 @@ PROPERTY_TITLES: dict[str, dict[str, str]] = {
     "uart_baud_rate": {"en": "UART Baud Rate", "ru": "Скорость UART"},
 }
 
-# Curated en+ru labels for z2m enum VALUES, keyed by property and then by the raw z2m
-# value. _make_enum() publishes meta.enum in the WB conventions form
-# {value: {"en": ..., "ru": ...}}; a value missing here gets an en-only label derived from
-# the value itself, which homeui renders as-is. Endpoint variants (switch_type_1, ...)
-# reuse the base property entry, the same way titles do.
-#
-# Keyed by property rather than globally by value on purpose: the same word needs a
-# different Russian form per property ("low" is «Низкое» for power_type but «Низкая» for
-# sensitivity), and off/toggle/previous mean different things in different properties. A
-# miss here degrades to the English label -- today's behaviour -- never to a wrong
-# translation. Open-ended device-specific enums (action, effect, melody) are deliberately
-# left uncurated.
+# en+ru labels for z2m enum VALUES, keyed by property then by value.
+# Keyed by property, not globally by value: the Russian form differs per property
+# ("low" is «Низкое» for power_type, «Низкая» for sensitivity). A miss falls back to
+# English. Open-ended enums (action, effect, melody) are left uncurated on purpose.
 
 ENUM_VALUE_TITLES: dict[str, dict[str, dict[str, str]]] = {
     "switch_type": {
@@ -212,9 +202,8 @@ ENUM_VALUE_TITLES: dict[str, dict[str, dict[str, str]]] = {
         "toggle": {"en": "Toggle", "ru": "Инвертировать"},
         "previous": {"en": "Previous", "ru": "Восстановить предыдущее"},
     },
-    # color_power_on_behavior is NOT the same value set — z2m gives it
-    # initial/previous/customized — so it needs its own entry, not this one. Left
-    # uncurated until those three have reviewed wording.
+    # Do not reuse these labels for color_power_on_behavior: despite the similar name,
+    # z2m gives it a different value set (initial/previous/customized).
 }
 
 # z2m milli-unit → WB base-unit conversion factors, keyed by (WB control type, z2m unit).
@@ -225,10 +214,8 @@ _UNIT_SCALE_TO_BASE: dict[tuple[str, str], float] = {
     (WbControlType.CURRENT, "mA"): 0.001,
 }
 
-# Phase/endpoint suffix on multi-phase meters & multi-gang devices: power_l1, voltage_a,
-# switch_type_1 — converters spell the endpoint index with or without the leading "l".
-# _split_endpoint_suffix() strips it; titles and enum labels of the base property are
-# then reused, with the upper-cased label appended to the title.
+# Phase/endpoint suffix: power_l1, voltage_a, switch_type_1 — the index comes with or
+# without the leading "l". Stripped by _split_endpoint_suffix() to reuse the base entry.
 PHASE_SUFFIX_RE = re.compile(r"^(.+)_(l?\d+|[abc])$")
 
 # Specific/composite expose types that contain nested features
@@ -245,9 +232,7 @@ NESTED_TYPES = {
 # Service controls always added by map_exposes_to_controls regardless of exposes
 SERVICE_CONTROLS = {"available", "device_type", "model", "power_source", "last_seen"}
 
-# Same WB conventions shape as ENUM_VALUE_TITLES ({value: {"en", "ru"}}), but for a
-# service control built from a bridge/devices field rather than from an enum expose,
-# so _make_enum() is never involved.
+# Same shape as ENUM_VALUE_TITLES, but for a service control, not an enum expose.
 _POWER_SOURCE_LABELS = {
     "Battery": {"en": "Battery", "ru": "Батарея"},
     "Mains (single phase)": {"en": "Mains (single phase)", "ru": "Сеть 220В"},
@@ -461,23 +446,19 @@ def _make_enum(feature: ExposeFeature) -> Optional[dict]:
     """
     Build a WB meta.enum from a z2m enum expose.
 
-    Per the WB MQTT conventions an enum maps every control value to its translations:
-    {"rocker": {"en": "Rocker", "ru": "Клавишный"}, ...}. Curated labels come from
-    ENUM_VALUE_TITLES (keyed by property, endpoint suffix stripped); a value with no
-    curated label gets an en-only label derived from the raw z2m value, which the web
-    interface falls back to when the current locale is missing.
+    Per the WB conventions an enum maps each control value to its translations:
+    {"rocker": {"en": "Rocker", "ru": "Клавишный"}, ...}. Uncurated values get an
+    en-only label, which the web interface falls back to.
     """
     if not feature.values:
         return None
     labels = _enum_value_titles(feature.property)
     enum: dict[str, dict[str, str]] = {}
     for value in feature.values:
-        # Some z2m converters report numeric enum values, and ExposeFeature.values is
-        # passed through unvalidated. The published control value is always a string, so
-        # key the enum by str(value) — and never call a str method on a raw value.
+        # Some converters report numeric values; the control value is always a string.
         key = str(value)
         label = labels.get(key)
-        # Copy: the tables are shared between properties and must not be mutated via meta.
+        # Copy: the tables are shared and must not be mutated through meta.
         enum[key] = dict(label) if label else {"en": _humanize_enum_value(key)}
     return enum
 
@@ -496,13 +477,9 @@ def _humanize_enum_value(value: str) -> str:
     """
     English label for an enum value with no curated translation.
 
-    Only multi-word lower-case snake_case is title-cased ("power_outage" -> "Power
-    Outage"). A single token is returned untouched, which is exactly what the web
-    interface showed before these labels existed: capitalize() would damage acronyms
-    ("usb" -> "Usb", "rgb" -> "Rgb") and codes ("ON", "2000K"), and it would gain nothing
-    on an ordinary word. A value with an empty segment ("on_", as z2m spells some action
-    values) is left alone too — title-casing it leaves a dangling space and erases the
-    very character that tells it apart from "on".
+    Only multi-word snake_case is title-cased ("power_outage" -> "Power Outage").
+    Anything else is left as z2m wrote it: capitalize() would damage "usb"/"ON"/"2000K",
+    and "on_" would title-case into a label with a dangling space.
     """
     parts = value.split("_")
     return _make_title(value) if len(parts) > 1 and value.islower() and all(parts) else value

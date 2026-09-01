@@ -113,10 +113,7 @@ class TestMapExposesToControls:
         assert controls["last_seen"].readonly is True
 
     def test_numbered_endpoint_inherits_base_title_and_enum_labels(self):
-        """
-        A property on a numbered endpoint takes both the title and the value labels of
-        its base property — before, each fell back to English on its own
-        """
+        """A numbered endpoint takes both the title and the value labels of its base"""
         controls = map_exposes_to_controls(
             [
                 make_expose(type=ExposeType.ENUM, property="switch_type_1", values=["rocker"]),
@@ -343,7 +340,7 @@ class TestMapLeafFeature:
             make_expose(type=ExposeType.ENUM, property="mode", values=["off", "heat", "cool"])
         )
         assert meta.type == WbControlType.TEXT
-        # Single-token values keep the exact wording zigbee2mqtt uses.
+        # Single-token values keep zigbee2mqtt's own wording.
         assert meta.enum == {
             "off": {"en": "off"},
             "heat": {"en": "heat"},
@@ -420,15 +417,12 @@ class TestMapColorFeature:
 
 class TestMakeEnum:
     """
-    Tests for helper ``_make_enum`` — building meta.enum in the WB conventions shape.
-
-    The published form is {value: {"en": ..., "ru": ...}} — the value itself is the key,
-    because that is what the control publishes and what a command must carry back.
+    Tests for helper ``_make_enum``. The key is the control value itself — that is what
+    a command must carry back.
     """
 
     def test_curated_values_translated_uncurated_fall_back_to_english(self):
-        # A missing "ru" is deliberate: homeui falls back to "en", and the gap stays
-        # greppable instead of masquerading as a deliberate identical wording.
+        # A missing "ru" is deliberate: the web interface falls back to "en".
         assert _make_enum(make_expose(property="switch_type", values=["rocker", "wombat"])) == {
             "rocker": {"en": "Rocker", "ru": "Клавишный"},
             "wombat": {"en": "wombat"},
@@ -442,29 +436,24 @@ class TestMakeEnum:
     @pytest.mark.parametrize(
         "value",
         [
-            "usb",  # acronym: capitalize() would give "Usb"
-            "heat",  # single word: nothing to gain, and z2m's wording is the reference
-            "ON",  # code: capitalize() would give "On"
-            "2000K",  # code: capitalize() would give "2000k"
-            "on_",  # z2m action wording: title-casing leaves a dangling space
+            "usb",  # capitalize() would give "Usb"
+            "heat",
+            "ON",
+            "2000K",
+            "on_",  # title-casing leaves a dangling space
         ],
     )
     def test_values_are_kept_verbatim(self, value):
         assert _make_enum(make_expose(property="x", values=[value])) == {value: {"en": value}}
 
     def test_endpoint_suffix_reuses_base_property(self):
-        """
-        switch_type_1 on a multi-gang device must get switch_type's labels
-        """
+        """switch_type_1 must get switch_type's labels"""
         assert _make_enum(make_expose(property="switch_type_1", values=["rocker"])) == _make_enum(
             make_expose(property="switch_type", values=["rocker"])
         )
 
     def test_numeric_values_are_stringified(self):
-        """
-        Some converters report numeric enum values; a str method on them would raise
-        and the whole device would be dropped at registration
-        """
+        """A str method on a numeric value would raise and drop the whole device"""
         assert _make_enum(make_expose(property="melody", values=[1, 2])) == {
             "1": {"en": "1"},
             "2": {"en": "2"},
@@ -480,13 +469,11 @@ class TestMakeEnum:
 
 
 class TestEnumValueTitlesTable:
-    """
-    Structural invariants of ENUM_VALUE_TITLES — cheap guards as the table grows
-    """
+    """Structural invariants of ENUM_VALUE_TITLES — cheap guards as the table grows"""
 
     def test_table_is_well_formed(self):
         for prop, values in ENUM_VALUE_TITLES.items():
-            # Endpoint variants resolve through the base entry, so listing one would be dead.
+            # An endpoint variant would be dead: it resolves through the base entry.
             assert not PHASE_SUFFIX_RE.match(prop), f"{prop} carries an endpoint suffix"
             assert prop in PROPERTY_TITLES, f"{prop} has value labels but no control title"
             for value, label in values.items():

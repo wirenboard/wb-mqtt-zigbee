@@ -113,8 +113,10 @@ class TestMapExposesToControls:
         assert controls["last_seen"].readonly is True
 
     def test_numbered_endpoint_inherits_base_title_and_enum_labels(self):
-        """A property on a numbered endpoint takes both the title and the value labels of
-        its base property — before, each fell back to English on its own."""
+        """
+        A property on a numbered endpoint takes both the title and the value labels of
+        its base property — before, each fell back to English on its own
+        """
         controls = map_exposes_to_controls(
             [
                 make_expose(type=ExposeType.ENUM, property="switch_type_1", values=["rocker"]),
@@ -417,7 +419,8 @@ class TestMapColorFeature:
 
 
 class TestMakeEnum:
-    """Tests for helper ``_make_enum`` — building meta.enum in the WB conventions shape.
+    """
+    Tests for helper ``_make_enum`` — building meta.enum in the WB conventions shape.
 
     The published form is {value: {"en": ..., "ru": ...}} — the value itself is the key,
     because that is what the control publishes and what a command must carry back.

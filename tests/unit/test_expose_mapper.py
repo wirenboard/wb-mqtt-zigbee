@@ -8,6 +8,9 @@ import pytest
 
 from wb.mqtt_zigbee.wb_converter.controls import WbControlType
 from wb.mqtt_zigbee.wb_converter.expose_mapper import (
+    ENUM_VALUE_TITLES,
+    PHASE_SUFFIX_RE,
+    PROPERTY_TITLES,
     _flatten_expose,
     _localized_title,
     _make_enum,
@@ -316,11 +319,19 @@ class TestMapLeafFeature:
         assert meta.value_off == "false"
 
     def test_enum_becomes_text_with_enum_dict(self):
+        """
+        An uncurated enum still lists every value, with en-only labels
+        """
         [(_, meta)] = _map_leaf_feature(
             make_expose(type=ExposeType.ENUM, property="mode", values=["off", "heat", "cool"])
         )
         assert meta.type == WbControlType.TEXT
-        assert meta.enum == {"off": 0, "heat": 1, "cool": 2}
+        # Single-token values keep the exact wording zigbee2mqtt uses.
+        assert meta.enum == {
+            "off": {"en": "off"},
+            "heat": {"en": "heat"},
+            "cool": {"en": "cool"},
+        }
 
     def test_text_becomes_text_without_enum(self):
         [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.TEXT, property="description"))
@@ -391,17 +402,77 @@ class TestMapColorFeature:
 
 
 class TestMakeEnum:
-    """Tests for helper ``_make_enum`` — building enum value→index mapping."""
+    """Tests for helper ``_make_enum`` — building meta.enum in the WB conventions shape.
 
-    def test_values_mapped_to_sequential_indices(self):
-        assert _make_enum(make_expose(values=["off", "low", "high"])) == {
-            "off": 0,
-            "low": 1,
-            "high": 2,
+    The published form is {value: {"en": ..., "ru": ...}} — the value itself is the key,
+    because that is what the control publishes and what a command must carry back.
+    """
+
+    def test_curated_values_translated_uncurated_fall_back_to_english(self):
+        # A missing "ru" is deliberate: homeui falls back to "en", and the gap stays
+        # greppable instead of masquerading as a deliberate identical wording.
+        assert _make_enum(make_expose(property="switch_type", values=["rocker", "wombat"])) == {
+            "rocker": {"en": "Rocker", "ru": "Клавишный"},
+            "wombat": {"en": "wombat"},
         }
+
+    def test_multiword_uncurated_value_is_title_cased(self):
+        assert _make_enum(make_expose(property="x", values=["battery_full"])) == {
+            "battery_full": {"en": "Battery Full"}
+        }
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "usb",  # acronym: capitalize() would give "Usb"
+            "heat",  # single word: nothing to gain, and z2m's wording is the reference
+            "ON",  # code: capitalize() would give "On"
+            "2000K",  # code: capitalize() would give "2000k"
+            "on_",  # z2m action wording: title-casing leaves a dangling space
+        ],
+    )
+    def test_values_are_kept_verbatim(self, value):
+        assert _make_enum(make_expose(property="x", values=[value])) == {value: {"en": value}}
+
+    def test_endpoint_suffix_reuses_base_property(self):
+        """
+        switch_type_1 on a multi-gang device must get switch_type's labels
+        """
+        assert _make_enum(make_expose(property="switch_type_1", values=["rocker"])) == _make_enum(
+            make_expose(property="switch_type", values=["rocker"])
+        )
+
+    def test_numeric_values_are_stringified(self):
+        """
+        Some converters report numeric enum values; a str method on them would raise
+        and the whole device would be dropped at registration
+        """
+        assert _make_enum(make_expose(property="melody", values=[1, 2])) == {
+            "1": {"en": "1"},
+            "2": {"en": "2"},
+        }
+
+    def test_returned_labels_are_copies(self):
+        enum = _make_enum(make_expose(property="switch_type", values=["rocker"]))
+        enum["rocker"]["ru"] = "испорчено"
+        assert ENUM_VALUE_TITLES["switch_type"]["rocker"]["ru"] == "Клавишный"
 
     def test_empty_values_returns_none(self):
         assert _make_enum(make_expose(values=[])) is None
+
+
+class TestEnumValueTitlesTable:
+    """
+    Structural invariants of ENUM_VALUE_TITLES — cheap guards as the table grows
+    """
+
+    def test_table_is_well_formed(self):
+        for prop, values in ENUM_VALUE_TITLES.items():
+            # Endpoint variants resolve through the base entry, so listing one would be dead.
+            assert not PHASE_SUFFIX_RE.match(prop), f"{prop} carries an endpoint suffix"
+            assert prop in PROPERTY_TITLES, f"{prop} has value labels but no control title"
+            for value, label in values.items():
+                assert label.get("en"), f"{prop}.{value} has no English label"
 
 
 class TestMakeTitle:
@@ -481,6 +552,12 @@ class TestLocalizedTitle:
             ("voltage_l3", {"en": "Voltage L3", "ru": "Напряжение L3"}),
             ("current_a", {"en": "Current A", "ru": "Ток A"}),
             ("state_l2", {"en": "State L2", "ru": "Состояние L2"}),
+            # Bare numeric endpoint index — multi-gang devices such as YNDX_00537
+            # spell it without the leading "l".
+            ("switch_type_1", {"en": "Switch Type 1", "ru": "Тип выключателя 1"}),
+            ("state_1", {"en": "State 1", "ru": "Состояние 1"}),
+            ("power_on_behavior_2", {"en": "Power-On Behavior 2", "ru": "Поведение при включении 2"}),
+            ("power_type", {"en": "Power Type", "ru": "Питание"}),
         ],
     )
     def test_resolves_to_bilingual_title(self, prop, expected):
@@ -491,10 +568,32 @@ class TestLocalizedTitle:
         [
             ("totally_unknown_property", {"en": "Totally Unknown Property"}),
             ("foo_l1", {"en": "Foo L1"}),  # phase suffix, base "foo" not curated
+            ("totally_unknown_1", {"en": "Totally Unknown 1"}),  # numeric suffix, base not curated
         ],
     )
     def test_falls_back_to_english_only(self, prop, expected):
         assert _localized_title(prop) == expected
+
+
+class TestNumberedEndpointDevice:
+    """
+    The YNDX_00537 case from the support request, end to end: before this change the
+    numbered endpoint missed the curated title and no enum value was ever translated, so
+    the control read "Switch Type 1" with raw English options
+    """
+
+    def test_numbered_endpoint_gets_title_and_translated_values(self):
+        controls = map_exposes_to_controls(
+            [
+                make_expose(type=ExposeType.ENUM, property="switch_type_1", values=["rocker"]),
+                make_expose(type=ExposeType.ENUM, property="power_type", values=["full"]),
+            ]
+        )
+
+        assert controls["switch_type_1"].title == {"en": "Switch Type 1", "ru": "Тип выключателя 1"}
+        assert controls["switch_type_1"].enum == {"rocker": {"en": "Rocker", "ru": "Клавишный"}}
+        assert controls["power_type"].title == {"en": "Power Type", "ru": "Питание"}
+        assert controls["power_type"].enum == {"full": {"en": "Full", "ru": "Полное"}}
 
 
 class TestResolveWbType:

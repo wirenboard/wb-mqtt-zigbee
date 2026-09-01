@@ -209,7 +209,7 @@ class TestPublishDevice:
                 type=WbControlType.SWITCH,
                 readonly=False,
                 order=1,
-                enum={"ON": "On", "OFF": "Off"},
+                enum={"ON": {"en": "On", "ru": "Вкл"}, "OFF": {"en": "Off", "ru": "Выкл"}},
             )
         }
         driver.publish_device("0x123", "Device", controls_with_meta)
@@ -257,7 +257,7 @@ class TestRemoveDevice:
                 type=WbControlType.SWITCH,
                 readonly=False,
                 order=1,
-                enum={"ON": "On", "OFF": "Off"},
+                enum={"ON": {"en": "On", "ru": "Вкл"}, "OFF": {"en": "Off", "ru": "Выкл"}},
                 max=100.0,
                 min=0.0,
             )

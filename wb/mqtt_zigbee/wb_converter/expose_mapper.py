@@ -102,6 +102,9 @@ PROPERTY_TITLES: dict[str, dict[str, str]] = {
     "backlight_mode": {"en": "Backlight Mode", "ru": "Режим подсветки"},
     "led_disabled_night": {"en": "Disable LED At Night", "ru": "Отключать LED ночью"},
     "switch_type": {"en": "Switch Type", "ru": "Тип выключателя"},
+    # Neutral on purpose: converters use it both as a supply level (full/low/…) and as
+    # a supply indicator (battery_*/usb). Must not repeat power_source's «Тип питания».
+    "power_type": {"en": "Power Type", "ru": "Питание"},
     "operation_mode": {"en": "Operation Mode", "ru": "Режим работы"},
     # --- Climate / thermostat ---
     "system_mode": {"en": "System Mode", "ru": "Режим работы"},
@@ -175,6 +178,34 @@ PROPERTY_TITLES: dict[str, dict[str, str]] = {
     "uart_baud_rate": {"en": "UART Baud Rate", "ru": "Скорость UART"},
 }
 
+# en+ru labels for z2m enum VALUES, keyed by property then by value.
+# Keyed by property, not globally by value: the Russian form differs per property
+# ("low" is «Низкое» for power_type, «Низкая» for sensitivity). A miss falls back to
+# English. Open-ended enums (action, effect, melody) are left uncurated on purpose.
+
+ENUM_VALUE_TITLES: dict[str, dict[str, dict[str, str]]] = {
+    "switch_type": {
+        "rocker": {"en": "Rocker", "ru": "Клавишный"},
+        "button": {"en": "Button", "ru": "Кнопочный"},
+        "decoupled": {"en": "Decoupled", "ru": "Отвязан от реле"},
+    },
+    # Neuter forms, agreeing with the «Питание» title.
+    "power_type": {
+        "full": {"en": "Full", "ru": "Полное"},
+        "low": {"en": "Low", "ru": "Низкое"},
+        "medium": {"en": "Medium", "ru": "Среднее"},
+        "high": {"en": "High", "ru": "Высокое"},
+    },
+    "power_on_behavior": {
+        "off": {"en": "Off", "ru": "Выключено"},
+        "on": {"en": "On", "ru": "Включено"},
+        "toggle": {"en": "Toggle", "ru": "Инвертировать"},
+        "previous": {"en": "Previous", "ru": "Восстановить предыдущее"},
+    },
+    # Do not reuse these labels for color_power_on_behavior: despite the similar name,
+    # z2m gives it a different value set (initial/previous/customized).
+}
+
 # z2m milli-unit → WB base-unit conversion factors, keyed by (WB control type, z2m unit).
 # Battery/diagnostic voltage and current are reported in mV/mA; WB voltage/current
 # control types display V/A.
@@ -183,9 +214,9 @@ _UNIT_SCALE_TO_BASE: dict[tuple[str, str], float] = {
     (WbControlType.CURRENT, "mA"): 0.001,
 }
 
-# Phase/endpoint suffix on multi-phase meters & multi-gang devices: power_l1, voltage_a, …
-# _localized_title() strips it and appends the upper-cased label to the base title.
-PHASE_SUFFIX_RE = re.compile(r"^(.+)_(l\d+|[abc])$")
+# Phase/endpoint suffix: power_l1, voltage_a, switch_type_1 — the index comes with or
+# without the leading "l". Stripped by _split_endpoint_suffix() to reuse the base entry.
+PHASE_SUFFIX_RE = re.compile(r"^(.+)_(l?\d+|[abc])$")
 
 # Specific/composite expose types that contain nested features
 NESTED_TYPES = {
@@ -201,6 +232,7 @@ NESTED_TYPES = {
 # Service controls always added by map_exposes_to_controls regardless of exposes
 SERVICE_CONTROLS = {"available", "device_type", "model", "power_source", "last_seen"}
 
+# Same shape as ENUM_VALUE_TITLES, but for a service control, not an enum expose.
 _POWER_SOURCE_LABELS = {
     "Battery": {"en": "Battery", "ru": "Батарея"},
     "Mains (single phase)": {"en": "Mains (single phase)", "ru": "Сеть 220В"},
@@ -411,19 +443,68 @@ def _map_color_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
 
 
 def _make_enum(feature: ExposeFeature) -> Optional[dict]:
-    """Build WB enum dict from z2m enum values: {"off": 0, "on": 1, ...}"""
+    """
+    Build a WB meta.enum from a z2m enum expose.
+
+    Per the WB conventions an enum maps each control value to its translations:
+    {"rocker": {"en": "Rocker", "ru": "Клавишный"}, ...}. Uncurated values get an
+    en-only label, which the web interface falls back to.
+    """
     if not feature.values:
         return None
-    return {val: idx for idx, val in enumerate(feature.values)}
+    labels = _enum_value_titles(feature.property)
+    enum: dict[str, dict[str, str]] = {}
+    for value in feature.values:
+        # Some converters report numeric values; the control value is always a string.
+        key = str(value)
+        label = labels.get(key)
+        # Copy: the tables are shared and must not be mutated through meta.
+        enum[key] = dict(label) if label else {"en": _humanize_enum_value(key)}
+    return enum
+
+
+def _enum_value_titles(property_name: str) -> dict[str, dict[str, str]]:
+    """
+    Curated value labels for a property, falling back to its endpoint base.
+    """
+    if property_name in ENUM_VALUE_TITLES:
+        return ENUM_VALUE_TITLES[property_name]
+    base, suffix = _split_endpoint_suffix(property_name)
+    return ENUM_VALUE_TITLES.get(base, {}) if suffix else {}
+
+
+def _humanize_enum_value(value: str) -> str:
+    """
+    English label for an enum value with no curated translation.
+
+    Only multi-word snake_case is title-cased ("power_outage" -> "Power Outage").
+    Anything else is left as z2m wrote it: capitalize() would damage "usb"/"ON"/"2000K",
+    and "on_" would title-case into a label with a dangling space.
+    """
+    parts = value.split("_")
+    return _make_title(value) if len(parts) > 1 and value.islower() and all(parts) else value
+
+
+def _split_endpoint_suffix(property_name: str) -> tuple[str, str]:
+    """
+    Split a phase/endpoint suffix off a property name.
+
+    'power_l1' -> ('power', 'L1'), 'switch_type_1' -> ('switch_type', '1'),
+    'temperature' -> ('temperature', '').
+    """
+    match = PHASE_SUFFIX_RE.match(property_name)
+    return (match.group(1), match.group(2).upper()) if match else (property_name, "")
 
 
 def _localized_title(property_name: str) -> dict[str, str]:
-    """Build a bilingual {"en", "ru"} title for a z2m property.
+    """
+    Build a bilingual {"en", "ru"} title for a z2m property.
 
     Resolution order:
       1. exact match in PROPERTY_TITLES;
-      2. phase-suffixed variant (power_l1, voltage_a, …) — base title + phase label,
-         for example "power_l1" → {"en": "Power L1", "ru": "Мощность L1"};
+      2. phase/endpoint-suffixed variant (power_l1, voltage_a, switch_type_1, …) —
+         base title + suffix label, e.g. "power_l1" → {"en": "Power L1", "ru": "Мощность L1"}
+         and "switch_type_1" → {"en": "Switch Type 1", "ru": "Тип выключателя 1"};
       3. fallback — English-only title mechanically derived from the property name.
 
     Example:
@@ -434,9 +515,8 @@ def _localized_title(property_name: str) -> dict[str, str]:
     """
     if property_name in PROPERTY_TITLES:
         return dict(PROPERTY_TITLES[property_name])
-    phase = PHASE_SUFFIX_RE.match(property_name)
-    if phase and phase.group(1) in PROPERTY_TITLES:
-        base, label = phase.group(1), phase.group(2).upper()
+    base, label = _split_endpoint_suffix(property_name)
+    if label and base in PROPERTY_TITLES:
         return {lang: f"{text} {label}" for lang, text in PROPERTY_TITLES[base].items()}
     return {"en": _make_title(property_name)}
 

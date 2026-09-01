@@ -1,3 +1,10 @@
+wb-mqtt-zigbee (1.4.12) stable; urgency=medium
+
+  * Translate enum control values, e.g. Switch Type and Power Type
+  * Translate controls on numbered endpoints, e.g. switch_type_1
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Tue, 01 Sep 2026 13:49:04 +0300
+
 wb-mqtt-zigbee (1.4.11) stable; urgency=medium
 
   * Harden MQTT handlers against malformed payloads (non-UTF-8, unexpected JSON

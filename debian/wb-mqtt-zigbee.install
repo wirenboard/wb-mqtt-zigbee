@@ -2,6 +2,4 @@
 # NOTE: Installed by setup.py
 #       Standart files path "/usr/lib/python3/dist-packages/wb/mqtt_zigbee/..."
 
-configs/wb-mqtt-zigbee.conf /etc/
-wb/mqtt_zigbee/wb-mqtt-zigbee.schema.json /usr/share/wb-mqtt-confed/schemas/
-10wb-mqtt-zigbee /etc/wb-configs.d/
+configs/wb-mqtt-zigbee.conf /usr/share/wb-mqtt-zigbee/

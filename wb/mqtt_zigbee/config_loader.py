@@ -1,15 +1,12 @@
 import json
+import math
 import os
 from dataclasses import dataclass
-from importlib import resources
 from urllib.parse import urlparse
-
-import jsonschema
 
 from .z2m.model import BridgeLogLevel
 
-CONFIG_FILEPATH = "/etc/wb-mqtt-zigbee.conf"
-SCHEMA_FILENAME = "wb-mqtt-zigbee.schema.json"
+CONFIG_FILEPATH = "/usr/share/wb-mqtt-zigbee/wb-mqtt-zigbee.conf"
 
 
 BRIDGE_DEVICE_ID_DEFAULT = "zigbee2mqtt"
@@ -41,25 +38,27 @@ def load_config(config_path: str) -> ConfigLoader:
         except json.JSONDecodeError as e:
             raise ValueError(f"Configuration file is not valid JSON: {e}") from e
 
-    try:
-        schema_resource = resources.files("wb.mqtt_zigbee").joinpath(SCHEMA_FILENAME)
-        with schema_resource.open("r", encoding="utf-8") as schema_file:
-            jsonschema.validate(instance=config, schema=json.load(schema_file))
-    except jsonschema.ValidationError as e:
-        location = ".".join(str(part) for part in e.absolute_path)
-        prefix = f" at '{location}'" if location else ""
-        raise ValueError(f"Configuration is invalid{prefix}: {e.message}") from e
+    if not isinstance(config, dict):
+        raise ValueError("Configuration root must be an object")
 
     try:
         return ConfigLoader(
             broker_url=_validate_broker_url(config["broker_url"]),
-            zigbee2mqtt_base_topic=config["zigbee2mqtt_base_topic"],
-            device_id=config.get("device_id", BRIDGE_DEVICE_ID_DEFAULT),
-            device_name=config.get("device_name", BRIDGE_DEVICE_NAME_DEFAULT),
+            zigbee2mqtt_base_topic=_validate_nonempty_string(
+                "zigbee2mqtt_base_topic", config["zigbee2mqtt_base_topic"]
+            ),
+            device_id=_validate_nonempty_string(
+                "device_id", config.get("device_id", BRIDGE_DEVICE_ID_DEFAULT)
+            ),
+            device_name=_validate_nonempty_string(
+                "device_name", config.get("device_name", BRIDGE_DEVICE_NAME_DEFAULT)
+            ),
             bridge_log_min_level=_validate_log_level(
                 config.get("bridge_log_min_level", BRIDGE_LOG_MIN_LEVEL_DEFAULT)
             ),
-            command_debounce_sec=float(config.get("command_debounce_sec", COMMAND_DEBOUNCE_SEC_DEFAULT)),
+            command_debounce_sec=_validate_command_debounce_sec(
+                config.get("command_debounce_sec", COMMAND_DEBOUNCE_SEC_DEFAULT)
+            ),
         )
     except KeyError as e:
         raise ValueError(f"Missing required configuration key: {e}") from e
@@ -69,6 +68,24 @@ def _validate_log_level(level: str) -> str:
     if level not in _VALID_LOG_LEVELS:
         raise ValueError(f"Unknown bridge_log_min_level: {level!r}")
     return level
+
+
+def _validate_nonempty_string(name: str, value: object) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{name} must be a non-empty string")
+    return value
+
+
+def _validate_command_debounce_sec(value: object) -> float:
+    if isinstance(value, bool):
+        raise ValueError("command_debounce_sec must be a non-negative number")
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as e:
+        raise ValueError("command_debounce_sec must be a non-negative number") from e
+    if not math.isfinite(result) or result < 0:
+        raise ValueError("command_debounce_sec must be a non-negative number")
+    return result
 
 
 def _validate_broker_url(url: str) -> str:

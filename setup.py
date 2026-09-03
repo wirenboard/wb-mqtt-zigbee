@@ -14,7 +14,6 @@ setup(
     description="Wiren Board Zigbee2MQTT bridge",
     url="https://github.com/wirenboard/wb-mqtt-zigbee",
     packages=["wb.mqtt_zigbee", "wb.mqtt_zigbee.z2m", "wb.mqtt_zigbee.wb_converter"],
-    package_data={"wb.mqtt_zigbee": ["wb-mqtt-zigbee.schema.json"]},
     scripts=["bin/wb-mqtt-zigbee"],
     license="MIT",
 )

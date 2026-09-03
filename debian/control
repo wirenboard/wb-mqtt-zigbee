@@ -5,7 +5,6 @@ Maintainer: Wiren Board team <info@wirenboard.com>
 Build-Depends: debhelper-compat (= 11),
                dh-python,
                python3-all,
-               python3-jsonschema,
                python3-paho-mqtt,
                python3-pytest,
                python3-wb-common (>= 2.3.1~~)
@@ -16,7 +15,6 @@ Package: wb-mqtt-zigbee
 Architecture: all
 Depends: ${python3:Depends},
          ${misc:Depends},
-         python3-jsonschema,
          python3-paho-mqtt,
          python3-wb-common (>= 2.4.0~~)
 Conflicts: wb-zigbee2mqtt

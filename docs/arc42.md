@@ -44,7 +44,7 @@
 
 ### Организационные
 
-- Конфигурация через JSON-файл `/etc/wb-mqtt-zigbee.conf`
+- Пакетная конфигурация через JSON-файл `/usr/share/wb-mqtt-zigbee/wb-mqtt-zigbee.conf`
 - Сборка через Jenkins (`buildDebArchAll`)
 
 ---
@@ -343,7 +343,7 @@ Zigbee-устройства обрабатывают команды с заде�
 ```
 Wiren Board (ARM Linux)
 ├── /usr/lib/python3/dist-packages/wb/mqtt_zigbee/        — Python-пакет
-├── /etc/wb-mqtt-zigbee.conf                             — конфигурация (JSON)
+├── /usr/share/wb-mqtt-zigbee/wb-mqtt-zigbee.conf        — пакетная конфигурация (JSON)
 └── /lib/systemd/system/wb-mqtt-zigbee.service            — systemd unit
 
 Зависимости на целевой системе:

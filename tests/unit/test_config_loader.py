@@ -108,12 +108,12 @@ class TestLoadConfigErrors:
 
     def test_missing_broker_url_raises_value_error(self, tmp_path):
         path = write_config(tmp_path, {"zigbee2mqtt_base_topic": "z2m"})
-        with pytest.raises(ValueError, match="broker_url.*required property"):
+        with pytest.raises(ValueError, match="Missing required configuration key: 'broker_url'"):
             load_config(path)
 
     def test_missing_base_topic_raises_value_error(self, tmp_path):
         path = write_config(tmp_path, {"broker_url": "tcp://localhost:1883"})
-        with pytest.raises(ValueError, match="zigbee2mqtt_base_topic.*required property"):
+        with pytest.raises(ValueError, match="Missing required configuration key: 'zigbee2mqtt_base_topic'"):
             load_config(path)
 
     def test_invalid_command_debounce_sec_raises(self, tmp_path):
@@ -142,19 +142,32 @@ class TestLoadConfigErrors:
 
     def test_wrong_root_type_raises(self, tmp_path):
         path = write_config(tmp_path, [])
-        with pytest.raises(ValueError, match="Configuration is invalid"):
+        with pytest.raises(ValueError, match="Configuration root must be an object"):
             load_config(path)
 
-    def test_unknown_property_raises(self, tmp_path):
+    @pytest.mark.parametrize("value", [-1, True, "nan", "inf"])
+    def test_invalid_command_debounce_value_raises(self, tmp_path, value):
         path = write_config(
             tmp_path,
             {
                 "broker_url": "tcp://localhost:1883",
                 "zigbee2mqtt_base_topic": "zigbee2mqtt",
-                "typo": True,
+                "command_debounce_sec": value,
             },
         )
-        with pytest.raises(ValueError, match="Additional properties are not allowed"):
+        with pytest.raises(ValueError, match="command_debounce_sec"):
+            load_config(path)
+
+    @pytest.mark.parametrize("name", ["zigbee2mqtt_base_topic", "device_id", "device_name"])
+    @pytest.mark.parametrize("value", ["", None, 1])
+    def test_invalid_string_value_raises(self, tmp_path, name, value):
+        config = {
+            "broker_url": "tcp://localhost:1883",
+            "zigbee2mqtt_base_topic": "zigbee2mqtt",
+        }
+        config[name] = value
+        path = write_config(tmp_path, config)
+        with pytest.raises(ValueError, match=name):
             load_config(path)
 
 
@@ -179,7 +192,7 @@ class TestValidateLogLevel:
                 "bridge_log_min_level": "trace",
             },
         )
-        with pytest.raises(ValueError, match="is not one of"):
+        with pytest.raises(ValueError, match="Unknown bridge_log_min_level"):
             load_config(path)
 
     def test_empty_string_raises(self):

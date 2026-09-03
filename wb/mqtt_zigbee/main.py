@@ -20,16 +20,10 @@ def main(argv: list) -> int:
     setup_logging()
 
     parser = argparse.ArgumentParser(description="Wiren Board Zigbee2MQTT bridge")
-    parser.add_argument(
-        "-c",
-        "--config",
-        default=CONFIG_FILEPATH,
-        help=f"Path to configuration file (default: {CONFIG_FILEPATH})",
-    )
-    args = parser.parse_args(argv[1:])
+    parser.parse_args(argv[1:])
 
     try:
-        config = load_config(args.config)
+        config = load_config(CONFIG_FILEPATH)
     except (FileNotFoundError, ValueError) as e:
         logger.error("%s", e)
         return EXIT_CONFIG_ERROR

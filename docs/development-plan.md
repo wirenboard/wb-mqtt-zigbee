@@ -241,7 +241,6 @@ wb-mqtt-zigbee/
 │       ├── main.py              — setup_logging(), main() (точка входа)
 │       ├── app.py               — WbZigbee2Mqtt (MQTT-клиент, сигналы, коды выхода)
 │       ├── config_loader.py     — ConfigLoader (dataclass), load_config()
-│       ├── wb-mqtt-zigbee.schema.json — схема конфига для сервиса и confed
 │       ├── bridge.py            — оркестратор: z2m-события → WB-контролы
 │       ├── registered_device.py — RegisteredDevice: кеш устройства (z2m + controls + device_id)
 │       ├── z2m/
@@ -255,8 +254,7 @@ wb-mqtt-zigbee/
 ├── bin/
 │   └── wb-mqtt-zigbee           — точка входа → /usr/bin/wb-mqtt-zigbee
 ├── configs/
-│   └── wb-mqtt-zigbee.conf      — дефолтный конфиг (JSON, → /etc/)
-├── 10wb-mqtt-zigbee           — сохранение конфига через wb-configs
+│   └── wb-mqtt-zigbee.conf      — пакетный конфиг (JSON, → /usr/share/wb-mqtt-zigbee/)
 ├── docs/
 │   ├── arc42.md                 — архитектура в формате arc42
 │   ├── development-plan.md      — план разработки, структура, модули (этот файл)
@@ -268,7 +266,6 @@ wb-mqtt-zigbee/
 │   ├── rules
 │   ├── copyright
 │   ├── wb-mqtt-zigbee.postinst  — удаление v1 wb-rules скрипта при установке
-│   ├── wb-mqtt-zigbee.preinst   — перенос legacy-конфига в /etc
 │   ├── wb-mqtt-zigbee.service   — systemd unit
 │   └── wb-mqtt-zigbee.install   — раскладка не-Python файлов
 ├── setup.py
@@ -310,7 +307,7 @@ wb-mqtt-zigbee/
 |---|---|---|
 | `main.py` | Точка входа: `setup_logging()`, парсинг CLI-аргументов, загрузка конфига | ✅ |
 | `app.py` | `WbZigbee2Mqtt`: MQTT-клиент, обработка сигналов (SIGINT/SIGTERM/SIGHUP), жизненный цикл, коды выхода | ✅ |
-| `config_loader.py` | Загрузка JSON-конфига, `dataclass ConfigLoader`, валидация по схеме и проверка URL брокера | ✅ |
+| `config_loader.py` | Загрузка пакетного JSON-конфига, `dataclass ConfigLoader`, проверка значений и URL брокера | ✅ |
 | `bridge.py` | Оркестратор: z2m-события → WB-контролы, регистрация/удаление/переименование устройств, фильтрация логов | ✅ |
 | `registered_device.py` | `RegisteredDevice`: кеш z2m-устройства с WB controls и device_id | ✅ |
 | `z2m/client.py` | `Z2MClient`: подписка на 6 z2m-топиков + устройства, парсинг → типизированные коллбэки | ✅ |
@@ -322,7 +319,7 @@ wb-mqtt-zigbee/
 
 ## Конфигурация
 
-Файл: `/etc/wb-mqtt-zigbee.conf` (JSON)
+Пакетный файл: `/usr/share/wb-mqtt-zigbee/wb-mqtt-zigbee.conf` (JSON)
 
 ```json
 {
@@ -341,7 +338,7 @@ wb-mqtt-zigbee/
 | `bridge_log_min_level` | нет | `"warning"` | Минимальный уровень логов моста (debug/info/warning/error) |
 | `command_debounce_sec` | нет | `5.0` | Окно debounce optimistic-update для команд (сек); подавляет «мерцание» state от z2m после команды |
 
-Путь по умолчанию задан в `config_loader.CONFIG_FILEPATH`, переопределяется флагом `-c`/`--config`.
+Путь задан в `config_loader.CONFIG_FILEPATH`; пользовательского конфига и флага `-c`/`--config` нет.
 
 ## Построение контролов из exposes
 

@@ -44,7 +44,7 @@
 
 ### Организационные
 
-- Конфигурация через JSON-файл `/usr/lib/wb-mqtt-zigbee/configs/wb-mqtt-zigbee.conf`
+- Конфигурация через JSON-файл `/etc/wb-mqtt-zigbee.conf`
 - Сборка через Jenkins (`buildDebArchAll`)
 
 ---
@@ -319,7 +319,7 @@ Zigbee-устройства обрабатывают команды с заде�
 1. **z2m availability** — подписка на `zigbee2mqtt/{device}/availability`, парсинг `{"state":"online"/"offline"}`. Требует включённой секции `availability` в конфиге z2m (добавляется автоматически в `postinst`).
 2. **Fallback по state** — если от устройства приходят данные состояния, но `availability` ещё не приходил (`availability_received = False`), устройство считается online. Это покрывает случай потери retained availability после рестарта mosquitto.
 
-При отключении от брокера (`on_disconnect`) все устройства помечаются как offline (`set_all_unavailable`). При реконнекте (`republish`) устройства регистрируются с `available=offline`, `availability_received` сбрасывается в `False` для восстановления fallback.
+После потери MQTT-соединения публиковать обновления уже нельзя. При реконнекте (`republish`) сервис восстанавливает метаданные и последние значения, временно выставляет `available=offline`, повторно подписывается на топики и запрашивает актуальное состояние у zigbee2mqtt.
 
 ### Зависимость от retained `bridge/devices`
 
@@ -343,7 +343,7 @@ Zigbee-устройства обрабатывают команды с заде�
 ```
 Wiren Board (ARM Linux)
 ├── /usr/lib/python3/dist-packages/wb/mqtt_zigbee/        — Python-пакет
-├── /usr/lib/wb-mqtt-zigbee/configs/wb-mqtt-zigbee.conf   — конфигурация (JSON)
+├── /etc/wb-mqtt-zigbee.conf                             — конфигурация (JSON)
 └── /lib/systemd/system/wb-mqtt-zigbee.service            — systemd unit
 
 Зависимости на целевой системе:
@@ -370,13 +370,15 @@ WB `device_id` формируется из `friendly_name` (sanitized) — то 
 
 При первом запуске ghost cleanup обнаруживает retained-топики с `driver: wb-mqtt-zigbee` (а также legacy-имя `wb-zigbee2mqtt` от v1 и ранних сборок v2 — см. `LEGACY_DRIVER_NAMES` в `wb_converter/publisher.py`) и удаляет устройства, которых нет в текущем списке z2m. Это очищает мусор от v1 и старых версий v2 без ручного вмешательства.
 
+При штатной остановке сервис удаляет retained-топики моста и всех известных ему устройств с QoS 1. Процесс ждёт подтверждений брокера до пяти секунд; ошибка публикации, разрыв соединения или таймаут логируются, но не меняют код штатной остановки 7.
+
 ---
 
 ## 8. Сквозные концепции (Cross-cutting Concepts)
 
 ### Переподключение к MQTT
 
-`wb_common.MQTTClient` реализует автоматическое переподключение при разрыве. После восстановления соединения `app.py` вызывает `bridge.republish()` для перепубликации meta и контролов моста. Подписки MQTT-клиент восстанавливает автоматически.
+`wb_common.MQTTClient` реализует ожидание брокера при старте и автоматическое переподключение при разрыве. После восстановления соединения `app.py` вызывает `bridge.republish()`: метаданные, значения, Z2M- и WB-command-подписки публикуются и создаются заново.
 
 ### Динамические контролы WB
 

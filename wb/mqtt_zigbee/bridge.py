@@ -90,15 +90,24 @@ class Bridge:
         self._retained_scan_active = True
         self._publish_bridge()
 
-    def set_all_unavailable(self) -> None:
-        """Mark all known devices as offline."""
-        if self._known_devices:
-            logger.info("Setting %d devices as unavailable", len(self._known_devices))
+    def shutdown(self) -> list[object]:
+        """Remove all retained WB topics and return their publish results."""
+        published = []
+        known_ids = set()
+        if self._retained_scan_active:
+            self._mqtt_driver.stop_retained_scan()
+            self._retained_scan_active = False
         for registered in self._known_devices.values():
-            self._mqtt_driver.publish_device_control(registered.device_id, "available", WbBoolValue.FALSE)
-            self._mqtt_driver.publish_device_error(
-                registered.device_id, _device_offline_error(registered.controls)
+            known_ids.add(registered.device_id)
+            published.extend(self._teardown_device_id(registered))
+        for device_id in self._mqtt_driver.get_scanned_device_ids() - known_ids:
+            published.extend(
+                self._mqtt_driver.remove_retained_device(
+                    device_id, self._mqtt_driver.get_scanned_controls(device_id)
+                )
             )
+        published.extend(self._mqtt_driver.remove_bridge_device())
+        return published
 
     def republish(self) -> None:
         self._reconnect_count += 1
@@ -106,11 +115,12 @@ class Bridge:
         self._mqtt_driver.publish_bridge_control(BridgeControl.RECONNECTS, str(self._reconnect_count))
         for friendly_name, registered in self._known_devices.items():
             registered.availability_received = False
+            registered.values["available"] = WbBoolValue.FALSE
             self._mqtt_driver.publish_device(
                 registered.device_id,
                 friendly_name,
                 registered.controls,
-                {"available": WbBoolValue.FALSE},
+                registered.values,
                 model=registered.z2m.model,
                 ieee_address=registered.z2m.ieee_address,
             )
@@ -261,13 +271,18 @@ class Bridge:
             # _compute_device_ids (only unsafe names are dropped, and those returned above).
             logger.warning("No device_id resolved for '%s', skipping", device.friendly_name)
             return
-        registered = RegisteredDevice(z2m=device, controls=controls, device_id=device_id)
+        registered = RegisteredDevice(
+            z2m=device,
+            controls=controls,
+            device_id=device_id,
+            values={"available": WbBoolValue.FALSE},
+        )
         logger.info(
             "Registering device '%s' as '%s' (%d controls)", device.friendly_name, device_id, len(controls)
         )
         self._known_devices[device.friendly_name] = registered
         self._ieee_to_name[device.ieee_address] = device.friendly_name
-        self._publish_device_topics(registered, initial_values={"available": WbBoolValue.FALSE})
+        self._publish_device_topics(registered)
         self._mqtt_driver.publish_device_error(device_id, _device_offline_error(controls))
         self._z2m.subscribe_device(device.friendly_name)
         self._z2m.request_device_state(device.friendly_name)
@@ -280,11 +295,14 @@ class Bridge:
         its command topics. Shared by registration, rename, and device_id reassignment.
         """
         device = registered.z2m
+        values = dict(registered.values)
+        if initial_values:
+            values.update(initial_values)
         self._mqtt_driver.publish_device(
             registered.device_id,
             device.friendly_name,
             registered.controls,
-            initial_values,
+            values,
             model=device.model,
             ieee_address=device.ieee_address,
         )
@@ -302,10 +320,10 @@ class Bridge:
             self._make_device_command_handler(registered),
         )
 
-    def _teardown_device_id(self, registered: RegisteredDevice) -> None:
+    def _teardown_device_id(self, registered: RegisteredDevice) -> list[object]:
         """Unsubscribe commands and clear all retained WB topics of the current device_id"""
         self._mqtt_driver.unsubscribe_device_commands(registered.device_id, registered.controls)
-        self._mqtt_driver.remove_device(registered.device_id, registered.controls)
+        return self._mqtt_driver.remove_device(registered.device_id, registered.controls)
 
     def _republish_device(self, registered: RegisteredDevice) -> None:
         """
@@ -326,7 +344,8 @@ class Bridge:
         if registered.is_online is None:
             registered.availability_received = False
         available = WbBoolValue.TRUE if is_online else WbBoolValue.FALSE
-        self._publish_device_topics(registered, initial_values={"available": available})
+        registered.values["available"] = available
+        self._publish_device_topics(registered)
         self._mqtt_driver.publish_device_error(
             registered.device_id, "" if is_online else _device_offline_error(registered.controls)
         )
@@ -356,18 +375,12 @@ class Bridge:
                 self._mqtt_driver.remove_device(registered.device_id, registered.controls)
                 registered.controls = new_controls
                 registered.z2m = device
-                self._mqtt_driver.publish_device(
-                    registered.device_id,
-                    device.friendly_name,
-                    new_controls,
-                    model=device.model,
-                    ieee_address=device.ieee_address,
-                )
-                self._mqtt_driver.subscribe_device_commands(
-                    registered.device_id,
-                    new_controls,
-                    self._make_device_command_handler(registered),
-                )
+                registered.values = {
+                    control_id: value
+                    for control_id, value in registered.values.items()
+                    if control_id in new_controls
+                }
+                self._publish_device_topics(registered)
                 self._z2m.request_device_state(device.friendly_name)
         # Publish service-control values AFTER any re-registration: remove_device()
         # above wipes the device's retained topics, so publishing these earlier would
@@ -389,6 +402,7 @@ class Bridge:
         registered.availability_received = True
         registered.is_online = available
         wb_value = WbBoolValue.TRUE if available else WbBoolValue.FALSE
+        registered.values["available"] = wb_value
         self._mqtt_driver.publish_device_control(registered.device_id, "available", wb_value)
         self._mqtt_driver.publish_device_error(
             registered.device_id, "" if available else _device_offline_error(registered.controls)
@@ -428,13 +442,16 @@ class Bridge:
                 logger.debug(
                     "Debounce expired, publishing real value: %s/%s = %s", friendly_name, prop, wb_value
                 )
+            registered.values[prop] = wb_value
             self._mqtt_driver.publish_device_control(registered.device_id, prop, wb_value)
         if "last_seen" in state:
             formatted = _format_last_seen(state["last_seen"])
             if formatted:
+                registered.values["last_seen"] = formatted
                 self._mqtt_driver.publish_device_control(registered.device_id, "last_seen", formatted)
         if not registered.availability_received:
             registered.is_online = True
+            registered.values["available"] = WbBoolValue.TRUE
             self._mqtt_driver.publish_device_control(registered.device_id, "available", WbBoolValue.TRUE)
             self._mqtt_driver.publish_device_error(registered.device_id, "")
         self._update_stats()
@@ -463,6 +480,7 @@ class Bridge:
             registered.pending_commands[control_id] = PendingCommand(
                 wb_value=wb_value, timestamp=time.monotonic()
             )
+            registered.values[control_id] = wb_value
             self._mqtt_driver.publish_device_control(registered.device_id, control_id, wb_value)
 
         return on_command

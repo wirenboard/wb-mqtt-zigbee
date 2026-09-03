@@ -230,8 +230,8 @@ make_expose(
 | Цель | Класс тестов | Что проверяется |
 |---|---|---|
 | Успешная загрузка | `TestLoadConfigSuccess` | Минимальный конфиг (только обязательные ключи) применяет все дефолты; полный конфиг переопределяет каждый дефолт; `command_debounce_sec`, заданный целым, приводится к `float`; параметризованный тест на все 4 валидных значения `bridge_log_min_level`. |
-| Ошибки загрузки | `TestLoadConfigErrors` | Несуществующий файл → `FileNotFoundError`; путь-директория тоже даёт `FileNotFoundError`; невалидный JSON → `ValueError("not valid JSON")`; отсутствие `broker_url` или `zigbee2mqtt_base_topic` → `ValueError("Missing required configuration key")`; нечисловой `command_debounce_sec` → `ValueError` от `float()`. |
-| `_validate_log_level` | `TestValidateLogLevel` | Параметризованно для 4 валидных уровней — возвращаются как есть; неизвестный уровень → дефолт + warning в логе (через `caplog`); end-to-end через `load_config` — невалидный уровень в файле тоже падает на дефолт; пустая строка и uppercase (`"ERROR"`) считаются невалидными (z2m уровни — lowercase). |
+| Ошибки загрузки | `TestLoadConfigErrors` | Несуществующий файл, невалидный JSON, неверный корневой тип, отсутствующие и лишние поля, нечисловой `command_debounce_sec` и неверный URL брокера отклоняются. |
+| `_validate_log_level` | `TestValidateLogLevel` | Четыре допустимых уровня принимаются; неизвестный, пустой или записанный в другом регистре уровень отклоняется как ошибка конфига. |
 | Дефолты-константы | `TestDefaults` | Значения `BRIDGE_DEVICE_ID_DEFAULT`, `BRIDGE_DEVICE_NAME_DEFAULT`, `BRIDGE_LOG_MIN_LEVEL_DEFAULT`, `COMMAND_DEBOUNCE_SEC_DEFAULT`. |
 
 ### `tests/unit/test_publisher.py`
@@ -253,7 +253,7 @@ make_expose(
 
 ## Интеграционные тесты
 
-Расположены в `tests/integration/`. Заменяют MQTT-брокер на in-process `FakeMqttBroker` (без сети, без потоков, без Docker) — пригодно для запуска в Jenkins без специального окружения. `FakeMqttClient` — drop-in замена `wb_common.mqtt_client.MQTTClient` с подмножеством API, которое реально использует прод-код (`subscribe`, `unsubscribe`, `publish`, `message_callback_add/remove`, атрибутные коллбэки `on_connect`/`on_disconnect`).
+Расположены в `tests/integration/`. Заменяют MQTT-брокер на in-process `FakeMqttBroker` (без сети, без потоков, без Docker) — пригодно для запуска в Jenkins без специального окружения. `FakeMqttClient` — drop-in замена `wb_common.mqtt_client.MQTTClient` с подмножеством API, которое реально использует прод-код; фейк также умеет подтверждать QoS-публикации через `on_publish`.
 
 Пакет `wb_common` поставляется отдельным Debian-пакетом и не доступен в pip. Если он не установлен, `tests/integration/conftest.py` подменяет `wb_common.mqtt_client` модулем-стабом через `sys.modules` — нужен только для аннотаций типов в прод-коде, в рантайме передаётся `FakeMqttClient` (никакого `isinstance` нет).
 
@@ -316,7 +316,7 @@ End-to-end проверки [`wb/mqtt_zigbee/bridge.py`](../wb/mqtt_zigbee/bridg
 | События устройств | `TestDeviceEvents` | `device_leave` и `bridge/response/device/remove` удаляют устройство из WB и обновляют `Last left`; `device_renamed` переносит retained-состояние со старого `device_id` на новый. |
 | Stale cleanup | `TestStaleDeviceCleanup` | Устройство, пропавшее из нового списка `bridge/devices`, удаляется; пустой `bridge/devices` удаляет все устройства, `Device count` обнуляется. |
 | Ghost cleanup | `TestGhostCleanup` | Retained устройства с прошлого запуска (наш `driver`, но не в текущем `bridge/devices`) затираются после первого `bridge/devices`. |
-| Reconnect | `TestReconnectFlow` | `republish()` инкрементит `Reconnects`; `set_all_unavailable()` переводит все известные устройства в `available=0`. |
+| Reconnect и shutdown | `TestReconnectFlow` | `republish()` инкрементит `Reconnects`, восстанавливает метаданные и последние значения; `shutdown()` удаляет retained-топики моста, известных и найденных сканированием устройств. |
 
 ### `tests/integration/test_app_lifecycle.py`
 
@@ -325,5 +325,6 @@ End-to-end проверки [`wb/mqtt_zigbee/bridge.py`](../wb/mqtt_zigbee/bridg
 | Цель | Класс тестов | Что проверяется |
 |---|---|---|
 | Первый connect | `TestFirstConnect` | `connect(rc=0)` вызывает `Bridge.subscribe()` — публикуется `meta` бриджа, проставляются ожидаемые подписки на z2m-топики. |
-| Reconnect | `TestReconnect` | `connect(rc=0)` → `disconnect()` → `connect(rc=0)` дёргает `Bridge.republish()`, инкрементит `Reconnects`; после регистрации устройств `disconnect()` помечает все известные устройства `available = "0"`. |
-| Connect failure modes | `TestConnectFailureModes` | `connect(rc=5)` (auth) останавливает клиента (`stop()`), не публикует `meta` и не подписывается на топики; `connect(rc=1)` (другие коды) тоже не приводит ни к `subscribe`, ни к `republish`. |
+| Reconnect | `TestReconnect` | `connect(rc=0)` → `disconnect()` → `connect(rc=0)` дёргает `Bridge.republish()` и инкрементит `Reconnects`; публикаций в уже потерянное MQTT-соединение нет. |
+| Connect failure modes | `TestConnectFailureModes` | `connect(rc=4/5)` (ошибка аутентификации) останавливает клиента с кодом 2; другой CONNACK не останавливает повторные попытки, а первое успешное соединение выполняет полную инициализацию. |
+| Run и shutdown | `TestRun` | Неожиданный выход из MQTT-loop и исключения дают код 1; по SIGTERM retained-топики удаляются до остановки, а недоступность брокера логируется. |

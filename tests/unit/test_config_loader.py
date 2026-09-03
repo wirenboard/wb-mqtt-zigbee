@@ -1,7 +1,6 @@
 """Unit tests for wb.mqtt_zigbee.config_loader."""
 
 import json
-import logging
 
 import pytest
 
@@ -109,12 +108,12 @@ class TestLoadConfigErrors:
 
     def test_missing_broker_url_raises_value_error(self, tmp_path):
         path = write_config(tmp_path, {"zigbee2mqtt_base_topic": "z2m"})
-        with pytest.raises(ValueError, match="Missing required configuration key.*broker_url"):
+        with pytest.raises(ValueError, match="broker_url.*required property"):
             load_config(path)
 
     def test_missing_base_topic_raises_value_error(self, tmp_path):
         path = write_config(tmp_path, {"broker_url": "tcp://localhost:1883"})
-        with pytest.raises(ValueError, match="Missing required configuration key.*zigbee2mqtt_base_topic"):
+        with pytest.raises(ValueError, match="zigbee2mqtt_base_topic.*required property"):
             load_config(path)
 
     def test_invalid_command_debounce_sec_raises(self, tmp_path):
@@ -129,6 +128,35 @@ class TestLoadConfigErrors:
         with pytest.raises(ValueError):
             load_config(path)
 
+    @pytest.mark.parametrize(
+        "broker_url",
+        ["tcp://localhost", "unix://", "http://localhost:1883", "tcp://localhost:99999"],
+    )
+    def test_invalid_broker_url_raises(self, tmp_path, broker_url):
+        path = write_config(
+            tmp_path,
+            {"broker_url": broker_url, "zigbee2mqtt_base_topic": "zigbee2mqtt"},
+        )
+        with pytest.raises(ValueError, match="Invalid broker_url"):
+            load_config(path)
+
+    def test_wrong_root_type_raises(self, tmp_path):
+        path = write_config(tmp_path, [])
+        with pytest.raises(ValueError, match="Configuration is invalid"):
+            load_config(path)
+
+    def test_unknown_property_raises(self, tmp_path):
+        path = write_config(
+            tmp_path,
+            {
+                "broker_url": "tcp://localhost:1883",
+                "zigbee2mqtt_base_topic": "zigbee2mqtt",
+                "typo": True,
+            },
+        )
+        with pytest.raises(ValueError, match="Additional properties are not allowed"):
+            load_config(path)
+
 
 class TestValidateLogLevel:
     @pytest.mark.parametrize(
@@ -138,13 +166,11 @@ class TestValidateLogLevel:
     def test_valid_levels_returned_as_is(self, level):
         assert _validate_log_level(level) == level
 
-    def test_unknown_level_falls_back_to_default(self, caplog):
-        with caplog.at_level(logging.WARNING, logger="wb.mqtt_zigbee.config_loader"):
-            result = _validate_log_level("verbose")
-        assert result == BRIDGE_LOG_MIN_LEVEL_DEFAULT
-        assert any("verbose" in rec.message for rec in caplog.records)
+    def test_unknown_level_raises(self):
+        with pytest.raises(ValueError, match="Unknown bridge_log_min_level"):
+            _validate_log_level("verbose")
 
-    def test_unknown_level_falls_back_via_load_config(self, tmp_path, caplog):
+    def test_unknown_level_raises_via_load_config(self, tmp_path):
         path = write_config(
             tmp_path,
             {
@@ -153,16 +179,17 @@ class TestValidateLogLevel:
                 "bridge_log_min_level": "trace",
             },
         )
-        with caplog.at_level(logging.WARNING, logger="wb.mqtt_zigbee.config_loader"):
-            cfg = load_config(path)
-        assert cfg.bridge_log_min_level == BRIDGE_LOG_MIN_LEVEL_DEFAULT
+        with pytest.raises(ValueError, match="is not one of"):
+            load_config(path)
 
-    def test_empty_string_falls_back_to_default(self):
-        assert _validate_log_level("") == BRIDGE_LOG_MIN_LEVEL_DEFAULT
+    def test_empty_string_raises(self):
+        with pytest.raises(ValueError):
+            _validate_log_level("")
 
     def test_case_sensitive(self):
         # uppercase variant is not valid (z2m uses lowercase)
-        assert _validate_log_level("ERROR") == BRIDGE_LOG_MIN_LEVEL_DEFAULT
+        with pytest.raises(ValueError):
+            _validate_log_level("ERROR")
 
 
 class TestDefaults:  # pylint: disable=too-few-public-methods

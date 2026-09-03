@@ -1262,19 +1262,51 @@ class TestReconnectFlow:
 
         assert wb_observer.retained(reconnects_topic) == "2"
 
-    def test_set_all_unavailable_marks_known_devices_offline(
+    def test_republish_restores_last_bridge_and_device_values(
         self,
         bridge: Bridge,
         z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
         wb_observer: WbObserver,
     ) -> None:
         bridge.subscribe()
+        z2m_emu.online()
+        z2m_emu.info(version="2.1.0")
         z2m_emu.devices([_z2m_sensor("sensor-1")])
+        z2m_emu.device_state("sensor-1", {"temperature": 21.5})
+        z2m_emu.offline()
 
-        bridge.set_all_unavailable()
+        fake_broker.retained.clear()
+        bridge.republish()
 
+        assert (
+            wb_observer.retained(f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.STATE}") == "offline"
+        )
+        assert (
+            wb_observer.retained(f"{DEVICES_PREFIX}/{BRIDGE_ID}/controls/{BridgeControl.VERSION}") == "2.1.0"
+        )
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/temperature") == "21.5"
         assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/available") == WbBoolValue.FALSE
-        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta/error") == WbControlError.READ
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta/error") == WbControlError.READ_WRITE
+
+    def test_shutdown_removes_bridge_and_scanned_devices_before_z2m_responds(
+        self,
+        bridge: Bridge,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        fake_broker.inject(
+            f"{DEVICES_PREFIX}/ghost/meta",
+            json.dumps({"driver": DRIVER_NAME, "title": {"en": "Ghost", "ru": "Ghost"}}),
+            retain=True,
+        )
+        fake_broker.inject(f"{DEVICES_PREFIX}/ghost/controls/value/meta", "{}", retain=True)
+        bridge.subscribe()
+
+        bridge.shutdown()
+
+        assert wb_observer.retained_under(f"{DEVICES_PREFIX}/{BRIDGE_ID}/") == {}
+        assert wb_observer.retained_under(f"{DEVICES_PREFIX}/ghost/") == {}
 
 
 class TestMalformedPayloads:

@@ -1,13 +1,15 @@
 import json
-import logging
 import os
 from dataclasses import dataclass
+from importlib import resources
+from urllib.parse import urlparse
+
+import jsonschema
 
 from .z2m.model import BridgeLogLevel
 
-CONFIG_FILEPATH = "/usr/lib/wb-mqtt-zigbee/configs/wb-mqtt-zigbee.conf"
-
-logger = logging.getLogger(__name__)
+CONFIG_FILEPATH = "/etc/wb-mqtt-zigbee.conf"
+SCHEMA_FILENAME = "wb-mqtt-zigbee.schema.json"
 
 
 BRIDGE_DEVICE_ID_DEFAULT = "zigbee2mqtt"
@@ -16,6 +18,7 @@ BRIDGE_LOG_MIN_LEVEL_DEFAULT = BridgeLogLevel.WARNING
 COMMAND_DEBOUNCE_SEC_DEFAULT = 5.0
 
 _VALID_LOG_LEVELS = set(BridgeLogLevel.RANK.keys())
+_BROKER_URL_SCHEMES_WITH_PORT = {"mqtt-tcp", "tcp", "ws"}
 
 
 @dataclass
@@ -39,8 +42,17 @@ def load_config(config_path: str) -> ConfigLoader:
             raise ValueError(f"Configuration file is not valid JSON: {e}") from e
 
     try:
+        schema_resource = resources.files("wb.mqtt_zigbee").joinpath(SCHEMA_FILENAME)
+        with schema_resource.open("r", encoding="utf-8") as schema_file:
+            jsonschema.validate(instance=config, schema=json.load(schema_file))
+    except jsonschema.ValidationError as e:
+        location = ".".join(str(part) for part in e.absolute_path)
+        prefix = f" at '{location}'" if location else ""
+        raise ValueError(f"Configuration is invalid{prefix}: {e.message}") from e
+
+    try:
         return ConfigLoader(
-            broker_url=config["broker_url"],
+            broker_url=_validate_broker_url(config["broker_url"]),
             zigbee2mqtt_base_topic=config["zigbee2mqtt_base_topic"],
             device_id=config.get("device_id", BRIDGE_DEVICE_ID_DEFAULT),
             device_name=config.get("device_name", BRIDGE_DEVICE_NAME_DEFAULT),
@@ -55,6 +67,21 @@ def load_config(config_path: str) -> ConfigLoader:
 
 def _validate_log_level(level: str) -> str:
     if level not in _VALID_LOG_LEVELS:
-        logger.warning("Unknown bridge_log_min_level '%s', using '%s'", level, BRIDGE_LOG_MIN_LEVEL_DEFAULT)
-        return BRIDGE_LOG_MIN_LEVEL_DEFAULT
+        raise ValueError(f"Unknown bridge_log_min_level: {level!r}")
     return level
+
+
+def _validate_broker_url(url: str) -> str:
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme == "unix":
+            if not parsed.path:
+                raise ValueError("unix socket path is missing")
+        elif parsed.scheme in _BROKER_URL_SCHEMES_WITH_PORT:
+            if not parsed.hostname or not parsed.port:
+                raise ValueError("host and port are required")
+        else:
+            raise ValueError(f"unknown scheme {parsed.scheme!r}")
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Invalid broker_url {url!r}: {e}") from e
+    return url

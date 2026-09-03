@@ -20,6 +20,7 @@ class RegisteredDevice:
     z2m: Z2MDevice
     controls: dict[str, ControlMeta]
     device_id: str
+    values: dict[str, str] = field(default_factory=dict)
     pending_commands: dict[str, PendingCommand] = field(default_factory=dict)
     availability_received: bool = False
     # Last availability we published, kept so a rename or device_id change can restore it:

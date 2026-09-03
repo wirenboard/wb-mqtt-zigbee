@@ -48,13 +48,26 @@ class WbMqttDriver:
         self._client = mqtt_client
         self._device_id = device_id
         self._device_name = device_name
+        self._bridge_values: dict[str, str] = {}
+        self._bridge_error: Optional[str] = None
         self._scanned_our_ids: set[str] = set()  # device_ids with our driver
         self._scanned_controls: dict[str, set[str]] = {}  # device_id → set of control_ids (all)
 
     def publish_bridge_device(self) -> None:
-        self._publish_device(self._device_id, self._device_name, BRIDGE_CONTROLS)
+        self._publish_device(
+            self._device_id,
+            self._device_name,
+            BRIDGE_CONTROLS,
+            initial_values=self._bridge_values,
+        )
+        if self._bridge_error is not None:
+            self.publish_device_error(self._device_id, self._bridge_error)
+
+    def remove_bridge_device(self) -> list[Any]:
+        return self.remove_device(self._device_id, BRIDGE_CONTROLS)
 
     def publish_bridge_control(self, control_id: str, value: str) -> None:
+        self._bridge_values[control_id] = value
         topic = f"{DEVICES_PREFIX}/{self._device_id}/controls/{control_id}"
         self._publish_retain(topic, value)
 
@@ -62,6 +75,7 @@ class WbMqttDriver:
         """
         Set the bridge device's WB error state (`/meta/error`); empty string clears it
         """
+        self._bridge_error = error
         self.publish_device_error(self._device_id, error)
 
     def configure_bridge_lwt(self) -> None:
@@ -84,27 +98,35 @@ class WbMqttDriver:
     ) -> None:
         self._publish_device(device_id, name, controls, initial_values, model, ieee_address)
 
-    def remove_device(self, device_id: str, controls: dict[str, ControlMeta]) -> None:
+    def remove_device(self, device_id: str, controls: dict[str, ControlMeta]) -> list[Any]:
         """
-        Remove a WB device by publishing empty retain on all its topics
+        Remove a WB device and return publish results so delivery can be awaited.
         """
+        published = []
         for control_id in controls:
-            self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta", "")
-            self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", "")
-            self._clear_control_meta_subtopics(device_id, control_id)
-        self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", "")
-        self._clear_device_meta_subtopics(device_id)
+            published.append(
+                self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta", "")
+            )
+            published.append(self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", ""))
+            published.extend(self._clear_control_meta_subtopics(device_id, control_id))
+        published.append(self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", ""))
+        published.extend(self._clear_device_meta_subtopics(device_id))
+        return published
 
-    def remove_retained_device(self, device_id: str, control_ids: set[str]) -> None:
+    def remove_retained_device(self, device_id: str, control_ids: set[str]) -> list[Any]:
         """
-        Remove a ghost device discovered via retained scan (no ControlMeta needed)
+        Remove a ghost device discovered via retained scan (no ControlMeta needed).
         """
+        published = []
         for control_id in control_ids:
-            self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta", "")
-            self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", "")
-            self._clear_control_meta_subtopics(device_id, control_id)
-        self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", "")
-        self._clear_device_meta_subtopics(device_id)
+            published.append(
+                self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta", "")
+            )
+            published.append(self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", ""))
+            published.extend(self._clear_control_meta_subtopics(device_id, control_id))
+        published.append(self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", ""))
+        published.extend(self._clear_device_meta_subtopics(device_id))
+        return published
 
     def publish_device_control(self, device_id: str, control_id: str, value: str) -> None:
         topic = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}"
@@ -298,15 +320,17 @@ class WbMqttDriver:
         self._publish_retain(f"{prefix}/driver", DRIVER_NAME)
         self._publish_retain(f"{prefix}/model", model)
 
-    def _clear_device_meta_subtopics(self, device_id: str) -> None:
+    def _clear_device_meta_subtopics(self, device_id: str) -> list[Any]:
         """
         Clear device meta sub-topics when removing a device
         """
         prefix = f"{DEVICES_PREFIX}/{device_id}/meta"
-        self._publish_retain(f"{prefix}/name", "")
-        self._publish_retain(f"{prefix}/driver", "")
-        self._publish_retain(f"{prefix}/model", "")
-        self._publish_retain(f"{prefix}/error", "")
+        return [
+            self._publish_retain(f"{prefix}/name", ""),
+            self._publish_retain(f"{prefix}/driver", ""),
+            self._publish_retain(f"{prefix}/model", ""),
+            self._publish_retain(f"{prefix}/error", ""),
+        ]
 
     def _publish_control_meta_subtopics(self, device_id: str, control_id: str, meta: ControlMeta) -> None:
         """
@@ -321,16 +345,18 @@ class WbMqttDriver:
         self._publish_retain(f"{prefix}/min", str(meta.min) if meta.min is not None else "")
         self._publish_retain(f"{prefix}/units", meta.units)
 
-    def _clear_control_meta_subtopics(self, device_id: str, control_id: str) -> None:
+    def _clear_control_meta_subtopics(self, device_id: str, control_id: str) -> list[Any]:
         """
         Clear all control meta sub-topics (type, readonly, order, enum, max, min, units)
         """
         prefix = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta"
-        for sub in ("type", "readonly", "order", "enum", "max", "min", "units"):
+        return [
             self._publish_retain(f"{prefix}/{sub}", "")
+            for sub in ("type", "readonly", "order", "enum", "max", "min", "units")
+        ]
 
-    def _publish_retain(self, topic: str, value: str) -> None:
-        self._client.publish(topic, value, retain=True, qos=1)
+    def _publish_retain(self, topic: str, value: str) -> Any:
+        return self._client.publish(topic, value, retain=True, qos=1)
 
 
 def _make_command_handler(control_id: str, on_command: Callable[[str, str], None]):

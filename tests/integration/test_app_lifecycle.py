@@ -14,18 +14,21 @@ and `FakeMqttClient.disconnect()`, which dispatch the `on_connect` /
 throttling, command debounce) is deterministic.
 """
 
+import logging
+
 import pytest
 
 from wb.mqtt_zigbee import app as app_module
 from wb.mqtt_zigbee.app import (
     EXIT_FAILURE,
     EXIT_NOSTART,
-    EXIT_SUCCESS,
+    EXIT_SIGNAL,
     MQTT_RC_AUTH_FAILURE,
+    MQTT_RC_BAD_CREDENTIALS,
     WbZigbee2Mqtt,
 )
 from wb.mqtt_zigbee.config_loader import ConfigLoader
-from wb.mqtt_zigbee.wb_converter.controls import BridgeControl, WbBoolValue
+from wb.mqtt_zigbee.wb_converter.controls import BridgeControl
 from wb.mqtt_zigbee.wb_converter.publisher import DEVICES_PREFIX, DRIVER_NAME
 
 from .fakes.client import FakeMqttClient
@@ -124,7 +127,7 @@ class TestReconnect:
         fake_mqtt_client.connect(rc=0)
         assert wb_observer.retained(reconnects_topic) == "2"
 
-    def test_disconnect_marks_known_devices_unavailable(
+    def test_disconnect_does_not_try_to_publish_while_offline(
         self,
         app: WbZigbee2Mqtt,
         fake_mqtt_client: FakeMqttClient,
@@ -154,10 +157,11 @@ class TestReconnect:
             ]
         )
         available_topic = f"{DEVICES_PREFIX}/sensor-1/controls/available"
+        publishes_before = len(wb_observer.messages_on(available_topic))
 
         fake_mqtt_client.disconnect()
 
-        assert wb_observer.retained(available_topic) == WbBoolValue.FALSE
+        assert len(wb_observer.messages_on(available_topic)) == publishes_before
 
 
 class TestConnectFailureModes:
@@ -165,18 +169,20 @@ class TestConnectFailureModes:
     Non-zero `rc` codes from MQTT CONNACK
     """
 
+    @pytest.mark.parametrize("rc", [MQTT_RC_BAD_CREDENTIALS, MQTT_RC_AUTH_FAILURE])
     def test_auth_failure_stops_client_and_sets_exit_code(
         self,
+        rc: int,
         app: WbZigbee2Mqtt,
         fake_mqtt_client: FakeMqttClient,
         wb_observer: WbObserver,
     ) -> None:
         """
-        rc == 5 (auth failure) is terminal: the client is stopped and exit
+        Authentication failures are terminal: the client is stopped and exit
         code is EXIT_NOSTART. The Bridge must not subscribe and must not publish
         any controls.
         """
-        fake_mqtt_client.connect(rc=MQTT_RC_AUTH_FAILURE)
+        fake_mqtt_client.connect(rc=rc)
 
         # FakeMqttClient.stop() flips the internal flag (see fakes/client.py).
         assert fake_mqtt_client._stopped is True  # pylint: disable=protected-access
@@ -200,7 +206,18 @@ class TestConnectFailureModes:
         assert wb_observer.retained(f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta") is None
         # Client was not stopped (only auth failure stops it).
         assert fake_mqtt_client._stopped is False  # pylint: disable=protected-access
-        assert app._exit_code == EXIT_SUCCESS
+        assert app._exit_code == EXIT_FAILURE
+
+    def test_success_after_refused_connection_uses_initial_subscription(
+        self,
+        app: WbZigbee2Mqtt,
+        fake_mqtt_client: FakeMqttClient,
+    ) -> None:
+        fake_mqtt_client.connect(rc=1)
+        fake_mqtt_client.disconnect()
+        fake_mqtt_client.connect(rc=0)
+
+        assert f"{BASE}/bridge/state" in fake_mqtt_client.subscriptions
 
     def test_subscribe_failure_propagates_not_swallowed(
         self,
@@ -254,3 +271,62 @@ class TestRun:
 
         monkeypatch.setattr(fake_mqtt_client, "loop_forever", boom)
         assert app.run() == EXIT_FAILURE
+
+    def test_plain_loop_return_is_failure(self, app: WbZigbee2Mqtt) -> None:
+        assert app.run() == EXIT_FAILURE
+
+    def test_signal_removes_retained_topics_before_stopping(
+        self,
+        app: WbZigbee2Mqtt,
+        fake_mqtt_client: FakeMqttClient,
+        wb_observer: WbObserver,
+        z2m_emu: Z2mEmulator,
+    ) -> None:
+        fake_mqtt_client.connect(rc=0)
+        z2m_emu.devices(
+            [
+                {
+                    "ieee_address": "0x0001",
+                    "friendly_name": "sensor-1",
+                    "type": "EndDevice",
+                    "definition": {
+                        "model": "M1",
+                        "vendor": "V1",
+                        "exposes": [
+                            {
+                                "type": "numeric",
+                                "name": "temperature",
+                                "property": "temperature",
+                                "access": 1,
+                            }
+                        ],
+                    },
+                }
+            ]
+        )
+
+        app._signal_handler(15, None)  # pylint: disable=protected-access
+
+        assert app._exit_code == EXIT_SIGNAL  # pylint: disable=protected-access
+        assert fake_mqtt_client._stopped is False  # pylint: disable=protected-access
+        assert wb_observer.retained_under(f"{DEVICES_PREFIX}/{BRIDGE_ID}/") == {}
+        assert wb_observer.retained_under(f"{DEVICES_PREFIX}/sensor-1/") == {}
+
+        fake_mqtt_client.acknowledge_all()
+
+        assert fake_mqtt_client._stopped is True  # pylint: disable=protected-access
+
+    def test_signal_logs_cleanup_failure_if_broker_is_unavailable(
+        self,
+        app: WbZigbee2Mqtt,
+        fake_mqtt_client: FakeMqttClient,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        fake_mqtt_client.publish_rc = 4
+
+        with caplog.at_level(logging.ERROR, logger="wb.mqtt_zigbee.app"):
+            app._signal_handler(15, None)  # pylint: disable=protected-access
+
+        assert app._exit_code == EXIT_SIGNAL  # pylint: disable=protected-access
+        assert fake_mqtt_client._stopped is True  # pylint: disable=protected-access
+        assert "retained-topic removals" in caplog.text

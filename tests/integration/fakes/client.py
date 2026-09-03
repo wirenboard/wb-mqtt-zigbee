@@ -21,6 +21,16 @@ from .broker import FakeMqttBroker, MockMqttMessage
 _id_counter = itertools.count(1)
 
 
+class FakePublishInfo:
+    def __init__(self, mid: int, rc: int) -> None:
+        self.mid = mid
+        self.rc = rc
+        self._published = False
+
+    def is_published(self) -> bool:
+        return self._published
+
+
 class FakeMqttClient:
     """
     In-process MQTT client backed by FakeMqttBroker
@@ -35,8 +45,13 @@ class FakeMqttClient:
         self._unsubscriptions: list[str] = []
         self.on_connect: Optional[Callable[[Any, Any, dict, int], None]] = None
         self.on_disconnect: Optional[Callable[[Any, Any, dict], None]] = None
+        self.on_publish: Optional[Callable[[Any, Any, int], None]] = None
         self._started = False
         self._stopped = False
+        self._connected = False
+        self._next_mid = itertools.count(1)
+        self._publish_infos: list[FakePublishInfo] = []
+        self.publish_rc = 0
         self.will: Optional[tuple[str, Any, int, bool]] = None
 
     # Production API
@@ -54,8 +69,11 @@ class FakeMqttClient:
         self._unsubscriptions.append(topic)
         self._broker.unsubscribe(self._client_id, topic)
 
-    def publish(self, topic: str, payload: Any = "", retain: bool = False, qos: int = 0) -> None:
+    def publish(self, topic: str, payload: Any = "", retain: bool = False, qos: int = 0) -> FakePublishInfo:
         self._broker.publish_from_client(self._client_id, topic, payload, retain=retain, qos=qos)
+        info = FakePublishInfo(next(self._next_mid), self.publish_rc)
+        self._publish_infos.append(info)
+        return info
 
     def message_callback_add(
         self,
@@ -99,6 +117,7 @@ class FakeMqttClient:
         """
         Simulate a successful broker connect — invokes on_connect callback
         """
+        self._connected = rc == 0
         if self.on_connect is not None:
             self.on_connect(self, None, {}, rc)
 
@@ -106,8 +125,18 @@ class FakeMqttClient:
         """
         Simulate a broker disconnect — invokes on_disconnect callback
         """
+        self._connected = False
         if self.on_disconnect is not None:
             self.on_disconnect(self, None, {})
+
+    def acknowledge_all(self) -> None:
+        """Acknowledge successful pending QoS publishes in their original order."""
+        for info in self._publish_infos:
+            if info._published or info.rc != 0:  # pylint: disable=protected-access
+                continue
+            info._published = True  # pylint: disable=protected-access
+            if self.on_publish is not None:
+                self.on_publish(self, None, info.mid)
 
 
 __all__ = ["FakeMqttClient"]

@@ -1,6 +1,14 @@
 #!/bin/sh
 set -e
 
+MIGRATION_CONFIG="/var/lib/wb-mqtt-zigbee/wb-mqtt-zigbee.conf.migrate"
+CONFIG="/etc/wb-mqtt-zigbee.conf"
+
+if [ -f "$MIGRATION_CONFIG" ]; then
+    cp -p "$MIGRATION_CONFIG" "$CONFIG"
+    rm -f "$MIGRATION_CONFIG"
+fi
+
 # The old wb-zigbee2mqtt package is removed automatically via Conflicts/Replaces.
 # But if the user disabled/renamed the script via UI, a renamed file may remain
 # outside the package's control. Clean it up and restart wb-rules.

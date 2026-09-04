@@ -184,7 +184,7 @@ ENUM_VALUE_TITLES: dict[str, dict[str, dict[str, str]]] = {
 }
 
 # Same shape as ENUM_VALUE_TITLES, but for a service control, not an enum expose.
-POWER_SOURCE_LABELS = {
+POWER_SOURCE_LABELS: dict[str, dict[str, str]] = {
     "Battery": {"en": "Battery", "ru": "Батарея"},
     "Mains (single phase)": {"en": "Mains (single phase)", "ru": "Сеть 220В"},
     "Mains (3 phase)": {"en": "Mains (3 phase)", "ru": "Сеть 380В"},

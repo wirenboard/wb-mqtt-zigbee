@@ -1,9 +1,8 @@
 """en+ru labels published in WB control metadata."""
 
-# Curated en+ru titles for common control properties, used by _localized_title()
-# to give zigbee controls a Russian name in the WB UI (default _make_title() is en-only).
-# Keys are z2m property names. Endpoint variants (power_l1, …) are composed by
-# _localized_title(), not listed here.
+# Curated en+ru titles for common control properties, keyed by z2m property name.
+# Endpoint variants (power_l1, switch_type_1) are composed from the base entry by
+# expose_mapper, so they are not listed here.
 PROPERTY_TITLES: dict[str, dict[str, str]] = {
     # --- Environment & air-quality sensors ---
     "temperature": {"en": "Temperature", "ru": "Температура"},

@@ -1,8 +1,4 @@
-"""en+ru labels published in WB control metadata.
-
-Data only: expose_mapper.py picks the labels, this module holds them. Kept apart
-because the tables are long and grow with every new device family.
-"""
+"""en+ru labels published in WB control metadata."""
 
 # Curated en+ru titles for common control properties, used by _localized_title()
 # to give zigbee controls a Russian name in the WB UI (default _make_title() is en-only).

@@ -8,9 +8,7 @@ import pytest
 
 from wb.mqtt_zigbee.wb_converter.controls import WbControlType
 from wb.mqtt_zigbee.wb_converter.expose_mapper import (
-    ENUM_VALUE_TITLES,
     PHASE_SUFFIX_RE,
-    PROPERTY_TITLES,
     _flatten_expose,
     _localized_title,
     _make_enum,
@@ -20,6 +18,7 @@ from wb.mqtt_zigbee.wb_converter.expose_mapper import (
     _resolve_wb_type,
     map_exposes_to_controls,
 )
+from wb.mqtt_zigbee.wb_converter.translations import ENUM_VALUE_TITLES, PROPERTY_TITLES
 from wb.mqtt_zigbee.z2m.model import ExposeAccess, ExposeFeature, ExposeType
 
 READABLE = ExposeAccess.READ  # 0b001

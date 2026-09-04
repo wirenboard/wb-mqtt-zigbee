@@ -1,5 +1,8 @@
 wb-mqtt-zigbee (1.4.13) stable; urgency=medium
 
+  * Translate enum control values for climate, lighting, switches, locks and sirens
+  * Add Russian titles for 18 more controls, e.g. Mode, Identify and Status LED
+  * Fix the Russian title of the Preset control
   * Move control and enum value translations into a separate module
 
  -- Victor Fedorov <victor.fedorov@wirenboard.com>  Fri, 04 Sep 2026 12:33:07 +0300

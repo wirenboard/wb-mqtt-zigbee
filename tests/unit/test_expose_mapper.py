@@ -336,7 +336,7 @@ class TestMapLeafFeature:
         An uncurated enum still lists every value, with en-only labels
         """
         [(_, meta)] = _map_leaf_feature(
-            make_expose(type=ExposeType.ENUM, property="mode", values=["off", "heat", "cool"])
+            make_expose(type=ExposeType.ENUM, property="vendor_knob", values=["off", "heat", "cool"])
         )
         assert meta.type == WbControlType.TEXT
         # Single-token values keep zigbee2mqtt's own wording.
@@ -476,7 +476,11 @@ class TestEnumValueTitlesTable:
             assert not PHASE_SUFFIX_RE.match(prop), f"{prop} carries an endpoint suffix"
             assert prop in PROPERTY_TITLES, f"{prop} has value labels but no control title"
             for value, label in values.items():
+                assert value, f"{prop} has an empty value key"
                 assert label.get("en"), f"{prop}.{value} has no English label"
+                # A typo'd language key would silently publish an untranslated label.
+                assert set(label) <= {"en", "ru"}, f"{prop}.{value} has an unexpected language"
+                assert all(text.strip() for text in label.values()), f"{prop}.{value} has a blank label"
 
 
 class TestMakeTitle:

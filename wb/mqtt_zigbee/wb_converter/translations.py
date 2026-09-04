@@ -204,9 +204,9 @@ ENUM_VALUE_TITLES: dict[str, dict[str, dict[str, str]]] = {
         "emergency_heating": {"en": "Emergency Heating", "ru": "Аварийный обогрев"},
         "sleep": {"en": "Sleep", "ru": "Сон"},
     },
-    # What the thermostat is doing right now, so "idle" is «Простой», not «Ожидание».
+    # "idle" is «Бездействие»: «Ожидание» is standby, a separate value on other properties.
     "running_state": {
-        "idle": {"en": "Idle", "ru": "Простой"},
+        "idle": {"en": "Idle", "ru": "Бездействие"},
         "heat": {"en": "Heat", "ru": "Обогрев"},
         "cool": {"en": "Cool", "ru": "Охлаждение"},
         "fan_only": {"en": "Fan Only", "ru": "Только вентиляция"},
@@ -262,8 +262,8 @@ ENUM_VALUE_TITLES: dict[str, dict[str, dict[str, str]]] = {
         "low": {"en": "Low", "ru": "Низкая скорость"},
         "medium": {"en": "Medium", "ru": "Средняя скорость"},
         "high": {"en": "High", "ru": "Высокая скорость"},
-        "smart": {"en": "Smart", "ru": "Умный"},
-        "quiet": {"en": "Quiet", "ru": "Тихий"},
+        "smart": {"en": "Smart", "ru": "Умный режим"},
+        "quiet": {"en": "Quiet", "ru": "Тихий режим"},
     },
     "temperature_unit": {
         "celsius": {"en": "Celsius", "ru": "Цельсий"},
@@ -425,11 +425,11 @@ ENUM_VALUE_TITLES: dict[str, dict[str, dict[str, str]]] = {
         "medium": {"en": "Medium", "ru": "Среднее"},
         "high": {"en": "High", "ru": "Высокое"},
         "battery": {"en": "Battery", "ru": "Батарея"},
-        "battery_full": {"en": "Battery Full", "ru": "Батарея заряжена"},
-        "battery_high": {"en": "Battery High", "ru": "Батарея заряжена хорошо"},
+        "battery_full": {"en": "Battery Full", "ru": "Батарея полностью заряжена"},
+        "battery_high": {"en": "Battery High", "ru": "Батарея заряжена"},
         "battery_medium": {"en": "Battery Medium", "ru": "Батарея заряжена наполовину"},
         "battery_low": {"en": "Battery Low", "ru": "Батарея разряжена"},
-        "usb": {"en": "USB", "ru": "USB"},
+        "usb": {"en": "USB"},
         "cable": {"en": "Cable", "ru": "Кабель"},
     },
     # --- Covers, motors and locks ---
@@ -442,7 +442,7 @@ ENUM_VALUE_TITLES: dict[str, dict[str, dict[str, str]]] = {
         "close": {"en": "Close", "ru": "Закрыто"},
         "Closed": {"en": "Closed", "ru": "Закрыто"},
         "stop": {"en": "Stop", "ru": "Остановлено"},
-        "idle": {"en": "Idle", "ru": "Простой"},
+        "idle": {"en": "Idle", "ru": "Бездействие"},
         "presence": {"en": "Presence", "ru": "Присутствие"},
         "absence": {"en": "Absence", "ru": "Отсутствие"},
         "move": {"en": "Move", "ru": "Движение"},
@@ -476,7 +476,7 @@ ENUM_VALUE_TITLES: dict[str, dict[str, dict[str, str]]] = {
     },
     "user_type": {
         "unrestricted": {"en": "Unrestricted", "ru": "Без ограничений"},
-        "master": {"en": "Master", "ru": "Мастер-код"},
+        "master": {"en": "Master", "ru": "Мастер"},
         "non_access": {"en": "Non Access", "ru": "Без доступа"},
         "year_day_schedule": {"en": "Year Day Schedule", "ru": "Расписание по датам"},
         "week_day_schedule": {"en": "Week Day Schedule", "ru": "Расписание по дням недели"},

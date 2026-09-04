@@ -314,6 +314,7 @@ wb-mqtt-zigbee/
 | `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty`, `ExposeAccess` | ✅ |
 | `wb_converter/controls.py` | `WbControlType` (16 типов, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` (13 контролов с en/ru) | ✅ |
 | `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, rgb для color); двуязычные `title` через `PROPERTY_TITLES` + `_localized_title`; перевод значений enum через `ENUM_VALUE_TITLES` | ✅ |
+| `wb_converter/translations.py` | Таблицы переводов: `PROPERTY_TITLES` (названия контролов), `ENUM_VALUE_TITLES` (значения enum), `POWER_SOURCE_LABELS` | ✅ |
 | `wb_converter/publisher.py` | `WbMqttDriver`: публикация/удаление WB-устройств, JSON `/meta` с driver-маркером, подписка на команды, retained-сканирование ghost-устройств | ✅ |
 | ~~`wb_converter/subscriber.py`~~ | Удалён — подписка на команды реализована в `publisher.py` | — |
 

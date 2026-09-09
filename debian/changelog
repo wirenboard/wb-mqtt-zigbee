@@ -4,7 +4,7 @@ wb-mqtt-zigbee (1.4.13) stable; urgency=medium
   * Add Russian titles for 22 more controls and fix the title of Preset
   * Move the translation tables into a separate module
 
- -- Victor Fedorov <victor.fedorov@wirenboard.com>  Tue, 08 Sep 2026 11:59:57 +0300
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Wed, 09 Sep 2026 10:34:57 +0300
 
 wb-mqtt-zigbee (1.4.12) stable; urgency=medium
 

@@ -297,15 +297,15 @@ def _humanize_enum_value(value: str) -> str:
     return _make_title(value) if len(parts) > 1 and value.islower() and all(parts) else value
 
 
-def _split_endpoint_suffix(property_name: str) -> tuple[str, str]:
+def _split_endpoint_suffix(name: str) -> tuple[str, str]:
     """
-    Split a phase/endpoint suffix off a property name.
+    Split a phase/endpoint suffix off a property name or an enum value.
 
-    'power_l1' -> ('power', 'L1'), 'switch_type_1' -> ('switch_type', '1'),
+    'power_l1' -> ('power', 'L1'), 'on_1' -> ('on', '1'),
     'temperature' -> ('temperature', '').
     """
-    match = PHASE_SUFFIX_RE.match(property_name)
-    return (match.group(1), match.group(2).upper()) if match else (property_name, "")
+    match = PHASE_SUFFIX_RE.match(name)
+    return (match.group(1), match.group(2).upper()) if match else (name, "")
 
 
 def _localized_title(property_name: str) -> dict[str, str]:

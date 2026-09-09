@@ -1,8 +1,16 @@
-wb-mqtt-zigbee (1.4.13) stable; urgency=medium
+wb-mqtt-zigbee (1.4.14) stable; urgency=medium
 
   * Run the pytest suite during the deb build
 
- -- Valerii Trofimov <valeriy.trofimov@wirenboard.com>  Tue, 08 Sep 2026 18:07:32 +0300
+ -- Valerii Trofimov <valeriy.trofimov@wirenboard.com>  Wed, 09 Sep 2026 15:42:32 +0300
+
+wb-mqtt-zigbee (1.4.13) stable; urgency=medium
+
+  * Translate the values of enum controls, including those numbered per button
+  * Add Russian titles for 22 more controls and fix the title of Preset
+  * Move the translation tables into a separate module
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Wed, 09 Sep 2026 10:34:57 +0300
 
 wb-mqtt-zigbee (1.4.12) stable; urgency=medium
 

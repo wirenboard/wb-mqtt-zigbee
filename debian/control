@@ -4,7 +4,8 @@ Priority: optional
 Maintainer: Wiren Board team <info@wirenboard.com>
 Build-Depends: debhelper-compat (= 11),
                dh-python,
-               python3-all
+               python3-all,
+               python3-pytest
 Homepage: https://github.com/wirenboard/wb-mqtt-zigbee
 Standards-Version: 4.5.1
 

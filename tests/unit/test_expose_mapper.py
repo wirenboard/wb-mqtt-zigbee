@@ -8,9 +8,7 @@ import pytest
 
 from wb.mqtt_zigbee.wb_converter.controls import WbControlType
 from wb.mqtt_zigbee.wb_converter.expose_mapper import (
-    ENUM_VALUE_TITLES,
     PHASE_SUFFIX_RE,
-    PROPERTY_TITLES,
     _flatten_expose,
     _localized_title,
     _make_enum,
@@ -20,6 +18,7 @@ from wb.mqtt_zigbee.wb_converter.expose_mapper import (
     _resolve_wb_type,
     map_exposes_to_controls,
 )
+from wb.mqtt_zigbee.wb_converter.translations import ENUM_VALUE_TITLES, PROPERTY_TITLES
 from wb.mqtt_zigbee.z2m.model import ExposeAccess, ExposeFeature, ExposeType
 
 READABLE = ExposeAccess.READ  # 0b001
@@ -337,7 +336,7 @@ class TestMapLeafFeature:
         An uncurated enum still lists every value, with en-only labels
         """
         [(_, meta)] = _map_leaf_feature(
-            make_expose(type=ExposeType.ENUM, property="mode", values=["off", "heat", "cool"])
+            make_expose(type=ExposeType.ENUM, property="vendor_knob", values=["off", "heat", "cool"])
         )
         assert meta.type == WbControlType.TEXT
         # Single-token values keep zigbee2mqtt's own wording.
@@ -452,6 +451,28 @@ class TestMakeEnum:
             make_expose(property="switch_type", values=["rocker"])
         )
 
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            ("on_1", {"en": "On 1", "ru": "Включение 1"}),
+            ("brightness_stop_l2", {"en": "Brightness Stop L2", "ru": "Остановка изменения яркости L2"}),
+        ],
+    )
+    def test_button_index_is_composed_from_the_base_value(self, value, expected):
+        """Multi-gang devices number the value itself, not just the property"""
+        assert _make_enum(make_expose(property="action", values=[value])) == {value: expected}
+
+    def test_curated_value_wins_over_composing(self, monkeypatch):
+        """A curated label must survive even when the base plus index would differ"""
+        monkeypatch.setitem(
+            ENUM_VALUE_TITLES,
+            "probe",
+            {"on": {"en": "On", "ru": "Включение"}, "on_1": {"en": "First", "ru": "Первая клавиша"}},
+        )
+        assert _make_enum(make_expose(property="probe", values=["on_1"])) == {
+            "on_1": {"en": "First", "ru": "Первая клавиша"}
+        }
+
     def test_numeric_values_are_stringified(self):
         """A str method on a numeric value would raise and drop the whole device"""
         assert _make_enum(make_expose(property="melody", values=[1, 2])) == {
@@ -477,7 +498,11 @@ class TestEnumValueTitlesTable:
             assert not PHASE_SUFFIX_RE.match(prop), f"{prop} carries an endpoint suffix"
             assert prop in PROPERTY_TITLES, f"{prop} has value labels but no control title"
             for value, label in values.items():
+                assert value, f"{prop} has an empty value key"
                 assert label.get("en"), f"{prop}.{value} has no English label"
+                # A typo'd language key would silently publish an untranslated label.
+                assert set(label) <= {"en", "ru"}, f"{prop}.{value} has an unexpected language"
+                assert all(text.strip() for text in label.values()), f"{prop}.{value} has a blank label"
 
 
 class TestMakeTitle:

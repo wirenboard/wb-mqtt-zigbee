@@ -137,7 +137,7 @@ Re-subscribe на `zigbee2mqtt/bridge/devices` (unsubscribe + subscribe) — б�
 |---|---|
 | `z2m/model.py` | + `ExposeFeature`, `ExposeAccess`, `ExposeType`, `ExposeProperty`, `Z2MDevice`, `Z2MEventType.DEVICE_RENAMED`, `DeviceEventType.RENAMED`, поле `old_name` в `DeviceEvent` |
 | `z2m/client.py` | + `subscribe_device`, `unsubscribe_device`, `request_device_state`, обработка `device_renamed` |
-| `wb_converter/expose_mapper.py` | Новый модуль: `map_exposes_to_controls()`, `NUMERIC_TYPE_MAP` (12 типов), `NESTED_TYPES`, `_resolve_wb_type`, `_map_color_feature` (composite color → rgb), auto-range для writable numerics с min/max, двуязычные `title` через `PROPERTY_TITLES` + `_localized_title` |
+| `wb_converter/expose_mapper.py` | Новый модуль: `map_exposes_to_controls()`, `NUMERIC_TYPE_MAP` (12 типов), `NESTED_TYPES`, `_resolve_wb_type`, `_map_color_feature` (composite color → rgb), auto-range для writable numerics с min/max, двуязычные `title` через `PROPERTY_TITLES` + `_localized_title`; перевод значений enum через `ENUM_VALUE_TITLES` (обе таблицы — в `wb_converter/translations.py`) |
 | `wb_converter/controls.py` | + `WbControlType` (16 констант, вкл. RANGE, RGB), `ControlMeta.format_value()` (вкл. HS→RGB через `colorsys`), поля `value_on`/`value_off` |
 | `wb_converter/publisher.py` | + `publish_device()`, `publish_device_control()`, `remove_device()` |
 | `registered_device.py` | Новый модуль: `RegisteredDevice` dataclass |
@@ -313,7 +313,8 @@ wb-mqtt-zigbee/
 | `z2m/client.py` | `Z2MClient`: подписка на 6 z2m-топиков + устройства, парсинг → типизированные коллбэки | ✅ |
 | `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty`, `ExposeAccess` | ✅ |
 | `wb_converter/controls.py` | `WbControlType` (16 типов, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` (13 контролов с en/ru) | ✅ |
-| `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, rgb для color); двуязычные `title` через `PROPERTY_TITLES` + `_localized_title` | ✅ |
+| `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, rgb для color); двуязычные `title` через `PROPERTY_TITLES` + `_localized_title`; перевод значений enum через `ENUM_VALUE_TITLES` | ✅ |
+| `wb_converter/translations.py` | Таблицы переводов: `PROPERTY_TITLES` (названия контролов), `ENUM_VALUE_TITLES` (значения enum), `POWER_SOURCE_LABELS` | ✅ |
 | `wb_converter/publisher.py` | `WbMqttDriver`: публикация/удаление WB-устройств, JSON `/meta` с driver-маркером, подписка на команды, retained-сканирование ghost-устройств | ✅ |
 | ~~`wb_converter/subscriber.py`~~ | Удалён — подписка на команды реализована в `publisher.py` | — |
 
@@ -352,11 +353,17 @@ wb-mqtt-zigbee/
 
 Отображаемое имя контрола (`title`) разрешается в `_localized_title()`:
 
-1. Точное совпадение в курируемом двуязычном словаре `PROPERTY_TITLES` (en+ru, ~110 базовых property) — например `temperature` → `{"en": "Temperature", "ru": "Температура"}`.
-2. Endpoint-варианты многофазных счётчиков и многоканальных реле (`power_l1`, `voltage_a`, `state_l2`, …) — суффикс (`_l<N>` / `_a`/`_b`/`_c`) распознаётся регуляркой `PHASE_SUFFIX_RE`, имя собирается из базового property плюс метка фазы в верхнем регистре: `power_l1` → `{"en": "Power L1", "ru": "Мощность L1"}`.
-3. Fallback для property не из словаря — только английское имя, механически из property: `noise_detect_level` → `{"en": "Noise detect level"}` (`property.replace("_", " ").capitalize()`).
+1. Точное совпадение в курируемом двуязычном словаре `PROPERTY_TITLES` (en+ru, ~150 базовых property, живёт в `translations.py`) — например `temperature` → `{"en": "Temperature", "ru": "Температура"}`.
+2. Endpoint-варианты многофазных счётчиков и многоканальных реле (`power_l1`, `voltage_a`, `state_l2`, …) — суффикс (`_l<N>` / голый `_<N>` / `_a`/`_b`/`_c`) распознаётся регуляркой `PHASE_SUFFIX_RE`, имя собирается из базового property плюс метка фазы в верхнем регистре: `power_l1` → `{"en": "Power L1", "ru": "Мощность L1"}`.
+3. Fallback для property не из словаря — только английское имя, механически из property: `noise_detect_level` → `{"en": "Noise Detect Level"}` (каждое слово с заглавной).
 
 Словарь написан вручную. Редкие manufacturer-specific property сознательно остаются на английском fallback.
+
+#### Перевод значений enum
+
+Ключом таблицы выбрано **свойство**, а не само значение: одно и то же слово требует разной формы в русском — `low` это «Низкая» при «Чувствительности», но «Низкий» при «Уровне», — а `off`/`toggle`/`previous` в разных свойствах значат разное. Промах по ключу даёт английскую подпись, то есть прежнее поведение, а не неверный перевод. Как устроен сам разбор, описано в [arc42.md](arc42.md), раздел 4.
+
+Состав таблицы выбран по данным, а не на глаз: exposes всех моделей из `zigbee-herdsman-converters` прогоняются через сам маппер, и свойства берутся в порядке охвата устройств. Открытые перечисления переводятся частично: у `action` больше 1800 значений, поэтому в таблице только общеупотребительные; `gradient_scene` (названия сцен Hue) и `ac_brand` (список брендов кондиционеров) не переводятся вовсе.
 
 ### Цветные лампы (RGB)
 

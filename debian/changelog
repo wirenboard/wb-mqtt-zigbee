@@ -1,3 +1,9 @@
+wb-mqtt-zigbee (1.4.15) stable; urgency=medium
+
+  * Explain the case-variant enum keys in the translations table
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Mon, 14 Sep 2026 10:57:14 +0300
+
 wb-mqtt-zigbee (1.4.14) stable; urgency=medium
 
   * Run the pytest suite during the deb build

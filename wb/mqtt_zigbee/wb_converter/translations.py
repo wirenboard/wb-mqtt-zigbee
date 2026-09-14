@@ -229,7 +229,8 @@ ENUM_VALUE_TITLES: dict[str, dict[str, dict[str, str]]] = {
         "standby": {"en": "Standby", "ru": "Ожидание"},
         "antifrost": {"en": "Antifrost", "ru": "Защита от замерзания"},
     },
-    # Capitalised keys are separate z2m values, not typos: the lookup is exact.
+    # Not a copy-paste slip: z2m really sends both spellings, from different converters.
+    # The label is display text, so it is the same and capitalised for either key.
     "preset": {
         "manual": {"en": "Manual", "ru": "Ручной"},
         "Manual": {"en": "Manual", "ru": "Ручной"},

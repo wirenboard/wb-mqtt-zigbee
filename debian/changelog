@@ -13,7 +13,7 @@ wb-mqtt-zigbee (1.5.0) stable; urgency=medium
     thread, which removes the topics once per device, ignores zigbee2mqtt traffic meanwhile,
     waits at most 10 s for the broker to confirm the removal and then stops the client
   * Treat a broker URL the MQTT client cannot use as a config error (exit 6) instead of crashing
-    with 1; keep its credentials out of the start-up log line
+    with 1
   * Require python3-wb-common >= 2.4.0 for start(retry_first_connection=True); the build now depends on it and on python3-paho-mqtt, which the tests import
 
  -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Thu, 17 Sep 2026 16:25:50 +0000

@@ -4,6 +4,7 @@ import time
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
+from paho.mqtt.client import MQTTMessageInfo
 from wb_common.mqtt_client import MQTTClient
 
 from .mqtt_utils import is_safe_topic_name
@@ -84,6 +85,11 @@ class Bridge:
         self._last_devices: list[Z2MDevice] = []
         self._retained_scan_active = False
         self._reconnect_count = 0
+        # meta/error of the bridge device as last derived from bridge/state; published on every
+        # connect, which also clears the "rw" a Last Will left behind after a crash
+        self._bridge_error = ""
+        # not mere state: once remove_all() runs, the handlers must not republish what it removes
+        self._stopping = False
 
     def subscribe(self) -> None:
         self._mqtt_driver.start_retained_scan()
@@ -101,6 +107,14 @@ class Bridge:
             )
 
     def republish(self) -> None:
+        """
+        Restore everything after a broker reconnect. Whether our retained topics survived depends on
+        what happened: a network blip leaves them all in place, a restart of mosquitto (which runs
+        without persistence on WB) loses them all, and we cannot tell the two apart, so we republish
+        unconditionally. The session is not persistent, so paho restores no subscriptions either and
+        we re-subscribe. Every device comes back with its last known values but is shown
+        unavailable until z2m confirms it (availability or a fresh state).
+        """
         self._reconnect_count += 1
         self._publish_bridge()
         self._mqtt_driver.publish_bridge_control(BridgeControl.RECONNECTS, str(self._reconnect_count))
@@ -110,31 +124,13 @@ class Bridge:
                 registered.device_id,
                 friendly_name,
                 registered.controls,
-                {"available": WbBoolValue.FALSE},
+                {**self._mqtt_driver.last_values(registered.device_id), "available": WbBoolValue.FALSE},
                 model=registered.z2m.model,
                 ieee_address=registered.z2m.ieee_address,
             )
             self._mqtt_driver.publish_device_error(
                 registered.device_id, _device_offline_error(registered.controls)
             )
-            if registered.z2m.type:
-                self._mqtt_driver.publish_device_control(
-                    registered.device_id,
-                    "device_type",
-                    registered.z2m.type,
-                )
-            if registered.z2m.model:
-                self._mqtt_driver.publish_device_control(
-                    registered.device_id,
-                    "model",
-                    registered.z2m.model,
-                )
-            if registered.z2m.power_source:
-                self._mqtt_driver.publish_device_control(
-                    registered.device_id,
-                    "power_source",
-                    registered.z2m.power_source,
-                )
             self._mqtt_driver.subscribe_device_commands(
                 registered.device_id,
                 registered.controls,
@@ -144,8 +140,26 @@ class Bridge:
             self._z2m.request_device_state(friendly_name)
         self._z2m.refresh_device_list()
 
+    def remove_all(self) -> MQTTMessageInfo:
+        """
+        Take every WB topic of ours off the broker: the known devices, the devices of a previous run
+        found by the retained scan and not registered since, and the bridge device last. Returns
+        paho's info of that last publish, so the caller can wait for the broker to confirm them all.
+        """
+        self._stopping = True
+        known = list(self._known_devices.values())  # a snapshot: the handlers run on another thread
+        for registered in known:
+            self._mqtt_driver.remove_device(registered.device_id, registered.controls)
+        ghost_ids = self._mqtt_driver.get_scanned_device_ids() - {r.device_id for r in known}
+        for device_id in ghost_ids:
+            self._mqtt_driver.remove_retained_device(
+                device_id, self._mqtt_driver.get_scanned_controls(device_id)
+            )
+        return self._mqtt_driver.remove_bridge_device()
+
     def _publish_bridge(self) -> None:
         self._mqtt_driver.publish_bridge_device()
+        self._mqtt_driver.publish_bridge_error(self._bridge_error)
         self._mqtt_driver.publish_bridge_control(BridgeControl.LOG_LEVEL, self._bridge_log_min_level)
         self._z2m.subscribe()
         self._mqtt_driver.subscribe_bridge_commands(
@@ -177,15 +191,19 @@ class Bridge:
                 del registered.pending_commands[key]
 
     def _on_bridge_state(self, state: str) -> None:
+        if self._stopping:
+            return
         logger.info("Bridge state: %s", state)
         self._mqtt_driver.publish_bridge_control(BridgeControl.STATE, state)
         # z2m down → the whole bridge is non-functional: flag the bridge device
         # ("rw" — no zigbee device can be read or commanded); clear when z2m is back.
-        bridge_error = "" if state == BridgeState.ONLINE else WbControlError.READ_WRITE
-        self._mqtt_driver.publish_bridge_error(bridge_error)
+        self._bridge_error = "" if state == BridgeState.ONLINE else WbControlError.READ_WRITE
+        self._mqtt_driver.publish_bridge_error(self._bridge_error)
         self._update_stats()
 
     def _on_bridge_info(self, info: BridgeInfo) -> None:
+        if self._stopping:
+            return
         logger.info("Bridge info: version=%s, permit_join=%s", info.version, info.permit_join)
         self._mqtt_driver.publish_bridge_control(BridgeControl.VERSION, info.version)
         self._mqtt_driver.publish_bridge_control(
@@ -195,11 +213,15 @@ class Bridge:
         self._update_stats()
 
     def _on_bridge_log(self, level: str, message: str) -> None:
+        if self._stopping:
+            return
         self._update_stats()
         if BridgeLogLevel.RANK.get(level, 0) >= self._log_min_rank:
             self._mqtt_driver.publish_bridge_control(BridgeControl.LOG, _strip_control_chars(message))
 
     def _on_devices(self, devices: list[Z2MDevice]) -> None:
+        if self._stopping:
+            return
         logger.info("Devices: %d", len(devices))
         self._mqtt_driver.publish_bridge_control(BridgeControl.DEVICE_COUNT, str(len(devices)))
         self._update_stats()
@@ -382,6 +404,8 @@ class Bridge:
             )
 
     def _on_device_availability(self, friendly_name: str, available: bool) -> None:
+        if self._stopping:
+            return
         registered = self._known_devices.get(friendly_name)
         if registered is None:
             logger.debug("Availability update for unknown device '%s', skipping", friendly_name)
@@ -396,6 +420,8 @@ class Bridge:
         logger.debug("Device availability: %s = %s", friendly_name, "online" if available else "offline")
 
     def _on_device_state(self, friendly_name: str, state: dict[str, object]) -> None:
+        if self._stopping:
+            return
         registered = self._known_devices.get(friendly_name)
         if registered is None:
             logger.debug("State update for unknown device '%s', skipping", friendly_name)
@@ -448,7 +474,7 @@ class Bridge:
 
         def on_command(control_id: str, wb_value: str) -> None:
             meta = registered.controls.get(control_id)
-            if meta is None:
+            if meta is None or self._stopping:
                 return
             z2m_value = meta.parse_wb_value(wb_value)
             payload = {control_id: z2m_value}
@@ -468,6 +494,8 @@ class Bridge:
         return on_command
 
     def _on_device_event(self, event: DeviceEvent) -> None:
+        if self._stopping:
+            return
         logger.info("Device event: %s %s", event.type, event.name)
         control = _EVENT_TYPE_TO_CONTROL.get(event.type)
         if control:

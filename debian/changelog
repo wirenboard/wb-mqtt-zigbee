@@ -1,3 +1,23 @@
+wb-mqtt-zigbee (1.5.0) stable; urgency=medium
+
+  * Wait for an unavailable MQTT broker instead of exiting; exit with 2 when the
+    broker rejects the login (bad credentials or not authorized), also after a reconnect
+  * Republish the devices after a reconnect with their last known values, unavailable
+    until zigbee2mqtt confirms them
+  * Remove every retained topic of ours on SIGINT/SIGTERM/SIGHUP and exit 0; log an
+    error when the broker is not connected to do so
+  * Exit with 6 on any config read or parse error
+  * Stop only after the broker acknowledged the topic removal; publish the bridge
+    error state on every connect, so the Last Will of a crashed run is cleared at the next start
+  * Run the MQTT loop on paho's network thread; the signal handler only wakes the main
+    thread, which removes the topics once per device, ignores zigbee2mqtt traffic meanwhile,
+    waits at most 10 s for the broker to confirm the removal and then stops the client
+  * Treat a broker URL the MQTT client cannot use as a config error (exit 6) instead of crashing
+    with 1; keep its credentials out of the start-up log line
+  * Require python3-wb-common >= 2.4.0 for start(retry_first_connection=True); the build now depends on it and on python3-paho-mqtt, which the tests import
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Thu, 17 Sep 2026 16:25:50 +0000
+
 wb-mqtt-zigbee (1.4.15) stable; urgency=medium
 
   * Explain the case-variant enum keys in the translations table

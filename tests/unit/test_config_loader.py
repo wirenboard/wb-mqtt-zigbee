@@ -12,6 +12,7 @@ from wb.mqtt_zigbee.config_loader import (
     COMMAND_DEBOUNCE_SEC_DEFAULT,
     ConfigLoader,
     _validate_log_level,
+    check_broker_url,
     load_config,
 )
 from wb.mqtt_zigbee.z2m.model import BridgeLogLevel
@@ -128,6 +129,33 @@ class TestLoadConfigErrors:
         )
         with pytest.raises(ValueError):
             load_config(path)
+
+    @pytest.mark.parametrize(
+        "broker_url",
+        ["tcp://user:secret@localhost", "foo://x", "unix://", "tcp://:1883", "tcp://host:abc", 1883],
+        ids=["no-port", "unknown-scheme", "no-socket-path", "no-host", "bad-port", "not-a-string"],
+    )
+    def test_unusable_broker_url_raises_value_error(self, tmp_path, broker_url):
+        """
+        A URL wb-common's MQTTClient cannot use is a config error, and the message never repeats
+        the URL: it may carry a password and ends up in the journal.
+        """
+        path = write_config(tmp_path, {"broker_url": broker_url, "zigbee2mqtt_base_topic": "z2m"})
+        with pytest.raises(ValueError, match="broker URL must be") as error:
+            load_config(path)
+        assert "secret" not in str(error.value)
+
+    @pytest.mark.parametrize(
+        "broker_url",
+        [
+            "unix:///var/run/mosquitto/mosquitto.sock",
+            "tcp://user:pw@localhost:1883",
+            "mqtt-tcp://host:1883",
+            "ws://host:9001/mqtt",
+        ],
+    )
+    def test_check_broker_url_accepts_the_mqtt_client_forms(self, broker_url):
+        assert check_broker_url(broker_url) == broker_url
 
 
 class TestValidateLogLevel:

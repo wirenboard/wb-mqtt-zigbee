@@ -1,6 +1,9 @@
 import argparse
 import logging
 import sys
+from urllib.parse import urlparse
+
+from wb_common.mqtt_client import without_credentials
 
 from .app import EXIT_CONFIG_ERROR, WbZigbee2Mqtt
 from .config_loader import CONFIG_FILEPATH, load_config
@@ -30,10 +33,10 @@ def main(argv: list) -> int:
 
     try:
         config = load_config(args.config)
-    except (FileNotFoundError, ValueError) as e:
+    except (OSError, ValueError, TypeError) as e:  # unreadable file, broken JSON, not an object
         logger.error("%s", e)
         return EXIT_CONFIG_ERROR
 
-    logger.info("Starting wb-mqtt-zigbee, broker: %s", config.broker_url)
+    logger.info("Starting wb-mqtt-zigbee, broker: %s", without_credentials(urlparse(config.broker_url)))
     service = WbZigbee2Mqtt(config)
     return service.run()

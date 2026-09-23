@@ -1,24 +1,58 @@
 """
-FakeMqttClient — drop-in replacement for `wb_common.mqtt_client.MQTTClient`.
+FakeMqttClient — drop-in replacement for `wb_common.mqtt_client.MQTTClient`, the threaded client.
 
 Implements only the subset of API used by `wb.mqtt_zigbee` production code:
-  - subscribe / unsubscribe
-  - publish(topic, payload, retain=False, qos=0)
-  - message_callback_add / message_callback_remove
+  - subscribe / unsubscribe, message_callback_add / message_callback_remove
+  - publish(topic, payload, retain=False, qos=0) → FakeMessageInfo, shaped like paho's MQTTMessageInfo
   - on_connect / on_disconnect attribute callbacks
-  - start / stop / loop_forever — no-op (network loop is irrelevant in tests)
+  - start / wait_for_connection / is_connected / disconnect / stop
 
-All operations are routed to a shared `FakeMqttBroker`. Tests can simulate
-network events with `connect()` / `disconnect()` helpers (not part of the
-production API).
+Nothing runs concurrently: the test plays paho's network thread. A CONNACK is `connect(rc=...)`,
+a dropped connection is `lose_connection()`, and the broker's acknowledgements arrive in
+`wait_for_publish()` — unless the test holds them back with `broker_acknowledges = False` — and in
+`stop()`, which drains the outgoing queue the way paho's thread does before it exits. The lifecycle
+calls of the production code are recorded in `calls`, in order.
+
+All operations are routed to a shared `FakeMqttBroker`.
 """
 
 import itertools
+import threading
 from typing import Any, Callable, Optional
 
 from .broker import FakeMqttBroker, MockMqttMessage
 
 _id_counter = itertools.count(1)
+
+
+class FakeMessageInfo:
+    """
+    What publish() returns, with the part of paho's MQTTMessageInfo the production code uses:
+    rc, mid, wait_for_publish() and is_published(). The client marks it published when the
+    broker's acknowledgement arrives.
+    """
+
+    def __init__(self, mid: int, client: "FakeMqttClient") -> None:
+        self.mid = mid
+        self.rc = 0
+        self.waited_with_timeout: Optional[float] = None
+        self._published = False
+        self._client = client
+
+    def wait_for_publish(self, timeout: Optional[float] = None) -> None:
+        """
+        Where the main thread yields to paho's network thread: the acknowledgements up to this
+        message arrive now, unless the test told the broker to stay silent (a timeout then)
+        """
+        self.waited_with_timeout = timeout
+        if self._client.broker_acknowledges:
+            self._client.acknowledge_through(self)
+
+    def is_published(self) -> bool:
+        return self._published
+
+    def mark_published(self) -> None:
+        self._published = True
 
 
 class FakeMqttClient:
@@ -34,10 +68,17 @@ class FakeMqttClient:
         self._subscriptions: list[str] = []
         self._unsubscriptions: list[str] = []
         self.on_connect: Optional[Callable[[Any, Any, dict, int], None]] = None
-        self.on_disconnect: Optional[Callable[[Any, Any, dict], None]] = None
-        self._started = False
-        self._stopped = False
+        self.on_disconnect: Optional[Callable[[Any, Any, int], None]] = None
+        self._mids = itertools.count(1)
+        self._unacknowledged: list[FakeMessageInfo] = []  # publishes the broker has not acknowledged
+        self._connected = False
         self.will: Optional[tuple[str, Any, int, bool]] = None
+        # What a test reads back
+        self.calls: list[str] = []  # start / disconnect / stop, in call order
+        self.retry_first_connection: Optional[bool] = None
+        self.last_publish: Optional[FakeMessageInfo] = None
+        self.stopped_with_unacknowledged = False  # stop() had to drain publishes nobody waited for
+        self.broker_acknowledges = True  # False: no acknowledgement ever comes, waits time out
 
     # Production API
     def will_set(self, topic: str, payload: Any = "", qos: int = 0, retain: bool = False) -> None:
@@ -54,8 +95,11 @@ class FakeMqttClient:
         self._unsubscriptions.append(topic)
         self._broker.unsubscribe(self._client_id, topic)
 
-    def publish(self, topic: str, payload: Any = "", retain: bool = False, qos: int = 0) -> None:
+    def publish(self, topic: str, payload: Any = "", retain: bool = False, qos: int = 0) -> FakeMessageInfo:
         self._broker.publish_from_client(self._client_id, topic, payload, retain=retain, qos=qos)
+        self.last_publish = FakeMessageInfo(next(self._mids), self)
+        self._unacknowledged.append(self.last_publish)
+        return self.last_publish
 
     def message_callback_add(
         self,
@@ -67,14 +111,41 @@ class FakeMqttClient:
     def message_callback_remove(self, topic_filter: str) -> None:
         self._broker.remove_callback(self._client_id, topic_filter)
 
-    def start(self) -> None:
-        self._started = True
+    def start(self, retry_first_connection: bool = False) -> None:
+        """
+        Returns at once, as the threaded client does: the CONNACK comes later, from connect()
+        """
+        self.calls.append("start")
+        self.retry_first_connection = retry_first_connection
+
+    def wait_for_connection(self, _stop_requested: Optional[threading.Event] = None) -> bool:
+        """
+        Nothing happens meanwhile; a test that wants paho's thread to deliver something during the
+        wait (a CONNACK, z2m traffic, a signal) gives this method a side effect
+        """
+        return self._connected
+
+    def is_connected(self) -> bool:
+        return self._connected
+
+    def disconnect(self) -> None:
+        """
+        Close the connection cleanly: paho reports it to on_disconnect with rc 0
+        """
+        self.calls.append("disconnect")
+        self._close(rc=0)
 
     def stop(self) -> None:
-        self._stopped = True
-
-    def loop_forever(self) -> None:  # pragma: no cover - never invoked in tests
-        return None
+        """
+        wb-common's stop(): paho's network thread exits only once the outgoing queue is empty, so
+        every pending publish is acknowledged here — stopped_with_unacknowledged tells a test whether
+        the production code left that to the drain instead of waiting itself — then the DISCONNECT.
+        """
+        self.calls.append("stop")
+        if self._unacknowledged:
+            self.stopped_with_unacknowledged = True
+            self.acknowledge_through(self._unacknowledged[-1])
+        self._close(rc=0)
 
     # Test helpers
     @property
@@ -95,19 +166,37 @@ class FakeMqttClient:
         """
         return list(self._unsubscriptions)
 
+    @property
+    def stopped(self) -> bool:
+        return "stop" in self.calls
+
     def connect(self, rc: int = 0) -> None:
         """
-        Simulate a successful broker connect — invokes on_connect callback
+        Simulate a broker CONNACK — invokes on_connect callback; connected only on rc == 0
         """
+        self._connected = rc == 0
         if self.on_connect is not None:
             self.on_connect(self, None, {}, rc)
 
-    def disconnect(self) -> None:
+    def lose_connection(self) -> None:
         """
-        Simulate a broker disconnect — invokes on_disconnect callback
+        The broker went away: on_disconnect with rc 7 (MQTT_ERR_CONN_LOST)
         """
+        self._close(rc=7)
+
+    def acknowledge_through(self, info: FakeMessageInfo) -> None:
+        """
+        The broker's acknowledgements up to and including `info` arrive, in publish order
+        """
+        while info in self._unacknowledged:
+            self._unacknowledged.pop(0).mark_published()
+
+    def _close(self, rc: int) -> None:
+        if not self._connected:
+            return  # paho reports nothing for a client that has no connection to close
+        self._connected = False
         if self.on_disconnect is not None:
-            self.on_disconnect(self, None, {})
+            self.on_disconnect(self, None, rc)
 
 
-__all__ = ["FakeMqttClient"]
+__all__ = ["FakeMessageInfo", "FakeMqttClient"]

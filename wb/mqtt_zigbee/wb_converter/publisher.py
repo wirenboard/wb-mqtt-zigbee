@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Any, Callable, Optional
 
-from paho.mqtt.client import Client, MQTTMessage
+from paho.mqtt.client import Client, MQTTMessage, MQTTMessageInfo
 from wb_common.mqtt_client import MQTTClient
 
 from ..mqtt_utils import decode_payload, log_callback_errors, payload_too_large
@@ -50,9 +50,14 @@ class WbMqttDriver:
         self._device_name = device_name
         self._scanned_our_ids: set[str] = set()  # device_ids with our driver
         self._scanned_controls: dict[str, set[str]] = {}  # device_id → set of control_ids (all)
+        # device_id → control_id → last published value, replayed after a broker reconnect
+        self._last_values: dict[str, dict[str, str]] = {}
 
     def publish_bridge_device(self) -> None:
         self._publish_device(self._device_id, self._device_name, BRIDGE_CONTROLS)
+
+    def remove_bridge_device(self) -> MQTTMessageInfo:
+        return self.remove_device(self._device_id, BRIDGE_CONTROLS)
 
     def publish_bridge_control(self, control_id: str, value: str) -> None:
         topic = f"{DEVICES_PREFIX}/{self._device_id}/controls/{control_id}"
@@ -84,16 +89,19 @@ class WbMqttDriver:
     ) -> None:
         self._publish_device(device_id, name, controls, initial_values, model, ieee_address)
 
-    def remove_device(self, device_id: str, controls: dict[str, ControlMeta]) -> None:
+    def remove_device(self, device_id: str, controls: dict[str, ControlMeta]) -> MQTTMessageInfo:
         """
-        Remove a WB device by publishing empty retain on all its topics
+        Remove a WB device by publishing empty retain on all its topics.
+        Returns paho's info of the last publish, so a caller can wait for the broker to confirm it.
         """
         for control_id in controls:
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta", "")
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", "")
             self._clear_control_meta_subtopics(device_id, control_id)
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", "")
-        self._clear_device_meta_subtopics(device_id)
+        last = self._clear_device_meta_subtopics(device_id)
+        self._last_values.pop(device_id, None)
+        return last
 
     def remove_retained_device(self, device_id: str, control_ids: set[str]) -> None:
         """
@@ -105,10 +113,19 @@ class WbMqttDriver:
             self._clear_control_meta_subtopics(device_id, control_id)
         self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", "")
         self._clear_device_meta_subtopics(device_id)
+        self._last_values.pop(device_id, None)
 
     def publish_device_control(self, device_id: str, control_id: str, value: str) -> None:
-        topic = f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}"
-        self._publish_retain(topic, value)
+        self._last_values.setdefault(device_id, {})[control_id] = value
+        self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", value)
+
+    def last_values(self, device_id: str) -> dict[str, str]:
+        """
+        The control values last published for the device, replayed by the republish after a
+        broker reconnect. The broker may still hold them (a network blip) or may have lost them
+        (a restart of mosquitto, which runs without persistence on WB); the republish does not guess.
+        """
+        return dict(self._last_values.get(device_id, {}))
 
     def publish_device_error(self, device_id: str, error: str) -> None:
         """
@@ -269,7 +286,7 @@ class WbMqttDriver:
         for control_id, meta in controls.items():
             self._publish_control_meta(device_id, control_id, meta)
             value = initial_values.get(control_id, " ") if initial_values else " "
-            self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", value)
+            self.publish_device_control(device_id, control_id, value)
 
     def _publish_control_meta(self, device_id: str, control_id: str, meta: ControlMeta) -> None:
         payload: dict = {"type": meta.type, "readonly": meta.readonly}
@@ -298,15 +315,15 @@ class WbMqttDriver:
         self._publish_retain(f"{prefix}/driver", DRIVER_NAME)
         self._publish_retain(f"{prefix}/model", model)
 
-    def _clear_device_meta_subtopics(self, device_id: str) -> None:
+    def _clear_device_meta_subtopics(self, device_id: str) -> MQTTMessageInfo:
         """
-        Clear device meta sub-topics when removing a device
+        Clear device meta sub-topics when removing a device; returns the info of the last publish
         """
         prefix = f"{DEVICES_PREFIX}/{device_id}/meta"
         self._publish_retain(f"{prefix}/name", "")
         self._publish_retain(f"{prefix}/driver", "")
         self._publish_retain(f"{prefix}/model", "")
-        self._publish_retain(f"{prefix}/error", "")
+        return self._publish_retain(f"{prefix}/error", "")
 
     def _publish_control_meta_subtopics(self, device_id: str, control_id: str, meta: ControlMeta) -> None:
         """
@@ -329,8 +346,8 @@ class WbMqttDriver:
         for sub in ("type", "readonly", "order", "enum", "max", "min", "units"):
             self._publish_retain(f"{prefix}/{sub}", "")
 
-    def _publish_retain(self, topic: str, value: str) -> None:
-        self._client.publish(topic, value, retain=True, qos=1)
+    def _publish_retain(self, topic: str, value: str) -> MQTTMessageInfo:
+        return self._client.publish(topic, value, retain=True, qos=1)
 
 
 def _make_command_handler(control_id: str, on_command: Callable[[str, str], None]):

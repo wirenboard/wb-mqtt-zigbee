@@ -193,6 +193,28 @@ class TestBridgeInitialization:
         z2m_emu.online()
         assert wb_observer.retained(error_topic) is None
 
+    def test_bridge_error_is_published_on_every_connect(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+        fake_broker: FakeMqttBroker,
+    ) -> None:
+        """
+        A crash leaves the Last Will "rw" behind: the next start clears it, since the service is alive
+        again and z2m will say if it is not. A reconnect republishes the last known state instead.
+        """
+        error_topic = f"{DEVICES_PREFIX}/{BRIDGE_ID}/meta/error"
+        fake_broker.inject(error_topic, WbControlError.READ_WRITE, retain=True)
+
+        bridge.subscribe()
+        assert wb_observer.retained(error_topic) is None
+
+        z2m_emu.offline()
+        fake_broker.inject(error_topic, "", retain=True)  # the broker restarted: retained topics gone
+        bridge.republish()
+        assert wb_observer.retained(error_topic) == WbControlError.READ_WRITE
+
     def test_bridge_info_publishes_version_and_permit_join(
         self,
         bridge: Bridge,
@@ -1275,6 +1297,45 @@ class TestReconnectFlow:
 
         assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/available") == WbBoolValue.FALSE
         assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta/error") == WbControlError.READ
+
+    def test_republish_restores_last_values_but_not_availability(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+        fake_broker: FakeMqttBroker,
+    ) -> None:
+        """
+        A broker restart drops every retained topic. republish() brings the device back with
+        the values last seen (a sleeping sensor may not answer a state request for hours) but
+        shows it unavailable until z2m confirms it again.
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("sensor-1")])
+        z2m_emu.device_state("sensor-1", {"temperature": 21.5})
+        z2m_emu.device_availability("sensor-1", online=True)
+        fake_broker.retained.clear()
+
+        bridge.republish()
+
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/temperature") == "21.5"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/model") == "MODEL-1"
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/controls/available") == WbBoolValue.FALSE
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/sensor-1/meta/error") == WbControlError.READ
+
+    def test_remove_all_clears_the_bridge_and_every_device(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("sensor-1")])
+
+        bridge.remove_all()
+
+        assert not wb_observer.retained_under(f"{DEVICES_PREFIX}/sensor-1")
+        assert not wb_observer.retained_under(f"{DEVICES_PREFIX}/{BRIDGE_ID}")
 
 
 class TestMalformedPayloads:

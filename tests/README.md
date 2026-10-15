@@ -186,14 +186,25 @@ make_expose(
 
 | Цель | Класс тестов | Что проверяется |
 |---|---|---|
-| `map_exposes_to_controls` | `TestMapExposesToControls` | Сквозная нумерация `order` начиная с 1; дедупликация по `property` (первое вхождение побеждает); сервисные контролы `available` / `last_seen` добавляются всегда; `device_type` — только при непустом значении; `expose` без `property` пропускается, не ломая порядок. |
+| `map_exposes_to_controls` | `TestMapExposesToControls` | Сквозная нумерация `order` начиная с 1; дедупликация свойств верхнего уровня по `property` (первое вхождение побеждает); сервисные контролы `available` / `last_seen` добавляются всегда; `device_type` — только при непустом значении; `expose` без `property` пропускается, не ломая порядок. |
 | `_flatten_expose` | `TestFlattenExpose` | Листовые фичи проходят как есть; сложные типы (`light`, `switch`, `climate` и др.) раскрываются рекурсивно, в том числе вложенные; `composite` с `property="color"` сворачивается в один RGB-контрол; композитный тип с пустым `features` падает в ветку листа. |
+| `composite` со своим `property` | `TestCompositeWithProperty`, `TestGettableComposites` | Поля получают `path`; не целиком читаемый composite даёт отложенные поля и кнопку отправки; при конфликте имён — префикс пути или `<property>_send`; в `/get` — только читаемые composite с GET. |
 | `_map_leaf_feature` | `TestMapLeafFeature` | Пустой `property` → пустой результат; неизвестный `type` → пустой результат; numeric-свойства маппятся через `NUMERIC_TYPE_MAP` с фоллбеком на `value`; writable numeric `value` с обоими `min` и `max` маппятся в `range`, иначе остаётся `value`; типизированные numeric (`temperature` и т. п.) **не** будут `range` даже с min/max; binary → `switch` + `value_on`/`value_off`; enum → `text` + словарь `meta.enum` в конвенционной форме `{значение: {en, ru}}`; text → `text`; `readonly` считается от `access & WRITE`; двуязычный `title` (en+ru) для known property из `PROPERTY_TITLES`, fallback на en-only для неизвестных. |
 | `_map_color_feature` | `TestMapColorFeature` | Writable, если хотя бы один sub-feature writable, иначе readonly; пустой `features` → readonly; тип RGB; title имеют переводы на ru, en. |
 | `_make_enum` | `TestMakeEnum`, `TestEnumValueTitlesTable` | Курируемые значения переводятся из `ENUM_VALUE_TITLES`, остальные получают только `en`. Многословное значение приводится к Title Case (`battery_full` → `Battery Full`). Одиночное (`usb`, `heat`) и в верхнем регистре (`ON`, `2000K`) остаётся дословно. Числовые значения становятся строкой, пустой список даёт `None`. Суффикс эндпоинта берёт подписи базового и у свойства (`switch_type_1`), и у самого значения (`on_1` → «Включение 1»), причём точное совпадение приоритетнее сборки. Возвращаемые словари — копии, общую таблицу через них не испортить. Отдельно проверяются инварианты `ENUM_VALUE_TITLES` из `translations.py`: непустой `en`, только языки `en`/`ru`, непустые подписи, ключи без суффикса, заголовок в `PROPERTY_TITLES`. |
 | `_make_title` | `TestMakeTitle` | `snake_case` → `Snake Case` (каждое слово с заглавной); единичные слова; параметризованный тест. |
 | `_localized_title` | `TestLocalizedTitle` | Точное совпадение в `PROPERTY_TITLES` даёт en+ru (включая нетривиальные случаи: `power`=«Мощность», `noise`=«Шум», `pm25`=«PM2.5»); суффиксы фазы и эндпоинта (`power_l1`, `voltage_l3`, `current_a`, `state_l2`, а также голые номера `switch_type_1`, `state_1`) собираются из базового title; неизвестное property и неизвестная база с суффиксом → en-only fallback. |
 | `_resolve_wb_type` | `TestResolveWbType` | Все ветки (numeric known/unknown, binary, enum, text, unknown → `None`). |
+
+### `tests/unit/test_composite.py`
+
+Проверяют [`wb/mqtt_zigbee/wb_converter/composite.py`](../wb/mqtt_zigbee/wb_converter/composite.py) — пути к полям composite.
+
+| Цель | Класс тестов | Что проверяется |
+|---|---|---|
+| `state_values` | `TestStateValues` | Вложенные и плоские значения; кнопки, отложенные поля и служебные ключи пропускаются. |
+| `command_payload` | `TestCommandPayload` | Поле отправляет весь объект, отложенное поле только запоминается, кнопка — сохранённые поля или `{}`. |
+| `stored_wb_values` | `TestStoredWbValues` | Известные значения полей в формате WB. |
 
 ### `tests/unit/test_controls.py`
 
@@ -284,7 +295,7 @@ make_expose(
 | `bridge/response/device/remove` | `TestRemoveResponse` | `status="ok"` создаёт `DeviceEventType.REMOVED`; `status="error"` игнорируется. |
 | `+/availability` | `TestDeviceAvailability` | `<base>/<name>/availability` с `{"state":"online"}` → callback `(name, True)`; служебный `bridge/availability` игнорируется. |
 | Per-device state | `TestPerDeviceState` | `state_topic` = `<base>/<name>` доставляет state-callbacks; парсинг JSON в dict. |
-| Outgoing commands | `TestOutgoingCommands` | `set_permit_join(True/False)` публикует `{"time": 254}` или `{"time": 0}`; `set_device_state` сериализует payload в JSON; `request_device_state` шлёт пустой `{}`; `refresh_device_list` снимает и заново ставит подписку на `bridge/devices`. |
+| Outgoing commands | `TestOutgoingCommands` | `set_permit_join(True/False)` публикует `{"time": 254}` или `{"time": 0}`; `set_device_state` сериализует payload в JSON; `request_device_state` шлёт `{}` или `{"<свойство>": ""}` для переданных свойств; `refresh_device_list` снимает и заново ставит подписку на `bridge/devices`. |
 | Топология подписок | `TestSubscriptionTopology` | `subscribe_device` идемпотентен; `unsubscribe_device` без подписки no-op; начальные подписки покрывают `bridge/+`, `+/availability`. |
 
 ### `tests/integration/test_wb_publisher.py`
@@ -312,6 +323,7 @@ End-to-end проверки [`wb/mqtt_zigbee/bridge.py`](../wb/mqtt_zigbee/bridg
 | Z2M → WB | `TestDeviceStatePropagation` | `<base>/<name>` (state) обновляет соответствующий контрол; `<base>/<name>/availability` обновляет `available`. |
 | WB → Z2M | `TestWbToZ2mCommands` | Команда на `/devices/<id>/controls/<c>/on` транслируется в `<base>/<name>/set` с правильным JSON; оптимистичное значение публикуется на сам контрол сразу. |
 | Pending command debounce | `TestPendingCommandDebounce` | В пределах 5с входящий state с расхождением подавляется; после истечения окна — публикуется; подтверждающий state очищает pending. |
+| Composite | `TestCompositeExposes` | Вложенное и плоское состояние доходит до полей; команда по полю отправляет весь объект; поля только для записи уходят по кнопке и сохраняются при переименовании; `/get` — только для неизвестных composite. |
 | Stats throttling | `TestStatsThrottling` | `Messages received` обновляется не чаще 1 раза в секунду (контролируется через `fake_clock`). |
 | События устройств | `TestDeviceEvents` | `device_leave` и `bridge/response/device/remove` удаляют устройство из WB и обновляют `Last left`; `device_renamed` переносит retained-состояние со старого `device_id` на новый. |
 | Stale cleanup | `TestStaleDeviceCleanup` | Устройство, пропавшее из нового списка `bridge/devices`, удаляется; пустой `bridge/devices` удаляет все устройства, `Device count` обнуляется. |

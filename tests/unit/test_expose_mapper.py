@@ -16,6 +16,7 @@ from wb.mqtt_zigbee.wb_converter.expose_mapper import (
     _map_color_feature,
     _map_leaf_feature,
     _resolve_wb_type,
+    gettable_composites,
     map_exposes_to_controls,
 )
 from wb.mqtt_zigbee.wb_converter.translations import ENUM_VALUE_TITLES, PROPERTY_TITLES
@@ -23,6 +24,8 @@ from wb.mqtt_zigbee.z2m.model import ExposeAccess, ExposeFeature, ExposeType
 
 READABLE = ExposeAccess.READ  # 0b001
 WRITABLE = ExposeAccess.READ | ExposeAccess.WRITE  # 0b011
+ALL_ACCESS = ExposeAccess.READ | ExposeAccess.WRITE | ExposeAccess.GET  # 0b111
+WRITE_ONLY = ExposeAccess.WRITE  # 0b010
 
 
 def make_expose(
@@ -203,6 +206,140 @@ class TestFlattenExpose:
         # mapping, which rejects because LIGHT is not a known leaf type.
         expose = make_expose(type=ExposeType.LIGHT, property="light", features=[])
         assert not _flatten_expose(expose)
+
+
+def make_composite(property: str, fields: list[str], access: int = ALL_ACCESS) -> ExposeFeature:
+    """Composite expose with its own property and binary fields."""
+    return make_expose(
+        type=ExposeType.COMPOSITE,
+        property=property,
+        access=access,
+        features=[
+            make_expose(type=ExposeType.BINARY, property=name, access=access, value_on=True, value_off=False)
+            for name in fields
+        ],
+    )
+
+
+class TestCompositeWithProperty:
+    """Composite exposes with their own property: z2m nests their fields under it."""
+
+    def test_readable_composite_fields_carry_path(self):
+        exposes = [
+            make_expose(
+                type=ExposeType.COVER,
+                features=[make_expose(type=ExposeType.NUMERIC, property="position", access=ALL_ACCESS)],
+            ),
+            make_composite("cover_mode", ["reversed", "calibration", "maintenance", "led"]),
+        ]
+        controls = map_exposes_to_controls(exposes)
+
+        assert controls["position"].path == ()
+        for name in ("reversed", "calibration", "maintenance", "led"):
+            assert controls[name].path == ("cover_mode", name)
+            assert not controls[name].deferred
+            assert not controls[name].readonly
+        assert "cover_mode" not in controls
+
+    def test_composite_inside_light_carries_path(self):
+        exposes = [
+            make_expose(
+                type=ExposeType.LIGHT,
+                features=[
+                    make_expose(type=ExposeType.BINARY, property="state", access=ALL_ACCESS, value_on="ON"),
+                    make_composite("level_config", ["execute_if_off"]),
+                ],
+            )
+        ]
+        controls = map_exposes_to_controls(exposes)
+
+        assert controls["state"].path == ()
+        assert controls["execute_if_off"].path == ("level_config", "execute_if_off")
+
+    def test_write_only_composite_gets_deferred_fields_and_send_button(self):
+        exposes = [make_composite("warning", ["strobe"], access=WRITE_ONLY)]
+        controls = map_exposes_to_controls(exposes)
+
+        strobe = controls["strobe"]
+        assert strobe.path == ("warning", "strobe")
+        assert strobe.deferred
+        assert not strobe.readonly
+        button = controls["warning"]
+        assert button.type == WbControlType.PUSHBUTTON
+        assert button.path == ("warning",)
+        assert not button.readonly
+        assert button.order > strobe.order
+
+    def test_composite_with_mixed_access_is_treated_as_write_only(self):
+        composite = make_composite("wifi_config", ["ssid", "password"])
+        composite.features[1].access = WRITE_ONLY
+        controls = map_exposes_to_controls([composite])
+
+        assert controls["ssid"].deferred
+        assert controls["password"].deferred
+        assert controls["wifi_config"].type == WbControlType.PUSHBUTTON
+
+    def test_field_named_like_top_level_property_gets_parent_prefix(self):
+        exposes = [
+            make_composite("cover_mode", ["led"]),
+            make_expose(type=ExposeType.BINARY, property="led", access=ALL_ACCESS),
+        ]
+        controls = map_exposes_to_controls(exposes)
+
+        assert controls["led"].path == ()
+        assert controls["cover_mode_led"].path == ("cover_mode", "led")
+        assert controls["cover_mode_led"].title == {"en": "Cover Mode Led"}
+
+    def test_field_named_like_its_composite_keeps_name_and_button_gets_send_suffix(self):
+        controls = map_exposes_to_controls(
+            [make_composite("pin_code", ["user", "pin_code"], access=WRITE_ONLY)]
+        )
+
+        assert controls["pin_code"].path == ("pin_code", "pin_code")
+        assert controls["pin_code"].type == WbControlType.SWITCH
+        assert controls["pin_code_send"].type == WbControlType.PUSHBUTTON
+        assert controls["pin_code_send"].path == ("pin_code",)
+
+    def test_same_field_in_two_composites_gets_prefix_on_second(self):
+        exposes = [
+            make_expose(
+                type=ExposeType.LIGHT,
+                features=[
+                    make_composite("level_config", ["execute_if_off"]),
+                    make_composite("color_options", ["execute_if_off"], access=WRITE_ONLY),
+                ],
+            )
+        ]
+        controls = map_exposes_to_controls(exposes)
+
+        assert controls["execute_if_off"].path == ("level_config", "execute_if_off")
+        assert controls["color_options_execute_if_off"].path == ("color_options", "execute_if_off")
+        assert controls["color_options_execute_if_off"].deferred
+
+
+class TestGettableComposites:
+    """Tests for ``gettable_composites`` — composites whose state can be requested via /get."""
+
+    def test_readable_composite_with_get_is_listed(self):
+        exposes = [
+            make_expose(type=ExposeType.LIGHT, features=[make_composite("level_config", ["execute_if_off"])]),
+            make_composite("cover_mode", ["reversed"]),
+        ]
+        assert gettable_composites(exposes) == ["level_config", "cover_mode"]
+
+    def test_composite_without_get_is_skipped(self):
+        assert not gettable_composites([make_composite("cover_mode", ["reversed"], access=WRITABLE)])
+
+    def test_composite_with_get_but_not_fully_readable_is_skipped(self):
+        composite = make_composite("wifi_config", ["ssid", "password"])
+        composite.features[1].access = WRITE_ONLY
+        assert not gettable_composites([composite])
+
+    def test_write_only_composite_is_skipped(self):
+        assert not gettable_composites([make_composite("warning", ["strobe"], access=WRITE_ONLY)])
+
+    def test_color_composite_is_skipped(self):
+        assert not gettable_composites([make_composite("color", ["x", "y"])])
 
 
 class TestMapLeafFeature:

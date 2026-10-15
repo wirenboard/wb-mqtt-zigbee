@@ -53,6 +53,16 @@ class WbControlError:
     READ_WRITE = READ + WRITE  # device fully unreachable: neither read nor write
 
 
+class ServiceControl:
+    """Control IDs of service controls added to every Zigbee device"""
+
+    AVAILABLE = "available"
+    DEVICE_TYPE = "device_type"
+    MODEL = "model"
+    POWER_SOURCE = "power_source"
+    LAST_SEEN = "last_seen"
+
+
 class BridgeControl:
     """Control IDs for the zigbee2mqtt bridge virtual device"""
 
@@ -92,6 +102,11 @@ class ControlMeta:
     # commands). Used to convert z2m milli-units (mV, mA) to the base SI units the
     # WB voltage/current control types display. 1.0 = no conversion.
     scale: float = 1.0
+    # Path to the value in z2m messages for fields of a composite with its own property,
+    # e.g. ("cover_mode", "reversed"). Empty: the value is top-level under the control id.
+    path: tuple[str, ...] = ()
+    # Field of a composite that is not fully readable: kept locally, sent only by its button.
+    deferred: bool = False
 
     def format_value(self, value: object) -> str:
         """Convert a z2m value to WB control string representation"""

@@ -151,7 +151,7 @@
 | `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, range для writable с min/max); двуязычные `title` через `_localized_title`, перевод значений enum через `_make_enum` |
 | `wb_converter/translations.py` | Таблицы переводов: `PROPERTY_TITLES` (названия контролов), `ENUM_VALUE_TITLES` (значения enum), `POWER_SOURCE_LABELS` |
 | `wb_converter/composite.py` | Чтение полей composite из состояния z2m и сборка команды `/set` |
-| `wb_converter/controls.py` | `WbControlType` (16 констант, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` |
+| `wb_converter/controls.py` | `WbControlType` (16 констант, вкл. RANGE, RGB), `BridgeControl`, `ServiceControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` |
 
 ---
 

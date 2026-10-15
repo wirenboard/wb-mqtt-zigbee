@@ -25,6 +25,7 @@ tests/
 ├── README.md                   # этот файл
 ├── unit/                       # unit-тесты (без I/O)
 │   ├── __init__.py
+│   ├── test_composite.py
 │   ├── test_config_loader.py
 │   ├── test_controls.py
 │   ├── test_expose_mapper.py
@@ -202,7 +203,7 @@ make_expose(
 
 | Цель | Класс тестов | Что проверяется |
 |---|---|---|
-| `state_values` | `TestStateValues` | Вложенные и плоские значения; кнопки, отложенные поля и служебные ключи пропускаются. |
+| `state_values` | `TestStateValues` | Вложенные и плоские значения; кнопки, служебные ключи и неотправленные правки пропускаются. |
 | `command_payload` | `TestCommandPayload` | Поле отправляет весь объект, отложенное поле только запоминается, кнопка — сохранённые поля или `{}`. |
 | `stored_wb_values` | `TestStoredWbValues` | Известные значения полей в формате WB. |
 
@@ -228,6 +229,7 @@ make_expose(
 |---|---|---|
 | `_str_or_none` | `TestStrOrNone` | `None` остаётся `None`; строка возвращается как есть; числа и `bool` приводятся к строке (`1`, `"True"`, `"False"`); пустая строка не превращается в `None`. |
 | `ExposeFeature.is_writable` | `TestExposeFeatureIsWritable` | `True`, если установлен бит `WRITE` (включая `READ|WRITE`); `False` для только `READ`, нулевого `access` и только `GET`. |
+| `is_readable`, `is_gettable` | `TestExposeFeatureIsReadableAndGettable` | Биты `READ` и `GET`; нечисловой `access` даёт `False`. |
 | `ExposeFeature.from_dict` | `TestExposeFeatureFromDict` | Полный лист со всеми полями; пустой dict даёт дефолты; `value_on`/`value_off` пропускаются через `_str_or_none` (включая `bool` → `"True"`/`"False"` и `None` → `None`); `enum` сохраняет `values`; `composite`/`light` рекурсивно парсит `features`, в т.ч. глубоко вложенные. |
 | `Z2MDevice.from_dict` | `TestZ2MDeviceFromDict` | Полное устройство с `definition`; пустой dict; `definition: null` (z2m возвращает так для неподдерживаемых устройств) — модель/вендор/exposes пустые; `definition` отсутствует целиком; `definition` без `exposes`. |
 | Defaults дата-классов | `TestDataclassDefaults` | `BridgeInfo` принимает обязательные поля; у `DeviceEvent.old_name` дефолт `""`; `default_factory` для `values`/`features`/`exposes` создаёт независимые контейнеры на каждый инстанс. |
@@ -323,7 +325,7 @@ End-to-end проверки [`wb/mqtt_zigbee/bridge.py`](../wb/mqtt_zigbee/bridg
 | Z2M → WB | `TestDeviceStatePropagation` | `<base>/<name>` (state) обновляет соответствующий контрол; `<base>/<name>/availability` обновляет `available`. |
 | WB → Z2M | `TestWbToZ2mCommands` | Команда на `/devices/<id>/controls/<c>/on` транслируется в `<base>/<name>/set` с правильным JSON; оптимистичное значение публикуется на сам контрол сразу. |
 | Pending command debounce | `TestPendingCommandDebounce` | В пределах 5с входящий state с расхождением подавляется; после истечения окна — публикуется; подтверждающий state очищает pending. |
-| Composite | `TestCompositeExposes` | Вложенное и плоское состояние доходит до полей; команда по полю отправляет весь объект; поля только для записи уходят по кнопке и сохраняются при переименовании; `/get` — только для неизвестных composite. |
+| Composite | `TestCompositeExposes` | Вложенное и плоское состояние доходит до полей; команда по полю отправляет весь объект; кнопка отправляет поля из правок и состояния, правки не откатываются до отправки; `/get` — только для неизвестных composite. |
 | Stats throttling | `TestStatsThrottling` | `Messages received` обновляется не чаще 1 раза в секунду (контролируется через `fake_clock`). |
 | События устройств | `TestDeviceEvents` | `device_leave` и `bridge/response/device/remove` удаляют устройство из WB и обновляют `Last left`; `device_renamed` переносит retained-состояние со старого `device_id` на новый. |
 | Stale cleanup | `TestStaleDeviceCleanup` | Устройство, пропавшее из нового списка `bridge/devices`, удаляется; пустой `bridge/devices` удаляет все устройства, `Device count` обнуляется. |

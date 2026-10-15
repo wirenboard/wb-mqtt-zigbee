@@ -39,15 +39,21 @@ class TestStateValues:
 
         assert not list(state_values(controls, {"led": True}))
 
-    def test_skips_buttons_deferred_fields_and_service_keys(self):
+    def test_flat_fallback_ignores_the_composite_object_itself(self):
+        controls = {"pin_code": switch(("pin_code", "pin_code"))}
+
+        assert not list(state_values(controls, {"pin_code": {"user": 1}}))
+
+    def test_reads_deferred_fields_and_skips_buttons_service_keys_and_skip_ids(self):
         controls = {
             "ssid": switch(("wifi_config", "ssid"), deferred=True),
+            "password": switch(("wifi_config", "password"), deferred=True),
             "wifi_config": button(("wifi_config",)),
             "last_seen": switch(),
         }
-        state = {"wifi_config": {"ssid": "home"}, "last_seen": 1}
+        state = {"wifi_config": {"ssid": "home", "password": "x"}, "last_seen": 1}
 
-        assert not list(state_values(controls, state))
+        assert [cid for cid, _meta, _value in state_values(controls, state, skip={"password"})] == ["ssid"]
 
 
 class TestCommandPayload:

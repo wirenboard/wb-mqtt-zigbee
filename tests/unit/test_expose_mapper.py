@@ -300,6 +300,22 @@ class TestCompositeWithProperty:
         assert controls["pin_code_send"].type == WbControlType.PUSHBUTTON
         assert controls["pin_code_send"].path == ("pin_code",)
 
+    def test_nested_composite_fields_carry_full_path_and_inner_access(self):
+        outer = make_composite("programmable_stepper_seq1", ["enabled"])
+        outer.features.append(make_composite("step_1", ["on"], access=WRITE_ONLY))
+        controls = map_exposes_to_controls([outer])
+
+        assert controls["on"].path == ("programmable_stepper_seq1", "step_1", "on")
+        assert controls["on"].deferred
+        assert controls["enabled"].deferred
+
+    def test_field_yields_its_name_to_a_later_send_button(self):
+        exposes = [make_composite("a", ["warning"]), make_composite("warning", ["strobe"], access=WRITE_ONLY)]
+        controls = map_exposes_to_controls(exposes)
+
+        assert controls["warning"].type == WbControlType.PUSHBUTTON
+        assert controls["a_warning"].path == ("a", "warning")
+
     def test_same_field_in_two_composites_gets_prefix_on_second(self):
         exposes = [
             make_expose(
@@ -334,9 +350,6 @@ class TestGettableComposites:
         composite = make_composite("wifi_config", ["ssid", "password"])
         composite.features[1].access = WRITE_ONLY
         assert not gettable_composites([composite])
-
-    def test_write_only_composite_is_skipped(self):
-        assert not gettable_composites([make_composite("warning", ["strobe"], access=WRITE_ONLY)])
 
     def test_color_composite_is_skipped(self):
         assert not gettable_composites([make_composite("color", ["x", "y"])])

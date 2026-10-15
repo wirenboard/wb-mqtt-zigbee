@@ -1273,6 +1273,24 @@ class TestCompositeExposes:
             "level_config": ""
         }
 
+    def test_exposes_change_reads_composites_again(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1")])
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+        updated = _z2m_curtain("curtain-1")
+        updated["definition"]["exposes"].append(_binary("child_lock"))
+
+        z2m_emu.devices([updated])
+
+        assert json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/get") or "null") == {
+            "cover_mode": ""
+        }
+
     def test_composite_field_published_top_level_is_read(
         self,
         bridge: Bridge,
@@ -1324,10 +1342,47 @@ class TestCompositeExposes:
 
         fake_broker.inject(f"{controls}/mode/on", "burglar")
         fake_broker.inject(f"{controls}/duration/on", "5")
+        button_messages = len(wb_observer.messages_on(f"{controls}/warning"))
         fake_broker.inject(f"{controls}/warning/on", WbBoolValue.TRUE)
 
         sent = json.loads(wb_observer.last_payload_on(f"{BASE}/siren-1/set") or "{}")
         assert sent == {"warning": {"mode": "burglar", "duration": 5}}
+        assert len(wb_observer.messages_on(f"{controls}/warning")) == button_messages
+
+    def test_send_button_keeps_fields_known_from_state(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        SONOFF detach_relay_mode: readable object, set-only fields, one bitmask from all fields
+        """
+        bridge.subscribe()
+        outlets = [
+            {**_binary(f"detach_relay_outlet{i}", access=0b010), "value_on": "ENABLE", "value_off": "DISABLE"}
+            for i in (1, 2)
+        ]
+        z2m_emu.devices([_z2m_device("relay-1", [_composite("detach_relay_mode", outlets)])])
+        device_state = {
+            "detach_relay_mode": {"detach_relay_outlet1": "DISABLE", "detach_relay_outlet2": "ENABLE"}
+        }
+        z2m_emu.device_state("relay-1", device_state)
+        controls = f"{DEVICES_PREFIX}/relay-1/controls"
+        assert wb_observer.retained(f"{controls}/detach_relay_outlet2") == WbBoolValue.TRUE
+
+        fake_broker.inject(f"{controls}/detach_relay_outlet1/on", WbBoolValue.TRUE)
+        z2m_emu.device_state("relay-1", device_state)  # an unrelated report must not undo the local edit
+        assert wb_observer.retained(f"{controls}/detach_relay_outlet1") == WbBoolValue.TRUE
+        fake_broker.inject(f"{controls}/detach_relay_mode/on", WbBoolValue.TRUE)
+
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/relay-1/set") or "{}")
+        assert sent == {
+            "detach_relay_mode": {"detach_relay_outlet1": "ENABLE", "detach_relay_outlet2": "ENABLE"}
+        }
+        z2m_emu.device_state("relay-1", device_state)  # once sent, the device state applies again
+        assert wb_observer.retained(f"{controls}/detach_relay_outlet1") == WbBoolValue.FALSE
 
     def test_write_only_fields_survive_rename(
         self,

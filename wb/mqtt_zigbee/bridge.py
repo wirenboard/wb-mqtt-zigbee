@@ -9,13 +9,25 @@ from wb_common.mqtt_client import MQTTClient
 
 from .mqtt_utils import is_safe_topic_name
 from .registered_device import PendingCommand, RegisteredDevice
+from .wb_converter.composite import (
+    command_payload,
+    remember,
+    state_values,
+    stored_wb_values,
+)
 from .wb_converter.controls import (
     BridgeControl,
     ControlMeta,
+    ServiceControl,
     WbBoolValue,
     WbControlError,
+    WbControlType,
 )
-from .wb_converter.expose_mapper import SERVICE_CONTROLS, map_exposes_to_controls
+from .wb_converter.expose_mapper import (
+    SERVICE_CONTROLS,
+    gettable_composites,
+    map_exposes_to_controls,
+)
 from .wb_converter.publisher import WbMqttDriver, build_display_name
 from .z2m.client import Z2MClient
 from .z2m.model import (
@@ -101,7 +113,9 @@ class Bridge:
         if self._known_devices:
             logger.info("Setting %d devices as unavailable", len(self._known_devices))
         for registered in self._known_devices.values():
-            self._mqtt_driver.publish_device_control(registered.device_id, "available", WbBoolValue.FALSE)
+            self._mqtt_driver.publish_device_control(
+                registered.device_id, ServiceControl.AVAILABLE, WbBoolValue.FALSE
+            )
             self._mqtt_driver.publish_device_error(
                 registered.device_id, _device_offline_error(registered.controls)
             )
@@ -124,7 +138,10 @@ class Bridge:
                 registered.device_id,
                 friendly_name,
                 registered.controls,
-                {**self._mqtt_driver.last_values(registered.device_id), "available": WbBoolValue.FALSE},
+                {
+                    **self._mqtt_driver.last_values(registered.device_id),
+                    ServiceControl.AVAILABLE: WbBoolValue.FALSE,
+                },
                 model=registered.z2m.model,
                 ieee_address=registered.z2m.ieee_address,
             )
@@ -137,7 +154,7 @@ class Bridge:
                 self._make_device_command_handler(registered),
             )
             self._z2m.subscribe_device(friendly_name)
-            self._z2m.request_device_state(friendly_name)
+            self._request_device_state(registered)
         self._z2m.refresh_device_list()
 
     def remove_all(self) -> MQTTMessageInfo:
@@ -289,10 +306,10 @@ class Bridge:
         )
         self._known_devices[device.friendly_name] = registered
         self._ieee_to_name[device.ieee_address] = device.friendly_name
-        self._publish_device_topics(registered, initial_values={"available": WbBoolValue.FALSE})
+        self._publish_device_topics(registered, initial_values={ServiceControl.AVAILABLE: WbBoolValue.FALSE})
         self._mqtt_driver.publish_device_error(device_id, _device_offline_error(controls))
         self._z2m.subscribe_device(device.friendly_name)
-        self._z2m.request_device_state(device.friendly_name)
+        self._request_device_state(registered)
 
     def _publish_device_topics(
         self, registered: RegisteredDevice, initial_values: Optional[dict[str, str]] = None
@@ -311,18 +328,28 @@ class Bridge:
             ieee_address=device.ieee_address,
         )
         if device.type:
-            self._mqtt_driver.publish_device_control(registered.device_id, "device_type", device.type)
+            self._mqtt_driver.publish_device_control(
+                registered.device_id, ServiceControl.DEVICE_TYPE, device.type
+            )
         if device.model:
-            self._mqtt_driver.publish_device_control(registered.device_id, "model", device.model)
+            self._mqtt_driver.publish_device_control(registered.device_id, ServiceControl.MODEL, device.model)
         if device.power_source:
             self._mqtt_driver.publish_device_control(
-                registered.device_id, "power_source", device.power_source
+                registered.device_id, ServiceControl.POWER_SOURCE, device.power_source
             )
         self._mqtt_driver.subscribe_device_commands(
             registered.device_id,
             registered.controls,
             self._make_device_command_handler(registered),
         )
+
+    def _request_device_state(self, registered: RegisteredDevice) -> None:
+        """Request device state, asking z2m to read readable composites not known yet."""
+        device = registered.z2m
+        missing = [
+            prop for prop in gettable_composites(device.exposes) if prop not in registered.composite_values
+        ]
+        self._z2m.request_device_state(device.friendly_name, missing)
 
     def _teardown_device_id(self, registered: RegisteredDevice) -> None:
         """Unsubscribe commands and clear all retained WB topics of the current device_id"""
@@ -338,8 +365,8 @@ class Bridge:
         availability we saw, or "unreachable" if we have never heard from the device. z2m
         only republishes availability when it changes, so publishing a blanket "offline"
         here would leave a healthy device flagged with an error until it next changes state
-        — a false alarm on an ordinary rename. Also ask z2m for the current state so the
-        control values come back at once instead of staying blank.
+        — a false alarm on an ordinary rename. Known composite field values are restored too:
+        they are not re-read via /get.
         """
         # pending_commands are deliberately kept: they expire on their own and still
         # suppress a pre-command echo from z2m, so a command issued just before the move
@@ -348,11 +375,15 @@ class Bridge:
         if registered.is_online is None:
             registered.availability_received = False
         available = WbBoolValue.TRUE if is_online else WbBoolValue.FALSE
-        self._publish_device_topics(registered, initial_values={"available": available})
+        initial_values = {
+            **stored_wb_values(registered.controls, registered.composite_values),
+            ServiceControl.AVAILABLE: available,
+        }
+        self._publish_device_topics(registered, initial_values=initial_values)
         self._mqtt_driver.publish_device_error(
             registered.device_id, "" if is_online else _device_offline_error(registered.controls)
         )
-        self._z2m.request_device_state(registered.z2m.friendly_name)
+        self._request_device_state(registered)
 
     def _update_device(self, device: Z2MDevice) -> None:
         """Update metadata and controls for an already-registered device.
@@ -378,6 +409,8 @@ class Bridge:
                 self._mqtt_driver.remove_device(registered.device_id, registered.controls)
                 registered.controls = new_controls
                 registered.z2m = device
+                registered.composite_values = {}
+                registered.deferred_edits = set()
                 self._mqtt_driver.publish_device(
                     registered.device_id,
                     device.friendly_name,
@@ -390,17 +423,19 @@ class Bridge:
                     new_controls,
                     self._make_device_command_handler(registered),
                 )
-                self._z2m.request_device_state(device.friendly_name)
+                self._request_device_state(registered)
         # Publish service-control values AFTER any re-registration: remove_device()
         # above wipes the device's retained topics, so publishing these earlier would
         # leave device_type/model/power_source blank until exposes next stabilize.
         if device.type:
-            self._mqtt_driver.publish_device_control(registered.device_id, "device_type", device.type)
+            self._mqtt_driver.publish_device_control(
+                registered.device_id, ServiceControl.DEVICE_TYPE, device.type
+            )
         if device.model:
-            self._mqtt_driver.publish_device_control(registered.device_id, "model", device.model)
+            self._mqtt_driver.publish_device_control(registered.device_id, ServiceControl.MODEL, device.model)
         if device.power_source:
             self._mqtt_driver.publish_device_control(
-                registered.device_id, "power_source", device.power_source
+                registered.device_id, ServiceControl.POWER_SOURCE, device.power_source
             )
 
     def _on_device_availability(self, friendly_name: str, available: bool) -> None:
@@ -413,7 +448,7 @@ class Bridge:
         registered.availability_received = True
         registered.is_online = available
         wb_value = WbBoolValue.TRUE if available else WbBoolValue.FALSE
-        self._mqtt_driver.publish_device_control(registered.device_id, "available", wb_value)
+        self._mqtt_driver.publish_device_control(registered.device_id, ServiceControl.AVAILABLE, wb_value)
         self._mqtt_driver.publish_device_error(
             registered.device_id, "" if available else _device_offline_error(registered.controls)
         )
@@ -427,13 +462,11 @@ class Bridge:
             logger.debug("State update for unknown device '%s', skipping", friendly_name)
             return
         now = time.monotonic()
-        for prop, meta in registered.controls.items():
-            if prop not in state or prop in ("last_seen", "update"):
-                continue
+        for prop, meta, value in state_values(registered.controls, state, skip=registered.deferred_edits):
             try:
-                wb_value = meta.format_value(state[prop])
+                wb_value = meta.format_value(value)
             except Exception:  # pylint: disable=broad-except
-                logger.warning("Failed to format %s/%s: %r", friendly_name, prop, state[prop])
+                logger.warning("Failed to format %s/%s: %r", friendly_name, prop, value)
                 continue
             pending = registered.pending_commands.get(prop)
             if pending is not None:
@@ -454,14 +487,19 @@ class Bridge:
                 logger.debug(
                     "Debounce expired, publishing real value: %s/%s = %s", friendly_name, prop, wb_value
                 )
+            remember(registered.composite_values, meta, value)
             self._mqtt_driver.publish_device_control(registered.device_id, prop, wb_value)
         if "last_seen" in state:
             formatted = _format_last_seen(state["last_seen"])
             if formatted:
-                self._mqtt_driver.publish_device_control(registered.device_id, "last_seen", formatted)
+                self._mqtt_driver.publish_device_control(
+                    registered.device_id, ServiceControl.LAST_SEEN, formatted
+                )
         if not registered.availability_received:
             registered.is_online = True
-            self._mqtt_driver.publish_device_control(registered.device_id, "available", WbBoolValue.TRUE)
+            self._mqtt_driver.publish_device_control(
+                registered.device_id, ServiceControl.AVAILABLE, WbBoolValue.TRUE
+            )
             self._mqtt_driver.publish_device_error(registered.device_id, "")
         self._update_stats()
 
@@ -476,16 +514,20 @@ class Bridge:
             meta = registered.controls.get(control_id)
             if meta is None or self._stopping:
                 return
-            z2m_value = meta.parse_wb_value(wb_value)
-            payload = {control_id: z2m_value}
+            payload = command_payload(control_id, meta, wb_value, registered.composite_values)
+            if payload is None:
+                registered.deferred_edits.add(control_id)
+                self._mqtt_driver.publish_device_control(registered.device_id, control_id, wb_value)
+                return
             logger.info(
-                "Device command: %s/%s = %s → %s",
-                registered.z2m.friendly_name,
-                control_id,
-                wb_value,
-                z2m_value,
+                "Device command: %s/%s = %s → %s", registered.z2m.friendly_name, control_id, wb_value, payload
             )
             self._z2m.set_device_state(registered.z2m.friendly_name, payload)
+            if meta.type == WbControlType.PUSHBUTTON:
+                registered.deferred_edits.difference_update(
+                    cid for cid, m in registered.controls.items() if m.path[: len(meta.path)] == meta.path
+                )
+                return
             registered.pending_commands[control_id] = PendingCommand(
                 wb_value=wb_value, timestamp=time.monotonic()
             )
@@ -644,7 +686,9 @@ class Bridge:
         registered.is_online = False
         registered.availability_received = False
         self._mqtt_driver.unsubscribe_device_commands(registered.device_id, registered.controls)
-        self._mqtt_driver.publish_device_control(registered.device_id, "available", WbBoolValue.FALSE)
+        self._mqtt_driver.publish_device_control(
+            registered.device_id, ServiceControl.AVAILABLE, WbBoolValue.FALSE
+        )
         self._mqtt_driver.publish_device_error(
             registered.device_id, _device_offline_error(registered.controls)
         )

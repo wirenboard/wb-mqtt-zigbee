@@ -3,7 +3,7 @@ import re
 from typing import Optional
 
 from ..z2m.model import ExposeFeature, ExposeProperty, ExposeType
-from .controls import ControlMeta, WbControlType
+from .controls import ControlMeta, ServiceControl, WbControlType
 from .translations import ENUM_VALUE_TITLES, POWER_SOURCE_LABELS, PROPERTY_TITLES
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,13 @@ NESTED_TYPES = {
 }
 
 # Service controls always added by map_exposes_to_controls regardless of exposes
-SERVICE_CONTROLS = {"available", "device_type", "model", "power_source", "last_seen"}
+SERVICE_CONTROLS = {
+    ServiceControl.AVAILABLE,
+    ServiceControl.DEVICE_TYPE,
+    ServiceControl.MODEL,
+    ServiceControl.POWER_SOURCE,
+    ServiceControl.LAST_SEEN,
+}
 
 
 def map_exposes_to_controls(
@@ -56,8 +62,8 @@ def map_exposes_to_controls(
 ) -> dict[str, ControlMeta]:
     """Convert a list of z2m expose features into a flat dict of WB controls.
 
-    Recursively flattens all exposes, deduplicates by property name,
-    assigns sequential order, and appends service controls (available, device_type, last_seen).
+    Recursively flattens all exposes, deduplicates top-level properties, prefixes taken composite
+    field names with their path, assigns order, and appends service controls (available, last_seen).
 
     Example:
 
@@ -76,13 +82,19 @@ def map_exposes_to_controls(
     """
     controls: dict[str, ControlMeta] = {}
     order = 1
-    for expose in exposes:
-        for prop, meta in _flatten_expose(expose):
-            if prop not in controls:
-                meta.order = order
-                controls[prop] = meta
-                order += 1
-    controls["available"] = ControlMeta(
+    flat = [pair for expose in exposes for pair in _flatten_expose(expose)]
+    # Top-level properties and composite send buttons keep their names; fields yield.
+    reserved = {prop for prop, meta in flat if not meta.path or meta.type == WbControlType.PUSHBUTTON}
+    for prop, meta in flat:
+        control_id = prop
+        if meta.path and meta.type != WbControlType.PUSHBUTTON and (prop in reserved or prop in controls):
+            control_id = "_".join(meta.path)
+            meta.title = _localized_title(control_id)
+        if control_id not in controls:
+            meta.order = order
+            controls[control_id] = meta
+            order += 1
+    controls[ServiceControl.AVAILABLE] = ControlMeta(
         type=WbControlType.SWITCH,
         readonly=True,
         order=order,
@@ -90,7 +102,7 @@ def map_exposes_to_controls(
     )
     order += 1
     if device_type:
-        controls["device_type"] = ControlMeta(
+        controls[ServiceControl.DEVICE_TYPE] = ControlMeta(
             type=WbControlType.TEXT,
             readonly=True,
             order=order,
@@ -103,7 +115,7 @@ def map_exposes_to_controls(
         )
         order += 1
     if model:
-        controls["model"] = ControlMeta(
+        controls[ServiceControl.MODEL] = ControlMeta(
             type=WbControlType.TEXT,
             readonly=True,
             order=order,
@@ -111,7 +123,7 @@ def map_exposes_to_controls(
         )
         order += 1
     if power_source:
-        controls["power_source"] = ControlMeta(
+        controls[ServiceControl.POWER_SOURCE] = ControlMeta(
             type=WbControlType.TEXT,
             readonly=True,
             order=order,
@@ -119,13 +131,26 @@ def map_exposes_to_controls(
             enum=POWER_SOURCE_LABELS,
         )
         order += 1
-    controls["last_seen"] = ControlMeta(
+    controls[ServiceControl.LAST_SEEN] = ControlMeta(
         type=WbControlType.TEXT,
         readonly=True,
         order=order,
         title={"en": "Last Seen", "ru": "Последняя активность"},
     )
     return controls
+
+
+def gettable_composites(exposes: list[ExposeFeature]) -> list[str]:
+    """
+    Return properties of readable composites that z2m can read from the device via /get."""
+    result = []
+    for expose in exposes:
+        if expose.type == ExposeType.COMPOSITE and expose.property and expose.property != "color":
+            if expose.is_gettable and _fully_readable(expose):
+                result.append(expose.property)
+        elif expose.type in NESTED_TYPES:
+            result.extend(gettable_composites(expose.features))
+    return result
 
 
 def _flatten_expose(expose: ExposeFeature) -> list[tuple[str, ControlMeta]]:
@@ -155,11 +180,47 @@ def _flatten_expose(expose: ExposeFeature) -> list[tuple[str, ControlMeta]]:
         # Composite "color" expose (color_xy/color_hs) → single RGB control
         if expose.type == ExposeType.COMPOSITE and expose.property == "color":
             return _map_color_feature(expose)
+        if expose.type == ExposeType.COMPOSITE and expose.property:
+            return _map_composite_with_property(expose)
         result = []
         for sub in expose.features:
             result.extend(_flatten_expose(sub))
         return result
     return _map_leaf_feature(expose)
+
+
+def _map_composite_with_property(expose: ExposeFeature) -> list[tuple[str, ControlMeta]]:
+    """
+    Map fields nested under the composite's property, each with the path to its value.
+
+    A composite that is not fully readable gets deferred fields and a pushbutton to send them.
+    """
+    deferred = not _fully_readable(expose)
+    result = []
+    for sub in expose.features:
+        for prop, meta in _flatten_expose(sub):
+            meta.path = (expose.property, *(meta.path or (prop,)))
+            meta.deferred = meta.deferred or deferred
+            result.append((prop, meta))
+    if deferred and result:
+        # A field named like its composite keeps its control id; the button takes another.
+        button_id = expose.property
+        if any(prop == expose.property for prop, _meta in result):
+            button_id = f"{expose.property}_send"
+        button = ControlMeta(
+            type=WbControlType.PUSHBUTTON,
+            readonly=False,
+            title=_localized_title(button_id),
+            path=(expose.property,),
+        )
+        result.append((button_id, button))
+    return result
+
+
+def _fully_readable(expose: ExposeFeature) -> bool:
+    if not expose.features:
+        return expose.is_readable
+    return all(_fully_readable(sub) for sub in expose.features)
 
 
 def _map_leaf_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:

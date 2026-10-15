@@ -1,3 +1,10 @@
+wb-mqtt-zigbee (1.5.1) stable; urgency=medium
+
+  * Read and send composite exposes with their own property (cover_mode, warning, pin_code);
+    fields of a composite that is not fully readable are sent by a button named after it
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Thu, 15 Oct 2026 12:14:02 +0300
+
 wb-mqtt-zigbee (1.5.0) stable; urgency=medium
 
   * Wait for an unavailable MQTT broker instead of exiting; exit with 2 when the

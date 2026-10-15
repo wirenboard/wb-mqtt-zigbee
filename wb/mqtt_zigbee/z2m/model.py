@@ -82,6 +82,14 @@ class ExposeFeature:
     def is_writable(self) -> bool:
         return bool(self.access & ExposeAccess.WRITE)
 
+    @property
+    def is_readable(self) -> bool:
+        return isinstance(self.access, int) and bool(self.access & ExposeAccess.READ)
+
+    @property
+    def is_gettable(self) -> bool:
+        return isinstance(self.access, int) and bool(self.access & ExposeAccess.GET)
+
     @staticmethod
     def from_dict(data: dict) -> "ExposeFeature":
         return ExposeFeature(

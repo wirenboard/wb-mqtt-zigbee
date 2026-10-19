@@ -1,6 +1,6 @@
 wb-mqtt-zigbee (1.5.1) stable; urgency=medium
 
-  *   * Read and send composite exposes (cover_mode, warning) as a whole object
+  * Read and send composite exposes (cover_mode, warning) as a whole object
 
  -- Victor Fedorov <victor.fedorov@wirenboard.com>  Thu, 15 Oct 2026 12:14:02 +0300
 

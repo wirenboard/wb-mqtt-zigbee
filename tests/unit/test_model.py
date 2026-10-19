@@ -43,7 +43,7 @@ class TestExposeFeatureIsWritable:
 
 
 class TestExposeFeatureIsReadableAndGettable:
-    """``is_readable`` / ``is_gettable`` check the READ / GET bits and tolerate a broken access."""
+    """``is_readable`` / ``is_gettable`` check the READ / GET bits."""
 
     def test_bits(self):
         feat = ExposeFeature(type="numeric", name="x", property="x", access=ExposeAccess.READ)
@@ -52,11 +52,6 @@ class TestExposeFeatureIsReadableAndGettable:
         feat.access = ExposeAccess.GET
         assert feat.is_readable is False
         assert feat.is_gettable is True
-
-    def test_non_integer_access_is_neither(self):
-        feat = ExposeFeature(type="composite", name="x", property="x", access=None)  # type: ignore[arg-type]
-        assert feat.is_readable is False
-        assert feat.is_gettable is False
 
 
 class TestExposeFeatureFromDict:

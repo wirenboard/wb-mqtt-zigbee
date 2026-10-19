@@ -238,6 +238,7 @@ class TestCompositeWithProperty:
         for name in ("reversed", "calibration", "maintenance", "led"):
             assert controls[name].path == ("cover_mode", name)
             assert not controls[name].deferred
+            assert controls[name].gettable
             assert not controls[name].readonly
         assert "cover_mode" not in controls
 
@@ -267,6 +268,7 @@ class TestCompositeWithProperty:
         button = controls["warning"]
         assert button.type == WbControlType.PUSHBUTTON
         assert button.path == ("warning",)
+        assert not button.gettable
         assert not button.readonly
         assert button.order > strobe.order
 
@@ -346,10 +348,10 @@ class TestGettableComposites:
     def test_composite_without_get_is_skipped(self):
         assert not gettable_composites([make_composite("cover_mode", ["reversed"], access=WRITABLE)])
 
-    def test_composite_with_get_but_not_fully_readable_is_skipped(self):
-        composite = make_composite("wifi_config", ["ssid", "password"])
-        composite.features[1].access = WRITE_ONLY
-        assert not gettable_composites([composite])
+    def test_composite_with_get_and_set_only_fields_is_listed(self):
+        composite = make_composite("detach_relay_mode", ["outlet1"])
+        composite.features[0].access = WRITE_ONLY
+        assert gettable_composites([composite]) == ["detach_relay_mode"]
 
     def test_color_composite_is_skipped(self):
         assert not gettable_composites([make_composite("color", ["x", "y"])])

@@ -109,7 +109,7 @@
 - **Динамическое построение контролов из `exposes`** вместо захардкоженных маппингов v1. Это автоматически даёт поддержку управления и новых типов устройств без изменения кода. Отображаемое имя контрола (`title`) берётся из курируемого двуязычного словаря `PROPERTY_TITLES` (en+ru) в `translations.py`; для endpoint-вариантов (`power_l1`, `voltage_a`, а также с голым номером — `switch_type_1`) имя собирается из базового плюс метка эндпоинта; для property не из словаря — fallback на английское имя, механически полученное из property (`noise_detect_level` → `"Noise Detect Level"`).
 - **Перевод значений enum**: значения enum-контролов переводятся таблицей `ENUM_VALUE_TITLES` из `translations.py` (ключ — свойство, затем само значение). Подтопик `meta/enum` публикуется в конвенционной форме `{значение: {"en", "ru"}}`; значение без перевода остаётся с одним ключом `en`: многословное приводится к читаемому виду (`battery_full` → «Battery Full»), одиночное — например сокращение `usb` — сохраняется дословно, как показывалось и раньше. Значение с индексом кнопки (`on_1`, `brightness_stop_l2`) собирается из базового плюс метка эндпоинта — так же, как это делается для имён контролов. Ключ словаря — само значение контрола, поэтому выбор пункта отправляет обратно ровно ту строку, которую ждёт zigbee2mqtt.
 - **Поддержка цветных ламп**: composite expose `color` (color_xy / color_hs) маппится в единый WB-контрол типа `rgb`. z2m всегда отдаёт оба представления цвета (`hue`/`saturation` и `x`/`y`), используем HS→RGB через `colorsys.hsv_to_rgb()`. Результат — WB формат `"R;G;B"`, homeui показывает color picker. Brightness выделен в отдельный контрол (V=1.0 в HSV).
-- **Composite со своим `property`** (`cover_mode`, `warning`): поля лежат во вложенном объекте, команда отправляет объект целиком с последними известными значениями. Поля не целиком читаемого composite отправляются кнопкой с его именем. Логика — в `wb_converter/composite.py`.
+- **Composite со своим `property`** (`cover_mode`, `warning`): поля лежат во вложенном объекте, команда отправляет объект целиком; если объект ещё не прочитан, он сначала запрашивается через `/get`. Поля не целиком читаемого composite отправляет кнопка с его именем (`<property>_send`, если имя занято полем). Маппинг — в `expose_mapper.py`, состояние и сборка команды — в `composite.py`.
 - **Сервисные контролы устройств**: к каждому устройству автоматически добавляются контролы `available` (онлайн/офлайн статус), `device_type` (тип в z2m сети: Router/EndDevice/Coordinator с русской локализацией) и `last_seen` (время последней активности, конвертация из epoch/ISO в локальное время).
 - **Event-driven внутри сервиса**: `z2m/client.py` парсит входящие MQTT-сообщения и генерирует события, `bridge.py` реагирует на них и вызывает `wb_converter/publisher.py`. Обратный путь: `publisher.py` подписывается на `/on`-топики WB, команды через callback передаются в `bridge.py`, который публикует в z2m.
 - **Минимум зависимостей**: только `paho-mqtt`, никаких фреймворков.
@@ -150,7 +150,7 @@
 | `wb_converter/publisher.py` | `WbMqttDriver`: публикация/удаление устройств, JSON `/meta`, команды |
 | `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, range для writable с min/max); двуязычные `title` через `_localized_title`, перевод значений enum через `_make_enum` |
 | `wb_converter/translations.py` | Таблицы переводов: `PROPERTY_TITLES` (названия контролов), `ENUM_VALUE_TITLES` (значения enum), `POWER_SOURCE_LABELS` |
-| `wb_converter/composite.py` | Чтение полей composite из состояния z2m и сборка команды `/set` |
+| `wb_converter/composite.py` | `CompositeState`: значения composite, неотправленные правки, сборка команды `/set` |
 | `wb_converter/controls.py` | `WbControlType` (16 констант, вкл. RANGE, RGB), `BridgeControl`, `ServiceControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` |
 
 ---
@@ -180,7 +180,7 @@ on_connect (реконнект):
       опубликованными значениями контролов (publisher.last_values), но с available=offline
       и meta/error — пока zigbee2mqtt не подтвердит его (availability или свежий state)
     → сбрасывает availability_received для восстановления fallback
-    → заново подписывается на /on-команды устройства и на его z2m-топик, запрашивает state
+    → заново подписывается на /on-команды устройства и на его z2m-топик
     → перезапрашивает bridge/devices
 ```
 

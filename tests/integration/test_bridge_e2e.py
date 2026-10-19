@@ -120,6 +120,81 @@ def _z2m_switch(friendly_name: str, ieee: str = "0x0002") -> dict[str, Any]:
     }
 
 
+def _binary(name: str, access: int = 0b111) -> dict[str, Any]:
+    return {
+        "type": "binary",
+        "name": name,
+        "property": name,
+        "access": access,
+        "value_on": True,
+        "value_off": False,
+    }
+
+
+def _numeric(name: str, access: int = 0b111, **extra: Any) -> dict[str, Any]:
+    return {"type": "numeric", "name": name, "property": name, "access": access, **extra}
+
+
+def _enum(name: str, values: list[str], access: int = 0b111) -> dict[str, Any]:
+    return {"type": "enum", "name": name, "property": name, "access": access, "values": values}
+
+
+def _composite(name: str, features: list[dict], access: int = 0b111) -> dict[str, Any]:
+    return {"type": "composite", "name": name, "property": name, "access": access, "features": features}
+
+
+def _z2m_device(friendly_name: str, exposes: list[dict], ieee: str = "0x0003") -> dict[str, Any]:
+    return {
+        "ieee_address": ieee,
+        "friendly_name": friendly_name,
+        "type": "Router",
+        "definition": {"model": "MODEL-3", "vendor": "Vendor", "description": "", "exposes": exposes},
+    }
+
+
+def _z2m_curtain(friendly_name: str) -> dict[str, Any]:
+    """
+    Yandex YNDX-00591 curtain: cover plus readable composite cover_mode (zhc 26.105.0)
+    """
+    cover = {
+        "type": "cover",
+        "features": [
+            _enum("state", ["OPEN", "CLOSE", "STOP"], access=0b011),
+            _numeric("position", unit="%", value_min=0, value_max=100),
+        ],
+    }
+    fields = [_binary(name) for name in ("reversed", "calibration", "maintenance", "led")]
+    return _z2m_device(friendly_name, [cover, _composite("cover_mode", fields)])
+
+
+def _z2m_dimmer(friendly_name: str) -> dict[str, Any]:
+    """
+    Dimmer with composite level_config inside light (part of 552-72201 exposes, zhc 26.105.0)
+    """
+    state = {
+        "type": "binary",
+        "name": "state",
+        "property": "state",
+        "access": 0b111,
+        "value_on": "ON",
+        "value_off": "OFF",
+    }
+    level_config = _composite("level_config", [_numeric("on_off_transition_time"), _binary("execute_if_off")])
+    return _z2m_device(friendly_name, [{"type": "light", "features": [state, level_config]}], ieee="0x0004")
+
+
+def _z2m_siren(friendly_name: str) -> dict[str, Any]:
+    """
+    Siren with write-only composite warning (part of LDSENK07 exposes, zhc 26.105.0)
+    """
+    fields = [
+        _enum("mode", ["stop", "burglar", "fire", "emergency"], access=0b010),
+        _binary("strobe", access=0b010),
+        _numeric("duration", access=0b010, unit="s"),
+    ]
+    return _z2m_device(friendly_name, [_composite("warning", fields, access=0b010)], ieee="0x0005")
+
+
 class TestBridgeInitialization:
     """
     `Bridge.subscribe()` initial publishes and bridge/state, bridge/info, bridge/log handling
@@ -583,8 +658,6 @@ class TestDeviceRegistration:
         # Not silently "healthy": marked unavailable with the matching device error.
         assert wb_observer.retained(f"{moved}/controls/available") == WbBoolValue.FALSE
         assert wb_observer.retained(f"{moved}/meta/error") == WbControlError.READ
-        # And a fresh state request went out, so real values come back at once.
-        assert wb_observer.has_publish_on(f"{BASE}/lamp.1/get")
         # A later availability update is still honoured after the move.
         z2m_emu.device_availability("lamp.1", online=True)
         assert wb_observer.retained(f"{moved}/controls/available") == WbBoolValue.TRUE
@@ -1037,81 +1110,6 @@ class TestPendingCommandDebounce:
         assert wb_observer.retained(state_topic) == WbBoolValue.FALSE
 
 
-def _binary(name: str, access: int = 0b111) -> dict[str, Any]:
-    return {
-        "type": "binary",
-        "name": name,
-        "property": name,
-        "access": access,
-        "value_on": True,
-        "value_off": False,
-    }
-
-
-def _numeric(name: str, access: int = 0b111, **extra: Any) -> dict[str, Any]:
-    return {"type": "numeric", "name": name, "property": name, "access": access, **extra}
-
-
-def _enum(name: str, values: list[str], access: int = 0b111) -> dict[str, Any]:
-    return {"type": "enum", "name": name, "property": name, "access": access, "values": values}
-
-
-def _composite(name: str, features: list[dict], access: int = 0b111) -> dict[str, Any]:
-    return {"type": "composite", "name": name, "property": name, "access": access, "features": features}
-
-
-def _z2m_device(friendly_name: str, exposes: list[dict], ieee: str = "0x0003") -> dict[str, Any]:
-    return {
-        "ieee_address": ieee,
-        "friendly_name": friendly_name,
-        "type": "Router",
-        "definition": {"model": "MODEL-3", "vendor": "Vendor", "description": "", "exposes": exposes},
-    }
-
-
-def _z2m_curtain(friendly_name: str) -> dict[str, Any]:
-    """
-    Yandex YNDX-00591 curtain: cover plus readable composite cover_mode (zhc 26.105.0)
-    """
-    cover = {
-        "type": "cover",
-        "features": [
-            _enum("state", ["OPEN", "CLOSE", "STOP"], access=0b011),
-            _numeric("position", unit="%", value_min=0, value_max=100),
-        ],
-    }
-    fields = [_binary(name) for name in ("reversed", "calibration", "maintenance", "led")]
-    return _z2m_device(friendly_name, [cover, _composite("cover_mode", fields)])
-
-
-def _z2m_dimmer(friendly_name: str) -> dict[str, Any]:
-    """
-    Dimmer with composite level_config inside light (part of 552-72201 exposes, zhc 26.105.0)
-    """
-    state = {
-        "type": "binary",
-        "name": "state",
-        "property": "state",
-        "access": 0b111,
-        "value_on": "ON",
-        "value_off": "OFF",
-    }
-    level_config = _composite("level_config", [_numeric("on_off_transition_time"), _binary("execute_if_off")])
-    return _z2m_device(friendly_name, [{"type": "light", "features": [state, level_config]}], ieee="0x0004")
-
-
-def _z2m_siren(friendly_name: str) -> dict[str, Any]:
-    """
-    Siren with write-only composite warning (part of LDSENK07 exposes, zhc 26.105.0)
-    """
-    fields = [
-        _enum("mode", ["stop", "burglar", "fire", "emergency"], access=0b010),
-        _binary("strobe", access=0b010),
-        _numeric("duration", access=0b010, unit="s"),
-    ]
-    return _z2m_device(friendly_name, [_composite("warning", fields, access=0b010)], ieee="0x0005")
-
-
 class TestCompositeExposes:
     """
     Composite exposes with their own property: state and commands nest fields under it.
@@ -1119,21 +1117,31 @@ class TestCompositeExposes:
 
     COVER_MODE = {"reversed": False, "calibration": False, "maintenance": False, "led": True}
 
-    def test_registration_requests_readable_composites(
+    def test_first_field_command_reads_the_composite_and_sends_it_with_the_edit(
         self,
         bridge: Bridge,
         z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
         wb_observer: WbObserver,
     ) -> None:
         """
-        Commands need every cover_mode field, so its state is read from the device at once
+        zhc builds one bitmask from all cover_mode fields, so an unknown object is read first
         """
         bridge.subscribe()
-
         z2m_emu.devices([_z2m_curtain("curtain-1")])
+        assert not wb_observer.has_publish_on(f"{BASE}/curtain-1/get")
 
-        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/get") or "null")
-        assert sent == {"cover_mode": ""}
+        fake_broker.inject(f"{DEVICES_PREFIX}/curtain-1/controls/reversed/on", WbBoolValue.TRUE)
+
+        assert json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/get") or "null") == {
+            "cover_mode": ""
+        }
+        assert not wb_observer.has_publish_on(f"{BASE}/curtain-1/set")
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/curtain-1/controls/reversed") == WbBoolValue.TRUE
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/set") or "{}")
+        assert sent == {"cover_mode": {**self.COVER_MODE, "reversed": True}}
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/curtain-1/controls/reversed") == WbBoolValue.TRUE
 
     def test_nested_state_reaches_field_controls(
         self,
@@ -1201,6 +1209,7 @@ class TestCompositeExposes:
     ) -> None:
         bridge.subscribe()
         z2m_emu.devices([_z2m_curtain("curtain-1")])
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
         reversed_topic = f"{DEVICES_PREFIX}/curtain-1/controls/reversed"
 
         fake_clock[0] = 100.0
@@ -1256,7 +1265,7 @@ class TestCompositeExposes:
         sent = json.loads(wb_observer.last_payload_on(f"{BASE}/dev-1/set") or "{}")
         assert sent == {"cover_mode": {"led": True}}
 
-    def test_republish_reads_only_composites_not_known_yet(
+    def test_republish_and_rename_do_not_read_composites(
         self,
         bridge: Bridge,
         z2m_emu: Z2mEmulator,
@@ -1264,19 +1273,18 @@ class TestCompositeExposes:
     ) -> None:
         bridge.subscribe()
         z2m_emu.devices([_z2m_curtain("curtain-1"), _z2m_dimmer("dimmer-1")])
-        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
 
         bridge.republish()
+        z2m_emu.device_renamed("curtain-1", "curtain-2")
 
-        assert json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/get") or "null") == {}
-        assert json.loads(wb_observer.last_payload_on(f"{BASE}/dimmer-1/get") or "null") == {
-            "level_config": ""
-        }
+        assert not wb_observer.has_publish_on(f"{BASE}/dimmer-1/get")
+        assert not wb_observer.has_publish_on(f"{BASE}/curtain-2/get")
 
-    def test_exposes_change_reads_composites_again(
+    def test_exposes_change_forgets_composite_values(
         self,
         bridge: Bridge,
         z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
         wb_observer: WbObserver,
     ) -> None:
         bridge.subscribe()
@@ -1286,7 +1294,9 @@ class TestCompositeExposes:
         updated["definition"]["exposes"].append(_binary("child_lock"))
 
         z2m_emu.devices([updated])
+        fake_broker.inject(f"{DEVICES_PREFIX}/curtain-1/controls/reversed/on", WbBoolValue.TRUE)
 
+        # The object is read again instead of being sent from values of the old exposes.
         assert json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/get") or "null") == {
             "cover_mode": ""
         }
@@ -1383,6 +1393,53 @@ class TestCompositeExposes:
         }
         z2m_emu.device_state("relay-1", device_state)  # once sent, the device state applies again
         assert wb_observer.retained(f"{controls}/detach_relay_outlet1") == WbBoolValue.FALSE
+
+    def test_commands_touch_only_their_own_composite(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        exposes = (
+            _z2m_curtain("dev-1")["definition"]["exposes"] + _z2m_siren("dev-1")["definition"]["exposes"]
+        )
+        z2m_emu.devices([_z2m_device("dev-1", exposes)])
+        z2m_emu.device_state("dev-1", {"cover_mode": self.COVER_MODE})
+        controls = f"{DEVICES_PREFIX}/dev-1/controls"
+        fake_broker.inject(f"{controls}/mode/on", "burglar")
+
+        fake_broker.inject(f"{controls}/led/on", WbBoolValue.FALSE)
+        assert json.loads(wb_observer.last_payload_on(f"{BASE}/dev-1/set") or "{}") == {
+            "cover_mode": {**self.COVER_MODE, "led": False}
+        }
+        z2m_emu.device_state("dev-1", {"cover_mode": self.COVER_MODE, "warning": {"mode": "stop"}})
+        assert wb_observer.retained(f"{controls}/mode") == "burglar"  # the unsent edit survived
+        fake_broker.inject(f"{controls}/warning/on", WbBoolValue.TRUE)
+
+        assert json.loads(wb_observer.last_payload_on(f"{BASE}/dev-1/set") or "{}") == {
+            "warning": {"mode": "burglar"}
+        }
+
+    def test_exposes_change_forgets_unsent_edits(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_siren("siren-1")])
+        controls = f"{DEVICES_PREFIX}/siren-1/controls"
+        fake_broker.inject(f"{controls}/mode/on", "burglar")
+        updated = _z2m_siren("siren-1")
+        updated["definition"]["exposes"].append(_binary("tamper", access=0b001))
+
+        z2m_emu.devices([updated])
+        z2m_emu.device_state("siren-1", {"warning": {"mode": "stop"}})
+
+        assert wb_observer.retained(f"{controls}/mode") == "stop"
 
     def test_write_only_fields_survive_rename(
         self,

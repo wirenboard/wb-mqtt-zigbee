@@ -9,25 +9,15 @@ from wb_common.mqtt_client import MQTTClient
 
 from .mqtt_utils import is_safe_topic_name
 from .registered_device import PendingCommand, RegisteredDevice
-from .wb_converter.composite import (
-    command_payload,
-    remember,
-    state_values,
-    stored_wb_values,
-)
+from .wb_converter.composite import CompositeState
 from .wb_converter.controls import (
     BridgeControl,
     ControlMeta,
     ServiceControl,
     WbBoolValue,
     WbControlError,
-    WbControlType,
 )
-from .wb_converter.expose_mapper import (
-    SERVICE_CONTROLS,
-    gettable_composites,
-    map_exposes_to_controls,
-)
+from .wb_converter.expose_mapper import SERVICE_CONTROLS, map_exposes_to_controls
 from .wb_converter.publisher import WbMqttDriver, build_display_name
 from .z2m.client import Z2MClient
 from .z2m.model import (
@@ -154,7 +144,6 @@ class Bridge:
                 self._make_device_command_handler(registered),
             )
             self._z2m.subscribe_device(friendly_name)
-            self._request_device_state(registered)
         self._z2m.refresh_device_list()
 
     def remove_all(self) -> MQTTMessageInfo:
@@ -309,7 +298,6 @@ class Bridge:
         self._publish_device_topics(registered, initial_values={ServiceControl.AVAILABLE: WbBoolValue.FALSE})
         self._mqtt_driver.publish_device_error(device_id, _device_offline_error(controls))
         self._z2m.subscribe_device(device.friendly_name)
-        self._request_device_state(registered)
 
     def _publish_device_topics(
         self, registered: RegisteredDevice, initial_values: Optional[dict[str, str]] = None
@@ -343,14 +331,6 @@ class Bridge:
             self._make_device_command_handler(registered),
         )
 
-    def _request_device_state(self, registered: RegisteredDevice) -> None:
-        """Request device state, asking z2m to read readable composites not known yet."""
-        device = registered.z2m
-        missing = [
-            prop for prop in gettable_composites(device.exposes) if prop not in registered.composite_values
-        ]
-        self._z2m.request_device_state(device.friendly_name, missing)
-
     def _teardown_device_id(self, registered: RegisteredDevice) -> None:
         """Unsubscribe commands and clear all retained WB topics of the current device_id"""
         self._mqtt_driver.unsubscribe_device_commands(registered.device_id, registered.controls)
@@ -376,14 +356,13 @@ class Bridge:
             registered.availability_received = False
         available = WbBoolValue.TRUE if is_online else WbBoolValue.FALSE
         initial_values = {
-            **stored_wb_values(registered.controls, registered.composite_values),
+            **registered.composites.wb_values(registered.controls),
             ServiceControl.AVAILABLE: available,
         }
         self._publish_device_topics(registered, initial_values=initial_values)
         self._mqtt_driver.publish_device_error(
             registered.device_id, "" if is_online else _device_offline_error(registered.controls)
         )
-        self._request_device_state(registered)
 
     def _update_device(self, device: Z2MDevice) -> None:
         """Update metadata and controls for an already-registered device.
@@ -409,8 +388,7 @@ class Bridge:
                 self._mqtt_driver.remove_device(registered.device_id, registered.controls)
                 registered.controls = new_controls
                 registered.z2m = device
-                registered.composite_values = {}
-                registered.deferred_edits = set()
+                registered.composites = CompositeState()
                 self._mqtt_driver.publish_device(
                     registered.device_id,
                     device.friendly_name,
@@ -423,7 +401,6 @@ class Bridge:
                     new_controls,
                     self._make_device_command_handler(registered),
                 )
-                self._request_device_state(registered)
         # Publish service-control values AFTER any re-registration: remove_device()
         # above wipes the device's retained topics, so publishing these earlier would
         # leave device_type/model/power_source blank until exposes next stabilize.
@@ -462,7 +439,9 @@ class Bridge:
             logger.debug("State update for unknown device '%s', skipping", friendly_name)
             return
         now = time.monotonic()
-        for prop, meta, value in state_values(registered.controls, state, skip=registered.deferred_edits):
+        for prop, meta, value in registered.composites.state_values(
+            registered.controls, state, pending=registered.pending_commands
+        ):
             try:
                 wb_value = meta.format_value(value)
             except Exception:  # pylint: disable=broad-except
@@ -487,10 +466,13 @@ class Bridge:
                 logger.debug(
                     "Debounce expired, publishing real value: %s/%s = %s", friendly_name, prop, wb_value
                 )
-            remember(registered.composite_values, meta, value)
+            registered.composites.observe(meta, value)
             self._mqtt_driver.publish_device_control(registered.device_id, prop, wb_value)
-        if "last_seen" in state:
-            formatted = _format_last_seen(state["last_seen"])
+        for payload in registered.composites.ready_payloads(registered.controls):
+            logger.info("Device command: %s → %s", friendly_name, payload)
+            self._z2m.set_device_state(friendly_name, payload)
+        if ServiceControl.LAST_SEEN in state:
+            formatted = _format_last_seen(state[ServiceControl.LAST_SEEN])
             if formatted:
                 self._mqtt_driver.publish_device_control(
                     registered.device_id, ServiceControl.LAST_SEEN, formatted
@@ -514,19 +496,35 @@ class Bridge:
             meta = registered.controls.get(control_id)
             if meta is None or self._stopping:
                 return
-            payload = command_payload(control_id, meta, wb_value, registered.composite_values)
-            if payload is None:
-                registered.deferred_edits.add(control_id)
-                self._mqtt_driver.publish_device_control(registered.device_id, control_id, wb_value)
-                return
-            logger.info(
-                "Device command: %s/%s = %s → %s", registered.z2m.friendly_name, control_id, wb_value, payload
-            )
-            self._z2m.set_device_state(registered.z2m.friendly_name, payload)
-            if meta.type == WbControlType.PUSHBUTTON:
-                registered.deferred_edits.difference_update(
-                    cid for cid, m in registered.controls.items() if m.path[: len(meta.path)] == meta.path
+            command = registered.composites.edit(control_id, meta, wb_value, registered.controls)
+            if command.request:
+                logger.info(
+                    "Device command: %s/%s = %s, reading %s first",
+                    registered.z2m.friendly_name,
+                    control_id,
+                    wb_value,
+                    command.request,
                 )
+                self._z2m.request_device_state(registered.z2m.friendly_name, [command.request])
+            if command.payload:
+                logger.info(
+                    "Device command: %s/%s = %s → %s",
+                    registered.z2m.friendly_name,
+                    control_id,
+                    wb_value,
+                    command.payload,
+                )
+                self._z2m.set_device_state(registered.z2m.friendly_name, command.payload)
+            if meta.is_send_button:
+                if not command.request and not command.payload:
+                    logger.warning(
+                        "Device command: %s/%s ignored, no field is set",
+                        registered.z2m.friendly_name,
+                        control_id,
+                    )
+                return
+            if meta.is_composite_field and not command.payload:
+                self._mqtt_driver.publish_device_control(registered.device_id, control_id, wb_value)
                 return
             registered.pending_commands[control_id] = PendingCommand(
                 wb_value=wb_value, timestamp=time.monotonic()

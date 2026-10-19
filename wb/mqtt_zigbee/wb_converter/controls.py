@@ -103,10 +103,20 @@ class ControlMeta:
     # WB voltage/current control types display. 1.0 = no conversion.
     scale: float = 1.0
     # Path to the value in z2m messages for fields of a composite with its own property,
-    # e.g. ("cover_mode", "reversed"). Empty: the value is top-level under the control id.
+    # e.g. ("cover_mode", "reversed"); a send button carries the composite's own (property,).
     path: tuple[str, ...] = ()
     # Field of a composite that is not fully readable: kept locally, sent only by its button.
     deferred: bool = False
+    # z2m can read the composite from the device via /get (its GET access bit)
+    gettable: bool = False
+
+    @property
+    def is_send_button(self) -> bool:
+        return self.type == WbControlType.PUSHBUTTON and bool(self.path)
+
+    @property
+    def is_composite_field(self) -> bool:
+        return bool(self.path) and self.type != WbControlType.PUSHBUTTON
 
     def format_value(self, value: object) -> str:
         """Convert a z2m value to WB control string representation"""

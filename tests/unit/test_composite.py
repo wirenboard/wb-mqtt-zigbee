@@ -1,106 +1,176 @@
 """Unit tests for wb.mqtt_zigbee.wb_converter.composite."""
 
-from wb.mqtt_zigbee.wb_converter.composite import (
-    command_payload,
-    remember,
-    state_values,
-    stored_wb_values,
-)
+from wb.mqtt_zigbee.wb_converter.composite import Command, CompositeState
 from wb.mqtt_zigbee.wb_converter.controls import ControlMeta, WbBoolValue, WbControlType
 
 
-def switch(path: tuple[str, ...] = (), deferred: bool = False) -> ControlMeta:
-    return ControlMeta(type=WbControlType.SWITCH, readonly=False, path=path, deferred=deferred)
+def make_switch(path: tuple[str, ...] = (), deferred: bool = False, gettable: bool = False) -> ControlMeta:
+    return ControlMeta(
+        type=WbControlType.SWITCH, readonly=False, path=path, deferred=deferred, gettable=gettable
+    )
 
 
-def button(path: tuple[str, ...]) -> ControlMeta:
-    return ControlMeta(type=WbControlType.PUSHBUTTON, readonly=False, path=path)
+def make_button(path: tuple[str, ...], gettable: bool = False) -> ControlMeta:
+    return ControlMeta(type=WbControlType.PUSHBUTTON, readonly=False, path=path, gettable=gettable)
+
+
+COVER_MODE = {
+    "reversed": make_switch(("cover_mode", "reversed"), gettable=True),
+    "led": make_switch(("cover_mode", "led"), gettable=True),
+}
+WARNING = {
+    "strobe": make_switch(("warning", "strobe"), deferred=True),
+    "level": make_switch(("warning", "level"), deferred=True),
+    "warning": make_button(("warning",)),
+}
+
+
+def receive(composites: CompositeState, controls: dict[str, ControlMeta], state: dict) -> CompositeState:
+    """Process a z2m state message the way the bridge does."""
+    for _cid, meta, value in composites.state_values(controls, state):
+        composites.observe(meta, value)
+    return composites
 
 
 class TestStateValues:
-    """Tests for ``state_values`` — picking control values out of a z2m state message."""
+    """Tests for ``CompositeState.state_values`` — picking control values out of a z2m state message."""
 
     def test_reads_top_level_and_nested_values(self):
-        controls = {"state": switch(), "reversed": switch(("cover_mode", "reversed"))}
+        controls = {"state": make_switch(), **COVER_MODE}
         state = {"state": True, "cover_mode": {"reversed": False}}
 
-        assert list(state_values(controls, state)) == [
+        assert list(CompositeState().state_values(controls, state)) == [
             ("state", controls["state"], True),
             ("reversed", controls["reversed"], False),
         ]
 
     def test_reads_composite_field_published_top_level(self):
-        controls = {"away_preset_days": switch(("away_setting", "away_preset_days"))}
+        controls = {"away_preset_days": make_switch(("away_setting", "away_preset_days"))}
 
-        assert [value for _id, _meta, value in state_values(controls, {"away_preset_days": 3})] == [3]
+        values = [v for _id, _meta, v in CompositeState().state_values(controls, {"away_preset_days": 3})]
+        assert values == [3]
 
     def test_prefixed_field_is_not_read_from_top_level(self):
-        controls = {"cover_mode_led": switch(("cover_mode", "led"))}
+        controls = {"cover_mode_led": make_switch(("cover_mode", "led"))}
 
-        assert not list(state_values(controls, {"led": True}))
+        assert not list(CompositeState().state_values(controls, {"cover_mode_led": True}))
 
     def test_flat_fallback_ignores_the_composite_object_itself(self):
-        controls = {"pin_code": switch(("pin_code", "pin_code"))}
+        controls = {"pin_code": make_switch(("pin_code", "pin_code"))}
 
-        assert not list(state_values(controls, {"pin_code": {"user": 1}}))
+        assert not list(CompositeState().state_values(controls, {"pin_code": {"user": 1}}))
 
-    def test_reads_deferred_fields_and_skips_buttons_service_keys_and_skip_ids(self):
-        controls = {
-            "ssid": switch(("wifi_config", "ssid"), deferred=True),
-            "password": switch(("wifi_config", "password"), deferred=True),
-            "wifi_config": button(("wifi_config",)),
-            "last_seen": switch(),
-        }
-        state = {"wifi_config": {"ssid": "home", "password": "x"}, "last_seen": 1}
+    def test_composite_object_that_is_not_a_dict_is_skipped(self):
+        assert not list(CompositeState().state_values(COVER_MODE, {"cover_mode": None}))
 
-        assert [cid for cid, _meta, _value in state_values(controls, state, skip={"password"})] == ["ssid"]
+    def test_skips_buttons_service_keys_and_unsent_edits(self):
+        controls = {**WARNING, "last_seen": make_switch()}
+        composites = CompositeState(edits={"level"})
+        state = {"warning": {"strobe": True, "level": "high"}, "last_seen": 1}
+
+        assert [cid for cid, _meta, _value in composites.state_values(controls, state)] == ["strobe"]
 
 
-class TestCommandPayload:
-    """Tests for ``command_payload`` — building the z2m /set payload for a WB command."""
+class TestEdit:
+    """Tests for ``CompositeState.edit`` — what a WB command turns into."""
 
     def test_top_level_control_sends_its_value(self):
-        assert command_payload("state", switch(), WbBoolValue.TRUE, {}) == {"state": True}
+        controls = {"state": make_switch()}
 
-    def test_composite_field_sends_whole_object_and_stores_value(self):
-        values = {"cover_mode": {"reversed": False, "led": True}}
-
-        payload = command_payload("reversed", switch(("cover_mode", "reversed")), WbBoolValue.TRUE, values)
-
-        assert payload == {"cover_mode": {"reversed": True, "led": True}}
-        assert values == payload
-
-    def test_deferred_field_is_only_stored(self):
-        values: dict = {}
-
-        payload = command_payload(
-            "strobe", switch(("warning", "strobe"), deferred=True), WbBoolValue.TRUE, values
+        assert CompositeState().edit("state", controls["state"], WbBoolValue.TRUE, controls) == Command(
+            payload={"state": True}
         )
 
-        assert payload is None
-        assert values == {"warning": {"strobe": True}}
+    def test_field_of_received_composite_sends_whole_object(self):
+        composites = receive(CompositeState(), COVER_MODE, {"cover_mode": {"reversed": False, "led": True}})
 
-    def test_button_sends_stored_fields(self):
-        values = {"warning": {"strobe": True}}
+        command = composites.edit("reversed", COVER_MODE["reversed"], WbBoolValue.TRUE, COVER_MODE)
 
-        assert command_payload("warning", button(("warning",)), WbBoolValue.TRUE, values) == {
-            "warning": {"strobe": True}
+        assert command == Command(payload={"cover_mode": {"reversed": True, "led": True}})
+        assert not composites.edits
+
+    def test_field_of_composite_not_received_yet_requests_it(self):
+        composites = CompositeState()
+
+        command = composites.edit("reversed", COVER_MODE["reversed"], WbBoolValue.TRUE, COVER_MODE)
+
+        assert command == Command(request="cover_mode")
+        assert composites.edits == {"reversed"}
+        assert not composites.ready_payloads(COVER_MODE)
+
+    def test_requested_composite_is_sent_with_the_edit_once_received(self):
+        composites = CompositeState()
+        composites.edit("reversed", COVER_MODE["reversed"], WbBoolValue.TRUE, COVER_MODE)
+        receive(composites, COVER_MODE, {"cover_mode": {"reversed": False, "led": True}})
+
+        assert composites.ready_payloads(COVER_MODE) == [{"cover_mode": {"reversed": True, "led": True}}]
+        assert not composites.edits
+        assert not composites.ready_payloads(COVER_MODE)
+
+    def test_field_of_composite_without_get_sends_known_fields(self):
+        controls = {"reversed": make_switch(("cover_mode", "reversed"))}
+
+        command = CompositeState().edit("reversed", controls["reversed"], WbBoolValue.TRUE, controls)
+
+        assert command == Command(payload={"cover_mode": {"reversed": True}})
+
+    def test_deferred_field_is_only_stored(self):
+        composites = CompositeState()
+
+        command = composites.edit("strobe", WARNING["strobe"], WbBoolValue.TRUE, WARNING)
+
+        assert command == Command()
+        assert composites.values == {"warning": {"strobe": True}}
+        assert composites.edits == {"strobe"}
+
+    def test_button_sends_stored_fields_and_clears_their_edits(self):
+        composites = CompositeState()
+        composites.edit("strobe", WARNING["strobe"], WbBoolValue.TRUE, WARNING)
+
+        command = composites.edit("warning", WARNING["warning"], WbBoolValue.TRUE, WARNING)
+
+        assert command == Command(payload={"warning": {"strobe": True}})
+        assert not composites.edits
+
+    def test_button_without_stored_fields_does_nothing(self):
+        assert CompositeState().edit("warning", WARNING["warning"], WbBoolValue.TRUE, WARNING) == Command()
+
+    def test_button_of_gettable_composite_not_received_yet_requests_it(self):
+        controls = {
+            "outlet1": make_switch(("relay", "outlet1"), deferred=True, gettable=True),
+            "relay": make_button(("relay",), gettable=True),
         }
+        composites = CompositeState()
+        composites.edit("outlet1", controls["outlet1"], WbBoolValue.TRUE, controls)
 
-    def test_button_without_stored_fields_sends_empty_object(self):
-        assert command_payload("warning", button(("warning",)), WbBoolValue.TRUE, {}) == {"warning": {}}
+        assert composites.edit("relay", controls["relay"], WbBoolValue.TRUE, controls) == Command(
+            request="relay"
+        )
+        receive(composites, controls, {"relay": {"outlet1": False, "outlet2": True}})
+        assert composites.ready_payloads(controls) == [{"relay": {"outlet1": True, "outlet2": True}}]
+
+    def test_field_command_and_button_touch_only_their_own_composite(self):
+        controls = {**COVER_MODE, **WARNING}
+        composites = receive(CompositeState(), controls, {"cover_mode": {"reversed": False, "led": True}})
+        composites.edit("strobe", WARNING["strobe"], WbBoolValue.TRUE, controls)
+
+        command = composites.edit("led", COVER_MODE["led"], WbBoolValue.FALSE, controls)
+
+        assert command == Command(payload={"cover_mode": {"reversed": False, "led": False}})
+        assert composites.edits == {"strobe"}
+        assert composites.edit("warning", WARNING["warning"], WbBoolValue.TRUE, controls) == Command(
+            payload={"warning": {"strobe": True}}
+        )
 
 
-class TestStoredWbValues:
-    """Tests for ``stored_wb_values`` — restoring composite field values in WB form."""
+class TestWbValues:
+    """Tests for ``CompositeState.wb_values`` — restoring composite field values in WB form."""
 
     def test_formats_known_fields_and_skips_buttons(self):
-        controls = {
-            "strobe": switch(("warning", "strobe"), deferred=True),
-            "level": switch(("warning", "level"), deferred=True),
-            "warning": button(("warning",)),
-        }
-        values: dict = {}
-        remember(values, controls["strobe"], True)
+        composites = CompositeState()
+        composites.edit("strobe", WARNING["strobe"], WbBoolValue.TRUE, WARNING)
 
-        assert stored_wb_values(controls, values) == {"strobe": WbBoolValue.TRUE}
+        assert composites.wb_values(WARNING) == {"strobe": WbBoolValue.TRUE}
+
+    def test_composite_object_that_is_not_a_dict_is_skipped(self):
+        assert not CompositeState(values={"cover_mode": None}).wb_values(COVER_MODE)

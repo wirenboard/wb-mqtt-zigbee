@@ -32,6 +32,7 @@ class ExposeProperty:
     STATE = "state"
     BRIGHTNESS = "brightness"
     COLOR_TEMP = "color_temp"
+    COLOR = "color"
 
 
 class ExposeType:
@@ -84,11 +85,11 @@ class ExposeFeature:
 
     @property
     def is_readable(self) -> bool:
-        return isinstance(self.access, int) and bool(self.access & ExposeAccess.READ)
+        return bool(self.access & ExposeAccess.READ)
 
     @property
     def is_gettable(self) -> bool:
-        return isinstance(self.access, int) and bool(self.access & ExposeAccess.GET)
+        return bool(self.access & ExposeAccess.GET)
 
     @staticmethod
     def from_dict(data: dict) -> "ExposeFeature":

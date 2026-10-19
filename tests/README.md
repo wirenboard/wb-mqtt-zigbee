@@ -189,7 +189,7 @@ make_expose(
 |---|---|---|
 | `map_exposes_to_controls` | `TestMapExposesToControls` | Сквозная нумерация `order` начиная с 1; дедупликация свойств верхнего уровня по `property` (первое вхождение побеждает); сервисные контролы `available` / `last_seen` добавляются всегда; `device_type` — только при непустом значении; `expose` без `property` пропускается, не ломая порядок. |
 | `_flatten_expose` | `TestFlattenExpose` | Листовые фичи проходят как есть; сложные типы (`light`, `switch`, `climate` и др.) раскрываются рекурсивно, в том числе вложенные; `composite` с `property="color"` сворачивается в один RGB-контрол; композитный тип с пустым `features` падает в ветку листа. |
-| `composite` со своим `property` | `TestCompositeWithProperty`, `TestGettableComposites` | Поля получают `path`; не целиком читаемый composite даёт отложенные поля и кнопку отправки; при конфликте имён — префикс пути или `<property>_send`; в `/get` — только читаемые composite с GET. |
+| `composite` со своим `property` | `TestCompositeWithProperty`, `TestGettableComposites` | Поля получают `path` и `gettable`; не целиком читаемый composite даёт отложенные поля и кнопку отправки; при конфликте имён — префикс пути или `<property>_send`; в `/get` — composite с GET. |
 | `_map_leaf_feature` | `TestMapLeafFeature` | Пустой `property` → пустой результат; неизвестный `type` → пустой результат; numeric-свойства маппятся через `NUMERIC_TYPE_MAP` с фоллбеком на `value`; writable numeric `value` с обоими `min` и `max` маппятся в `range`, иначе остаётся `value`; типизированные numeric (`temperature` и т. п.) **не** будут `range` даже с min/max; binary → `switch` + `value_on`/`value_off`; enum → `text` + словарь `meta.enum` в конвенционной форме `{значение: {en, ru}}`; text → `text`; `readonly` считается от `access & WRITE`; двуязычный `title` (en+ru) для known property из `PROPERTY_TITLES`, fallback на en-only для неизвестных. |
 | `_map_color_feature` | `TestMapColorFeature` | Writable, если хотя бы один sub-feature writable, иначе readonly; пустой `features` → readonly; тип RGB; title имеют переводы на ru, en. |
 | `_make_enum` | `TestMakeEnum`, `TestEnumValueTitlesTable` | Курируемые значения переводятся из `ENUM_VALUE_TITLES`, остальные получают только `en`. Многословное значение приводится к Title Case (`battery_full` → `Battery Full`). Одиночное (`usb`, `heat`) и в верхнем регистре (`ON`, `2000K`) остаётся дословно. Числовые значения становятся строкой, пустой список даёт `None`. Суффикс эндпоинта берёт подписи базового и у свойства (`switch_type_1`), и у самого значения (`on_1` → «Включение 1»), причём точное совпадение приоритетнее сборки. Возвращаемые словари — копии, общую таблицу через них не испортить. Отдельно проверяются инварианты `ENUM_VALUE_TITLES` из `translations.py`: непустой `en`, только языки `en`/`ru`, непустые подписи, ключи без суффикса, заголовок в `PROPERTY_TITLES`. |
@@ -203,9 +203,9 @@ make_expose(
 
 | Цель | Класс тестов | Что проверяется |
 |---|---|---|
-| `state_values` | `TestStateValues` | Вложенные и плоские значения; кнопки, служебные ключи и неотправленные правки пропускаются. |
-| `command_payload` | `TestCommandPayload` | Поле отправляет весь объект, отложенное поле только запоминается, кнопка — сохранённые поля или `{}`. |
-| `stored_wb_values` | `TestStoredWbValues` | Известные значения полей в формате WB. |
+| `state_values` | `TestStateValues` | Вложенные и плоские значения; кнопки, служебные ключи и неотправленные правки пропускаются; объект не-словарь пропускается. |
+| `edit` | `TestEdit` | Поле известного composite отправляет весь объект, неизвестного — запрашивает `/get` и отправляет по ответу; отложенное поле только запоминается; кнопка отправляет свои поля или ничего; чужой composite не затрагивается. |
+| `wb_values` | `TestWbValues` | Известные значения полей в формате WB. |
 
 ### `tests/unit/test_controls.py`
 
@@ -229,7 +229,7 @@ make_expose(
 |---|---|---|
 | `_str_or_none` | `TestStrOrNone` | `None` остаётся `None`; строка возвращается как есть; числа и `bool` приводятся к строке (`1`, `"True"`, `"False"`); пустая строка не превращается в `None`. |
 | `ExposeFeature.is_writable` | `TestExposeFeatureIsWritable` | `True`, если установлен бит `WRITE` (включая `READ|WRITE`); `False` для только `READ`, нулевого `access` и только `GET`. |
-| `is_readable`, `is_gettable` | `TestExposeFeatureIsReadableAndGettable` | Биты `READ` и `GET`; нечисловой `access` даёт `False`. |
+| `is_readable`, `is_gettable` | `TestExposeFeatureIsReadableAndGettable` | Биты `READ` и `GET`. |
 | `ExposeFeature.from_dict` | `TestExposeFeatureFromDict` | Полный лист со всеми полями; пустой dict даёт дефолты; `value_on`/`value_off` пропускаются через `_str_or_none` (включая `bool` → `"True"`/`"False"` и `None` → `None`); `enum` сохраняет `values`; `composite`/`light` рекурсивно парсит `features`, в т.ч. глубоко вложенные. |
 | `Z2MDevice.from_dict` | `TestZ2MDeviceFromDict` | Полное устройство с `definition`; пустой dict; `definition: null` (z2m возвращает так для неподдерживаемых устройств) — модель/вендор/exposes пустые; `definition` отсутствует целиком; `definition` без `exposes`. |
 | Defaults дата-классов | `TestDataclassDefaults` | `BridgeInfo` принимает обязательные поля; у `DeviceEvent.old_name` дефолт `""`; `default_factory` для `values`/`features`/`exposes` создаёт независимые контейнеры на каждый инстанс. |
@@ -325,7 +325,7 @@ End-to-end проверки [`wb/mqtt_zigbee/bridge.py`](../wb/mqtt_zigbee/bridg
 | Z2M → WB | `TestDeviceStatePropagation` | `<base>/<name>` (state) обновляет соответствующий контрол; `<base>/<name>/availability` обновляет `available`. |
 | WB → Z2M | `TestWbToZ2mCommands` | Команда на `/devices/<id>/controls/<c>/on` транслируется в `<base>/<name>/set` с правильным JSON; оптимистичное значение публикуется на сам контрол сразу. |
 | Pending command debounce | `TestPendingCommandDebounce` | В пределах 5с входящий state с расхождением подавляется; после истечения окна — публикуется; подтверждающий state очищает pending. |
-| Composite | `TestCompositeExposes` | Вложенное и плоское состояние доходит до полей; команда по полю отправляет весь объект; кнопка отправляет поля из правок и состояния, правки не откатываются до отправки; `/get` — только для неизвестных composite. |
+| Composite | `TestCompositeExposes` | Первая команда по полю читает composite через `/get` и отправляет объект по ответу; вложенное и плоское состояние доходит до полей; кнопка отправляет правки вместе с состоянием, правки не откатываются до отправки и сохраняются при переименовании; команды не задевают соседний composite. |
 | Stats throttling | `TestStatsThrottling` | `Messages received` обновляется не чаще 1 раза в секунду (контролируется через `fake_clock`). |
 | События устройств | `TestDeviceEvents` | `device_leave` и `bridge/response/device/remove` удаляют устройство из WB и обновляют `Last left`; `device_renamed` переносит retained-состояние со старого `device_id` на новый. |
 | Stale cleanup | `TestStaleDeviceCleanup` | Устройство, пропавшее из нового списка `bridge/devices`, удаляется; пустой `bridge/devices` удаляет все устройства, `Device count` обнуляется. |

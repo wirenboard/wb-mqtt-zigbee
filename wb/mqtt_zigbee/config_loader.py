@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from .z2m.model import BridgeLogLevel
 
@@ -28,6 +29,22 @@ class ConfigLoader:
     command_debounce_sec: float = COMMAND_DEBOUNCE_SEC_DEFAULT
 
 
+def check_broker_url(url: str) -> str:
+    """
+    The broker URL forms wb-common's MQTTClient accepts; anything else is a configuration error.
+    The message never repeats the URL: it may carry a password and ends up in the journal.
+    """
+    try:
+        parsed = urlparse(str(url))  # the JSON may hold a number instead of a string
+        if parsed.scheme == "unix" and parsed.path:
+            return url
+        if parsed.scheme in ("tcp", "mqtt-tcp", "ws") and parsed.hostname and parsed.port:
+            return url
+    except ValueError:  # a non-numeric port
+        pass
+    raise ValueError("broker URL must be unix:///path or tcp://host:port (also mqtt-tcp://, ws://)")
+
+
 def load_config(config_path: str) -> ConfigLoader:
     if not os.path.isfile(config_path):
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
@@ -40,7 +57,7 @@ def load_config(config_path: str) -> ConfigLoader:
 
     try:
         return ConfigLoader(
-            broker_url=config["broker_url"],
+            broker_url=check_broker_url(config["broker_url"]),
             zigbee2mqtt_base_topic=config["zigbee2mqtt_base_topic"],
             device_id=config.get("device_id", BRIDGE_DEVICE_ID_DEFAULT),
             device_name=config.get("device_name", BRIDGE_DEVICE_NAME_DEFAULT),

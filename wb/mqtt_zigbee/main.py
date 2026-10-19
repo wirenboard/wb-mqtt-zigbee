@@ -30,7 +30,7 @@ def main(argv: list) -> int:
 
     try:
         config = load_config(args.config)
-    except (FileNotFoundError, ValueError) as e:
+    except (OSError, ValueError, TypeError) as e:  # unreadable file, broken JSON, not an object
         logger.error("%s", e)
         return EXIT_CONFIG_ERROR
 

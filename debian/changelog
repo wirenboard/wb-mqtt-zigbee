@@ -1,3 +1,17 @@
+wb-mqtt-zigbee (1.5.0) stable; urgency=medium
+
+  * Wait for an unavailable MQTT broker instead of exiting; exit with 2 when the
+    broker rejects the login
+  * Republish the devices after a reconnect, unavailable until zigbee2mqtt
+    confirms them
+  * Remove our retained topics on SIGINT/SIGTERM/SIGHUP and exit with 0
+  * Clear the bridge error state left by a crashed run at the next start
+  * Exit with 6 on any config error, including a broker URL the MQTT client
+    cannot use
+  * Require python3-wb-common >= 2.4.0
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Thu, 17 Sep 2026 16:25:50 +0000
+
 wb-mqtt-zigbee (1.4.15) stable; urgency=medium
 
   * Explain the case-variant enum keys in the translations table

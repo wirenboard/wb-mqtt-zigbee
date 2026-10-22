@@ -86,11 +86,14 @@ def map_exposes_to_controls(
     controls: dict[str, ControlMeta] = {}
     order = 1
     flat = [pair for expose in exposes for pair in _flatten_expose(expose)]
-    # Top-level properties and composite send buttons keep their names; fields yield.
-    reserved = {prop for prop, meta in flat if not meta.is_composite_field}
+    # Top-level properties, send buttons and service controls keep their names; fields yield.
+    # A field name shared by several composites is prefixed in each, whatever their order.
+    reserved = {prop for prop, meta in flat if not meta.is_composite_field} | SERVICE_CONTROLS
+    field_names = [prop for prop, meta in flat if meta.is_composite_field]
+    shared = {prop for prop in field_names if field_names.count(prop) > 1}
     for prop, meta in flat:
         control_id = prop
-        if meta.is_composite_field and (prop in reserved or prop in controls):
+        if meta.is_composite_field and (prop in reserved or prop in shared or prop in controls):
             control_id = "_".join(meta.path)
             meta.title = _localized_title(control_id)
         if control_id not in controls:
@@ -168,7 +171,7 @@ def _flatten_expose(expose: ExposeFeature) -> list[tuple[str, ControlMeta]]:
     """
     if expose.type in NESTED_TYPES and expose.features:
         # Composite "color" expose (color_xy/color_hs) → single RGB control
-        if expose.type == ExposeType.COMPOSITE and expose.name in COLOR_COMPOSITE_NAMES:
+        if expose.type == ExposeType.COMPOSITE and expose.name in COLOR_COMPOSITE_NAMES and expose.property:
             return _map_color_feature(expose)
         if expose.type == ExposeType.COMPOSITE and expose.property:
             return _map_composite_with_property(expose)

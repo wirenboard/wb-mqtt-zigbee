@@ -7,6 +7,9 @@ from .controls import ControlMeta, ServiceControl
 # Keys handled separately from control values in z2m state messages
 _NON_CONTROL_KEYS = (ServiceControl.LAST_SEEN, "update")
 
+# z2m gives up reading a device after 10 s, so an unanswered /get is repeated on a later edit
+REQUEST_RETRY_SEC = 30.0
+
 
 @dataclass
 class Command:
@@ -26,16 +29,15 @@ class CompositeState:
     received: set[str] = field(default_factory=set)
     # Field control ids edited in WB and not sent yet
     edits: set[str] = field(default_factory=set)
-    # Composites to send as soon as their object is received
+    # Composites to send as soon as their object is received, with the time of their /get
     send_on_receive: set[str] = field(default_factory=set)
+    requested: dict[str, float] = field(default_factory=dict)
 
     def state_values(
         self, controls: dict[str, ControlMeta], state: dict[str, Any], pending: Collection[str] = ()
     ) -> Iterator[tuple[str, ControlMeta, Any]]:
         """Yield (id, meta, value) for controls in a z2m state message, except buttons and unsent edits.
-
-        `pending` ids have a command in flight: their received values are not stored yet either.
-        """
+        Values of `pending` ids (a command in flight) are yielded but not stored."""
         keep = set(self.edits) | set(pending)
         for prop in {meta.path[0] for meta in controls.values() if meta.path}:
             if isinstance(state.get(prop), dict):
@@ -75,10 +77,17 @@ class CompositeState:
         """Return payloads of composites that waited for their object and have received it."""
         ready = [prop for prop in self.send_on_receive if prop in self.received]
         self.send_on_receive.difference_update(ready)
+        for prop in ready:
+            self.requested.pop(prop, None)
         return [self._send(prop, controls) for prop in ready]
 
     def edit(
-        self, control_id: str, meta: ControlMeta, wb_value: str, controls: dict[str, ControlMeta]
+        self,
+        control_id: str,
+        meta: ControlMeta,
+        wb_value: str,
+        controls: dict[str, ControlMeta],
+        now: float = 0.0,
     ) -> Command:
         """Apply a WB command to a composite field or send button and tell what to do with it."""
         if meta.is_send_button:
@@ -91,10 +100,13 @@ class CompositeState:
         _set_path(self.values, meta.path, z2m_value)
         self.edits.add(control_id)
         prop = meta.path[0]
-        if meta.deferred or prop in self.send_on_receive:
+        if meta.deferred:
             return Command()
         if prop not in self.received:
+            if prop in self.send_on_receive and now - self.requested[prop] < REQUEST_RETRY_SEC:
+                return Command()
             self.send_on_receive.add(prop)
+            self.requested[prop] = now
             return Command(request=prop)
         return Command(payload=self._send(prop, controls))
 

@@ -12,6 +12,7 @@ from .controls import (
     ControlMeta,
     WbBoolValue,
     WbControlError,
+    WbControlType,
 )
 
 logger = logging.getLogger(__name__)
@@ -285,6 +286,8 @@ class WbMqttDriver:
         self._publish_device_meta_subtopics(device_id, display_name, model)
         for control_id, meta in controls.items():
             self._publish_control_meta(device_id, control_id, meta)
+            if meta.type == WbControlType.PUSHBUTTON:
+                continue  # a pushbutton has no value by the conventions
             value = initial_values.get(control_id, " ") if initial_values else " "
             self.publish_device_control(device_id, control_id, value)
 

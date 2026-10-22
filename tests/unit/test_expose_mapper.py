@@ -214,6 +214,15 @@ class TestFlattenExpose:
         assert meta.type == WbControlType.RGB
         assert meta.title == {"en": "Color RGB", "ru": "Цвет RGB"}
 
+    def test_color_composite_without_property_is_flattened(self):
+        expose = make_expose(
+            type=ExposeType.COMPOSITE,
+            name="color_xy",
+            property="",
+            features=[make_expose(property="x"), make_expose(property="y")],
+        )
+        assert [prop for prop, _meta in _flatten_expose(expose)] == ["x", "y"]
+
     def test_composite_type_without_features_falls_through_to_leaf(self):
         # NESTED_TYPES check requires non-empty features — empty falls to leaf
         # mapping, which rejects because LIGHT is not a known leaf type.
@@ -325,6 +334,12 @@ class TestCompositeWithProperty:
         assert controls["cover_mode_led"].path == ("cover_mode", "led")
         assert controls["cover_mode_led"].title == {"en": "Cover Mode Led"}
 
+    def test_field_named_like_a_service_control_gets_parent_prefix(self):
+        controls = map_exposes_to_controls([make_composite("cfg", ["model"])], model="M1")
+
+        assert controls["cfg_model"].path == ("cfg", "model")
+        assert controls["model"].readonly
+
     def test_field_named_like_its_composite_keeps_name_and_button_gets_send_suffix(self):
         controls = map_exposes_to_controls(
             [make_composite("pin_code", ["user", "pin_code"], access=WRITE_ONLY)]
@@ -351,7 +366,7 @@ class TestCompositeWithProperty:
         assert controls["warning"].type == WbControlType.PUSHBUTTON
         assert controls["a_warning"].path == ("a", "warning")
 
-    def test_same_field_in_two_composites_gets_prefix_on_second(self):
+    def test_same_field_in_two_composites_gets_prefix_in_both(self):
         exposes = [
             make_expose(
                 type=ExposeType.LIGHT,
@@ -363,7 +378,8 @@ class TestCompositeWithProperty:
         ]
         controls = map_exposes_to_controls(exposes)
 
-        assert controls["execute_if_off"].path == ("level_config", "execute_if_off")
+        assert "execute_if_off" not in controls
+        assert controls["level_config_execute_if_off"].path == ("level_config", "execute_if_off")
         assert controls["color_options_execute_if_off"].path == ("color_options", "execute_if_off")
         assert controls["color_options_execute_if_off"].deferred
 

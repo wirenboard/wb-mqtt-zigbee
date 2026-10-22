@@ -495,7 +495,9 @@ class Bridge:
             meta = registered.controls.get(control_id)
             if meta is None or self._stopping:
                 return
-            command = registered.composites.edit(control_id, meta, wb_value, registered.controls)
+            command = registered.composites.edit(
+                control_id, meta, wb_value, registered.controls, time.monotonic()
+            )
             if command.request:
                 logger.info(
                     "Device command: %s/%s = %s, reading %s first",

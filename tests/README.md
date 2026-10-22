@@ -125,18 +125,21 @@ pytest --cov=wb.mqtt_zigbee.wb_converter.expose_mapper \
 Module                                          Stmts  Miss  Cover
 ------------------------------------------------------------------
 wb/mqtt_zigbee/__main__.py                          3     3     0%
-wb/mqtt_zigbee/app.py                              57    11    81%
-wb/mqtt_zigbee/bridge.py                          268    48    82%
-wb/mqtt_zigbee/config_loader.py                    37     0   100%
+wb/mqtt_zigbee/app.py                              85     3    96%
+wb/mqtt_zigbee/bridge.py                          415    39    91%
+wb/mqtt_zigbee/config_loader.py                    48     0   100%
 wb/mqtt_zigbee/main.py                             21    21     0%
-wb/mqtt_zigbee/registered_device.py                14     0   100%
-wb/mqtt_zigbee/wb_converter/controls.py           106     0   100%
-wb/mqtt_zigbee/wb_converter/expose_mapper.py       75     0   100%
-wb/mqtt_zigbee/wb_converter/publisher.py          149     3    98%
-wb/mqtt_zigbee/z2m/client.py                      146     6    96%
-wb/mqtt_zigbee/z2m/model.py                       105     0   100%
+wb/mqtt_zigbee/mqtt_utils.py                       28     0   100%
+wb/mqtt_zigbee/registered_device.py                18     0   100%
+wb/mqtt_zigbee/wb_converter/composite.py           83     0   100%
+wb/mqtt_zigbee/wb_converter/controls.py           136     2    99%
+wb/mqtt_zigbee/wb_converter/expose_mapper.py      138     2    99%
+wb/mqtt_zigbee/wb_converter/publisher.py          189     1    99%
+wb/mqtt_zigbee/wb_converter/translations.py         4     0   100%
+wb/mqtt_zigbee/z2m/client.py                      184     5    97%
+wb/mqtt_zigbee/z2m/model.py                       114     0   100%
 ------------------------------------------------------------------
-TOTAL                                             981    92    91%
+TOTAL                                            1466    76    95%
 ```
 
 Вся «чистая» (без I/O) логика покрыта на 100% unit-тестами. Модули с MQTT-коллбэками (`z2m/client.py`, `wb_converter/publisher.py`, `bridge.py`, `app.py`) покрыты интеграционными тестами через `FakeMqttBroker` — 81–98%.
@@ -190,8 +193,8 @@ make_expose(
 | `map_exposes_to_controls` | `TestMapExposesToControls` | Сквозная нумерация `order` начиная с 1; дедупликация свойств верхнего уровня по `property` (первое вхождение побеждает); сервисные контролы `available` / `last_seen` добавляются всегда; `device_type` — только при непустом значении; `expose` без `property` пропускается, не ломая порядок. |
 | `_flatten_expose` | `TestFlattenExpose` | Листовые фичи проходят как есть; сложные типы (`light`, `switch`, `climate` и др.) раскрываются рекурсивно, в том числе вложенные; цветовой composite (`color_xy`/`color_hs`, в том числе с каналом `color_rgb`) сворачивается в один RGB-контрол; композитный тип с пустым `features` падает в ветку листа. |
 | `composite` со своим `property` | `TestCompositeWithProperty` | Поля получают `path`; сразу отправляются только поля composite с GET и читаемыми полями, у остальных — отложенные поля и кнопка отправки; при конфликте имён — префикс пути или `<property>_send`. |
-| `_map_leaf_feature` | `TestMapLeafFeature` | Пустой `property` → пустой результат; неизвестный `type` → пустой результат; numeric-свойства маппятся через `NUMERIC_TYPE_MAP` с фоллбеком на `value`; writable numeric `value` с обоими `min` и `max` маппятся в `range`, иначе остаётся `value`; типизированные numeric (`temperature` и т. п.) **не** будут `range` даже с min/max; binary → `switch` + `value_on`/`value_off`; enum → `text` + словарь `meta.enum` в конвенционной форме `{значение: {en, ru}}`; text → `text`; `readonly` считается от `access & WRITE`; двуязычный `title` (en+ru) для known property из `PROPERTY_TITLES`, fallback на en-only для неизвестных. |
-| `_map_color_feature` | `TestMapColorFeature` | Writable, если хотя бы один sub-feature writable, иначе readonly; пустой `features` → readonly; тип RGB; title имеют переводы на ru, en. |
+| `_map_leaf_feature` | `TestMapLeafFeature` | Пустой `property` → пустой результат; неизвестный `type` → пустой результат; numeric-свойства маппятся через `NUMERIC_TYPE_MAP` с фоллбеком на `value`; writable numeric `value` с обоими `min` и `max` маппятся в `range`, иначе остаётся `value`; типизированные numeric (`temperature` и т. п.) **не** будут `range` даже с min/max; binary → `switch` + `value_on`/`value_off`; enum → `text` + словарь `meta.enum` в конвенционной форме `{значение: {en, ru}}`; text → `text`; `readonly` считается от `access & WRITE`; двуязычный `title` (en+ru) для known property из `PROPERTY_TITLES`, fallback на en-only для неизвестных; `illuminance` получает тип `lux`. |
+| `_map_color_feature` | `TestMapColorFeature` | Writable, если хотя бы один sub-feature writable, иначе readonly; пустой `features` → readonly; тип RGB; title имеют переводы на ru, en; канал цвета (`color_l1`, `color_button_1`) даёт суффикс в title. |
 | `_make_enum` | `TestMakeEnum`, `TestEnumValueTitlesTable` | Курируемые значения переводятся из `ENUM_VALUE_TITLES`, остальные получают только `en`. Многословное значение приводится к Title Case (`battery_full` → `Battery Full`). Одиночное (`usb`, `heat`) и в верхнем регистре (`ON`, `2000K`) остаётся дословно. Числовые значения становятся строкой, пустой список даёт `None`. Суффикс эндпоинта берёт подписи базового и у свойства (`switch_type_1`), и у самого значения (`on_1` → «Включение 1»), причём точное совпадение приоритетнее сборки. Возвращаемые словари — копии, общую таблицу через них не испортить. Отдельно проверяются инварианты `ENUM_VALUE_TITLES` из `translations.py`: непустой `en`, только языки `en`/`ru`, непустые подписи, ключи без суффикса, заголовок в `PROPERTY_TITLES`. |
 | `_make_title` | `TestMakeTitle` | `snake_case` → `Snake Case` (каждое слово с заглавной); единичные слова; параметризованный тест. |
 | `_localized_title` | `TestLocalizedTitle` | Точное совпадение в `PROPERTY_TITLES` даёт en+ru (включая нетривиальные случаи: `power`=«Мощность», `noise`=«Шум», `pm25`=«PM2.5»); суффиксы фазы и эндпоинта (`power_l1`, `voltage_l3`, `current_a`, `state_l2`, а также голые номера `switch_type_1`, `state_1`) собираются из базового title; неизвестное property и неизвестная база с суффиксом → en-only fallback. |
@@ -204,7 +207,7 @@ make_expose(
 | Цель | Класс тестов | Что проверяется |
 |---|---|---|
 | `state_values` | `TestStateValues` | Вложенные и плоские значения; кнопки, служебные ключи и неотправленные правки пропускаются; объект не-словарь пропускается. |
-| `edit` | `TestEdit` | Поле известного composite отправляет весь объект, неизвестного — запрашивает `/get` и отправляет по ответу; отложенное поле только запоминается; кнопка без `/get` отправляет известные поля или ничего; чужой composite не затрагивается. |
+| `edit` | `TestEdit` | Поле известного composite отправляет весь объект, неизвестного — запрашивает `/get` и отправляет по ответу, без ответа повторяет `/get` через 30 с; отложенное поле только запоминается; кнопка без `/get` отправляет известные поля или ничего; чужой composite не затрагивается. |
 | `wb_values` | `TestWbValues` | Известные значения полей в формате WB. |
 
 ### `tests/unit/test_controls.py`
@@ -229,7 +232,7 @@ make_expose(
 |---|---|---|
 | `_str_or_none` | `TestStrOrNone` | `None` остаётся `None`; строка возвращается как есть; числа и `bool` приводятся к строке (`1`, `"True"`, `"False"`); пустая строка не превращается в `None`. |
 | `ExposeFeature.is_writable` | `TestExposeFeatureIsWritable` | `True`, если установлен бит `WRITE` (включая `READ|WRITE`); `False` для только `READ`, нулевого `access` и только `GET`. |
-| `is_readable`, `is_gettable` | `TestExposeFeatureIsReadableAndGettable` | Биты `READ` и `GET`. |
+| `is_readable`, `is_gettable` | `TestExposeFeatureIsReadableAndGettable` | `True` по биту `READ` и `GET` соответственно, каждый независимо от другого и от `WRITE`. |
 | `ExposeFeature.from_dict` | `TestExposeFeatureFromDict` | Полный лист со всеми полями; пустой dict даёт дефолты; `value_on`/`value_off` пропускаются через `_str_or_none` (включая `bool` → `"True"`/`"False"` и `None` → `None`); `enum` сохраняет `values`; `composite`/`light` рекурсивно парсит `features`, в т.ч. глубоко вложенные. |
 | `Z2MDevice.from_dict` | `TestZ2MDeviceFromDict` | Полное устройство с `definition`; пустой dict; `definition: null` (z2m возвращает так для неподдерживаемых устройств) — модель/вендор/exposes пустые; `definition` отсутствует целиком; `definition` без `exposes`. |
 | Defaults дата-классов | `TestDataclassDefaults` | `BridgeInfo` принимает обязательные поля; у `DeviceEvent.old_name` дефолт `""`; `default_factory` для `values`/`features`/`exposes` создаёт независимые контейнеры на каждый инстанс. |

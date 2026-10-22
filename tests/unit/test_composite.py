@@ -128,6 +128,18 @@ class TestEdit:
         receive(composites, COVER_MODE, {"cover_mode": {"reversed": False, "led": True}})
         assert composites.ready_payloads(COVER_MODE) == [{"cover_mode": {"reversed": True, "led": False}}]
 
+    def test_unanswered_request_is_repeated_on_a_later_edit(self):
+        composites = CompositeState()
+        composites.edit("reversed", COVER_MODE["reversed"], WbBoolValue.TRUE, COVER_MODE, now=100.0)
+
+        assert (
+            composites.edit("led", COVER_MODE["led"], WbBoolValue.FALSE, COVER_MODE, now=110.0) == Command()
+        )
+        assert composites.edit("led", COVER_MODE["led"], WbBoolValue.TRUE, COVER_MODE, now=140.0) == Command(
+            request="cover_mode"
+        )
+        assert composites.edits == {"reversed", "led"}
+
     def test_deferred_field_is_only_stored(self):
         composites = CompositeState()
 

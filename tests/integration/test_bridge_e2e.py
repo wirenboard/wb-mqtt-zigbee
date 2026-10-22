@@ -1167,6 +1167,51 @@ class TestCompositeExposes:
         assert sent == {"cover_mode": {**self.COVER_MODE, "reversed": True, "led": False}}
         assert wb_observer.retained(f"{DEVICES_PREFIX}/curtain-1/controls/led") == WbBoolValue.FALSE
 
+    def test_unanswered_read_is_repeated_on_a_later_edit(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+        fake_clock: "list[float]",
+    ) -> None:
+        """
+        A sleeping device may never answer the first /get, so a later edit asks again
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1")])
+        controls = f"{DEVICES_PREFIX}/curtain-1/controls"
+
+        fake_clock[0] = 100.0
+        fake_broker.inject(f"{controls}/reversed/on", WbBoolValue.TRUE)
+        fake_clock[0] = 110.0
+        fake_broker.inject(f"{controls}/led/on", WbBoolValue.FALSE)
+        assert len(wb_observer.messages_on(f"{BASE}/curtain-1/get")) == 1
+        fake_clock[0] = 140.0
+        fake_broker.inject(f"{controls}/calibration/on", WbBoolValue.TRUE)
+
+        assert len(wb_observer.messages_on(f"{BASE}/curtain-1/get")) == 2
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+        assert len(wb_observer.messages_on(f"{BASE}/curtain-1/set")) == 1
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/set") or "{}")
+        assert sent == {
+            "cover_mode": {**self.COVER_MODE, "reversed": True, "led": False, "calibration": True}
+        }
+
+    def test_send_button_is_published_without_a_value(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_siren("siren-1")])
+
+        controls = f"{DEVICES_PREFIX}/siren-1/controls"
+        assert json.loads(wb_observer.retained(f"{controls}/warning/meta") or "{}")["type"] == "pushbutton"
+        assert wb_observer.retained(f"{controls}/warning") is None
+        assert wb_observer.retained(f"{controls}/strobe") == " "
+
     def test_nested_state_reaches_field_controls(
         self,
         bridge: Bridge,

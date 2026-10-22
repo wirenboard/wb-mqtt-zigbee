@@ -61,6 +61,19 @@ class TestStateValues:
     def test_composite_object_that_is_not_a_dict_is_skipped(self):
         assert not list(CompositeState().state_values(COVER_MODE, {"cover_mode": None}))
 
+    def test_pending_field_yields_the_received_value_not_the_kept_one(self):
+        composites = CompositeState(
+            values={"cover_mode": {"reversed": True, "led": True}}, received={"cover_mode"}
+        )
+        state = {"cover_mode": {"reversed": False, "led": True}}
+
+        values = {
+            cid: v for cid, _meta, v in composites.state_values(COVER_MODE, state, pending={"reversed"})
+        }
+
+        assert values["reversed"] is False
+        assert composites.values == {"cover_mode": {"reversed": True, "led": True}}
+
     def test_skips_buttons_service_keys_and_unsent_edits(self):
         controls = {**WARNING, "last_seen": make_switch()}
         composites = CompositeState(edits={"level"})
@@ -104,6 +117,16 @@ class TestEdit:
         assert composites.ready_payloads(COVER_MODE) == [{"cover_mode": {"reversed": True, "led": True}}]
         assert not composites.edits
         assert not composites.ready_payloads(COVER_MODE)
+
+    def test_second_edit_while_waiting_for_the_composite_does_not_request_again(self):
+        composites = CompositeState()
+        composites.edit("reversed", COVER_MODE["reversed"], WbBoolValue.TRUE, COVER_MODE)
+
+        command = composites.edit("led", COVER_MODE["led"], WbBoolValue.FALSE, COVER_MODE)
+
+        assert command == Command()
+        receive(composites, COVER_MODE, {"cover_mode": {"reversed": False, "led": True}})
+        assert composites.ready_payloads(COVER_MODE) == [{"cover_mode": {"reversed": True, "led": False}}]
 
     def test_deferred_field_is_only_stored(self):
         composites = CompositeState()

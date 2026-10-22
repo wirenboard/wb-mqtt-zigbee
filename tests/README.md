@@ -199,7 +199,7 @@ make_expose(
 
 ### `tests/unit/test_composite.py`
 
-Проверяют [`wb/mqtt_zigbee/wb_converter/composite.py`](../wb/mqtt_zigbee/wb_converter/composite.py) — пути к полям composite.
+Проверяют [`wb/mqtt_zigbee/wb_converter/composite.py`](../wb/mqtt_zigbee/wb_converter/composite.py) — значения composite, неотправленные правки и сборку команды `/set`.
 
 | Цель | Класс тестов | Что проверяется |
 |---|---|---|
@@ -325,7 +325,7 @@ End-to-end проверки [`wb/mqtt_zigbee/bridge.py`](../wb/mqtt_zigbee/bridg
 | Z2M → WB | `TestDeviceStatePropagation` | `<base>/<name>` (state) обновляет соответствующий контрол; `<base>/<name>/availability` обновляет `available`. |
 | WB → Z2M | `TestWbToZ2mCommands` | Команда на `/devices/<id>/controls/<c>/on` транслируется в `<base>/<name>/set` с правильным JSON; оптимистичное значение публикуется на сам контрол сразу. |
 | Pending command debounce | `TestPendingCommandDebounce` | В пределах 5с входящий state с расхождением подавляется; после истечения окна — публикуется; подтверждающий state очищает pending. |
-| Composite | `TestCompositeExposes` | Первая команда по полю читает composite через `/get` и отправляет объект по ответу; вложенное и плоское состояние доходит до полей; кнопка без `/get` отправляет правки вместе с состоянием (PIN замка), правки не откатываются до отправки и сохраняются при переименовании; команды не задевают соседний composite. |
+| Composite | `TestCompositeExposes` | Первая команда по полю читает composite через `/get` и отправляет объект по ответу, кнопка отправляет правки без `/get`; правки не откатываются до отправки. |
 | Stats throttling | `TestStatsThrottling` | `Messages received` обновляется не чаще 1 раза в секунду (контролируется через `fake_clock`). |
 | События устройств | `TestDeviceEvents` | `device_leave` и `bridge/response/device/remove` удаляют устройство из WB и обновляют `Last left`; `device_renamed` переносит retained-состояние со старого `device_id` на новый. |
 | Stale cleanup | `TestStaleDeviceCleanup` | Устройство, пропавшее из нового списка `bridge/devices`, удаляется; пустой `bridge/devices` удаляет все устройства, `Device count` обнуляется. |

@@ -1,3 +1,4 @@
+import copy
 from dataclasses import dataclass, field
 from typing import Any, Collection, Iterator, Optional
 
@@ -63,7 +64,8 @@ class CompositeState:
             controls[cid].path[1:] for cid in keep if cid in controls and controls[cid].path[:1] == (prop,)
         }
         kept = {path: _get_path(self.values.get(prop), path) for path in edited}
-        self.values[prop] = received
+        # A copy: the kept fields must not leak into the state message being read
+        self.values[prop] = copy.deepcopy(received)
         for path, (found, value) in kept.items():
             if found:
                 _set_path(self.values, (prop, *path), value)
@@ -89,7 +91,7 @@ class CompositeState:
         _set_path(self.values, meta.path, z2m_value)
         self.edits.add(control_id)
         prop = meta.path[0]
-        if meta.deferred:
+        if meta.deferred or prop in self.send_on_receive:
             return Command()
         if prop not in self.received:
             self.send_on_receive.add(prop)

@@ -315,7 +315,7 @@ wb-mqtt-zigbee/
 | `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty`, `ExposeAccess` | ✅ |
 | `wb_converter/controls.py` | `WbControlType` (16 типов, вкл. RANGE, RGB), `BridgeControl`, `ServiceControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` (13 контролов с en/ru) | ✅ |
 | `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, rgb для color); двуязычные `title` через `PROPERTY_TITLES` + `_localized_title`; перевод значений enum через `ENUM_VALUE_TITLES` | ✅ |
-| `wb_converter/composite.py` | `CompositeState`: значения composite, неотправленные правки, сборка команды `/set` |
+| `wb_converter/composite.py` | `CompositeState`: значения composite, неотправленные правки, сборка команды `/set` | ✅ |
 | `wb_converter/translations.py` | Таблицы переводов: `PROPERTY_TITLES` (названия контролов), `ENUM_VALUE_TITLES` (значения enum), `POWER_SOURCE_LABELS` | ✅ |
 | `wb_converter/publisher.py` | `WbMqttDriver`: публикация/удаление WB-устройств, JSON `/meta` с driver-маркером, подписка на команды, retained-сканирование ghost-устройств | ✅ |
 | ~~`wb_converter/subscriber.py`~~ | Удалён — подписка на команды реализована в `publisher.py` | — |
@@ -379,7 +379,7 @@ wb-mqtt-zigbee/
 
 В v1 цвет отображался как JSON-строка `{"x":0.3,"y":0.4}` — бесполезно для пользователя.
 
-## Синхронизация состояния при старте
+## Чтение composite через `/get`
 
 При старте сервиса список устройств известен из `bridge/devices`, а состояние приходит при изменениях на устройстве. Composite нужны командам целиком, поэтому их объект читается по требованию:
 

@@ -47,7 +47,7 @@ NESTED_TYPES = {
     ExposeType.COMPOSITE,  # generic multi-property exposes
 }
 
-# Color composites (color, color_rgb, color_l1, ...) mapped to a single RGB control
+# Names of color composites (any property: color, color_rgb, ...) mapped to a single RGB control
 COLOR_COMPOSITE_NAMES = {"color_xy", "color_hs"}
 
 # Service controls always added by map_exposes_to_controls regardless of exposes
@@ -192,8 +192,7 @@ def _map_composite_with_property(expose: ExposeFeature) -> list[tuple[str, Contr
             meta.path = (expose.property, *(meta.path or (prop,)))
             meta.deferred = meta.deferred or deferred
             result.append((prop, meta))
-    if deferred and result:
-        # A field named like its composite keeps its control id; the button takes another.
+    if deferred and any(not meta.readonly for _prop, meta in result if not meta.is_send_button):
         button_id = expose.property
         if any(prop == expose.property for prop, _meta in result):
             button_id = f"{expose.property}_send"
@@ -286,12 +285,19 @@ def _map_color_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
         # [("color", ControlMeta(type="rgb", readonly=True, title={"en": "Color"}))]
     """
     writable = any(sub.is_writable for sub in feature.features) if feature.features else False
-    channel = feature.property.removeprefix("color").lstrip("_").upper()
-    title = (
-        {"en": "Color", "ru": "Цвет"} if not channel else {"en": f"Color {channel}", "ru": f"Цвет {channel}"}
-    )
+    label = _color_channel_label(feature.property)
+    title = {"en": "Color", "ru": "Цвет"} if not label else {"en": f"Color {label}", "ru": f"Цвет {label}"}
     meta = ControlMeta(type=WbControlType.RGB, readonly=not writable, title=title)
     return [(feature.property, meta)]
+
+
+def _color_channel_label(property_name: str) -> str:
+    """Title suffix of a color channel: 'color' -> '', 'color_l1' -> 'L1', 'color_button_1' -> 'Button 1'."""
+    base, endpoint = _split_endpoint_suffix(property_name)
+    if base == "color":
+        return endpoint
+    channel = property_name.removeprefix("color").lstrip("_")
+    return "RGB" if channel == "rgb" else _make_title(channel)
 
 
 def _make_enum(feature: ExposeFeature) -> Optional[dict]:

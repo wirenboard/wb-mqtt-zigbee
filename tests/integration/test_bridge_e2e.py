@@ -1143,6 +1143,30 @@ class TestCompositeExposes:
         assert sent == {"cover_mode": {**self.COVER_MODE, "reversed": True}}
         assert wb_observer.retained(f"{DEVICES_PREFIX}/curtain-1/controls/reversed") == WbBoolValue.TRUE
 
+    def test_edits_made_while_reading_the_composite_go_out_together(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        A second /get would answer with the old values and undo the edits already sent
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1")])
+
+        fake_broker.inject(f"{DEVICES_PREFIX}/curtain-1/controls/reversed/on", WbBoolValue.TRUE)
+        fake_broker.inject(f"{DEVICES_PREFIX}/curtain-1/controls/led/on", WbBoolValue.FALSE)
+
+        assert len(wb_observer.messages_on(f"{BASE}/curtain-1/get")) == 1
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/curtain-1/controls/led") == WbBoolValue.FALSE
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+        assert len(wb_observer.messages_on(f"{BASE}/curtain-1/set")) == 1
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/set") or "{}")
+        assert sent == {"cover_mode": {**self.COVER_MODE, "reversed": True, "led": False}}
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/curtain-1/controls/led") == WbBoolValue.FALSE
+
     def test_nested_state_reaches_field_controls(
         self,
         bridge: Bridge,
@@ -1215,6 +1239,8 @@ class TestCompositeExposes:
         fake_clock[0] = 100.0
         fake_broker.inject(f"{reversed_topic}/on", WbBoolValue.TRUE)
         fake_clock[0] = 101.0
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+        fake_clock[0] = 102.0
         z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
 
         assert wb_observer.retained(reversed_topic) == WbBoolValue.TRUE

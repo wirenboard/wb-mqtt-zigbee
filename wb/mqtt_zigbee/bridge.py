@@ -345,8 +345,7 @@ class Bridge:
         availability we saw, or "unreachable" if we have never heard from the device. z2m
         only republishes availability when it changes, so publishing a blanket "offline"
         here would leave a healthy device flagged with an error until it next changes state
-        — a false alarm on an ordinary rename. Known composite field values are restored too:
-        they are not re-read via /get.
+        — a false alarm on an ordinary rename. Known composite field values are restored too.
         """
         # pending_commands are deliberately kept: they expire on their own and still
         # suppress a pre-command echo from z2m, so a command issued just before the move

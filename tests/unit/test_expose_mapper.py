@@ -297,6 +297,14 @@ class TestCompositeWithProperty:
         assert controls["outlet1"].deferred
         assert controls["detach_relay_mode"].type == WbControlType.PUSHBUTTON
 
+    def test_read_only_composite_gets_no_send_button(self):
+        controls = map_exposes_to_controls(
+            [make_composite("options", ["motor_speed"], access=ExposeAccess.READ)]
+        )
+
+        assert controls["motor_speed"].readonly
+        assert "options" not in controls
+
     def test_composite_with_mixed_access_is_treated_as_write_only(self):
         composite = make_composite("wifi_config", ["ssid", "password"])
         composite.features[1].access = WRITE_ONLY
@@ -572,6 +580,16 @@ class TestMapColorFeature:
             make_expose(type=ExposeType.COMPOSITE, property="color", features=[])
         )
         assert meta.title == {"en": "Color", "ru": "Цвет"}
+
+    @pytest.mark.parametrize(
+        "property_name, label",
+        [("color_rgb", "RGB"), ("color_l1", "L1"), ("color_button_1", "Button 1"), ("color_white", "White")],
+    )
+    def test_channel_title_carries_a_readable_suffix(self, property_name: str, label: str):
+        [(_, meta)] = _map_color_feature(
+            make_expose(type=ExposeType.COMPOSITE, property=property_name, features=[])
+        )
+        assert meta.title == {"en": f"Color {label}", "ru": f"Цвет {label}"}
 
 
 class TestMakeEnum:

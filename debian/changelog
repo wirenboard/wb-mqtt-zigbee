@@ -1,9 +1,10 @@
 wb-mqtt-zigbee (1.5.1) stable; urgency=medium
 
-  * Read and send composite exposes (cover_mode, warning) as a whole object
+  * Send composite exposes (cover_mode, warning) as a whole object, by a button when z2m cannot read them back
+  * Keep composite fields with a taken name under a prefixed name (cover_mode_led)
   * Publish illuminance with the lux control type, so the web UI shows it
 
- -- Victor Fedorov <victor.fedorov@wirenboard.com>  Thu, 22 Oct 2026 15:37:35 +0300
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Thu, 22 Oct 2026 16:23:53 +0300
 
 wb-mqtt-zigbee (1.5.0) stable; urgency=medium
 

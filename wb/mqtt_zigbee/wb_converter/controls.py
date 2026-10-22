@@ -30,7 +30,7 @@ class WbControlType:
     VOLTAGE = "voltage"
     CURRENT = "current"
     POWER_CONSUMPTION = "power_consumption"
-    ILLUMINANCE = "illuminance"
+    ILLUMINANCE = "lux"  # the conventions name the illuminance type "lux"
     RANGE = "range"
     RGB = "rgb"
 
@@ -105,10 +105,8 @@ class ControlMeta:
     # Path to the value in z2m messages for fields of a composite with its own property,
     # e.g. ("cover_mode", "reversed"); a send button carries the composite's own (property,).
     path: tuple[str, ...] = ()
-    # Field of a composite that is not fully readable: kept locally, sent only by its button.
+    # Field of a composite z2m cannot read back whole via /get: kept locally, sent by its button.
     deferred: bool = False
-    # z2m can read the composite from the device via /get (its GET access bit)
-    gettable: bool = False
 
     @property
     def is_send_button(self) -> bool:

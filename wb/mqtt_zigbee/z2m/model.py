@@ -32,7 +32,6 @@ class ExposeProperty:
     STATE = "state"
     BRIGHTNESS = "brightness"
     COLOR_TEMP = "color_temp"
-    COLOR = "color"
 
 
 class ExposeType:

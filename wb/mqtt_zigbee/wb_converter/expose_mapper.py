@@ -47,6 +47,9 @@ NESTED_TYPES = {
     ExposeType.COMPOSITE,  # generic multi-property exposes
 }
 
+# Color composites (color, color_rgb, color_l1, ...) mapped to a single RGB control
+COLOR_COMPOSITE_NAMES = {"color_xy", "color_hs"}
+
 # Service controls always added by map_exposes_to_controls regardless of exposes
 SERVICE_CONTROLS = {
     ServiceControl.AVAILABLE,
@@ -140,22 +143,6 @@ def map_exposes_to_controls(
     return controls
 
 
-def gettable_composites(exposes: list[ExposeFeature]) -> list[str]:
-    """Return properties of composites that z2m can read from the device via /get."""
-    result = []
-    for expose in exposes:
-        if (
-            expose.type == ExposeType.COMPOSITE
-            and expose.property
-            and expose.property != ExposeProperty.COLOR
-        ):
-            if expose.is_gettable:
-                result.append(expose.property)
-        elif expose.type in NESTED_TYPES:
-            result.extend(gettable_composites(expose.features))
-    return result
-
-
 def _flatten_expose(expose: ExposeFeature) -> list[tuple[str, ControlMeta]]:
     """Recursively flatten an expose feature into (property, ControlMeta) pairs.
 
@@ -181,7 +168,7 @@ def _flatten_expose(expose: ExposeFeature) -> list[tuple[str, ControlMeta]]:
     """
     if expose.type in NESTED_TYPES and expose.features:
         # Composite "color" expose (color_xy/color_hs) → single RGB control
-        if expose.type == ExposeType.COMPOSITE and expose.property == ExposeProperty.COLOR:
+        if expose.type == ExposeType.COMPOSITE and expose.name in COLOR_COMPOSITE_NAMES:
             return _map_color_feature(expose)
         if expose.type == ExposeType.COMPOSITE and expose.property:
             return _map_composite_with_property(expose)
@@ -196,15 +183,14 @@ def _map_composite_with_property(expose: ExposeFeature) -> list[tuple[str, Contr
     """
     Map fields nested under the composite's property, each with the path to its value.
 
-    A composite that is not fully readable gets deferred fields and a pushbutton to send them.
+    A composite z2m cannot read back whole via /get gets deferred fields and a pushbutton to send them.
     """
-    deferred = not _fully_readable(expose)
+    deferred = not (expose.is_gettable and _fully_readable(expose))
     result = []
     for sub in expose.features:
         for prop, meta in _flatten_expose(sub):
             meta.path = (expose.property, *(meta.path or (prop,)))
             meta.deferred = meta.deferred or deferred
-            meta.gettable = expose.is_gettable
             result.append((prop, meta))
     if deferred and result:
         # A field named like its composite keeps its control id; the button takes another.
@@ -216,7 +202,6 @@ def _map_composite_with_property(expose: ExposeFeature) -> list[tuple[str, Contr
             readonly=False,
             title=_localized_title(button_id),
             path=(expose.property,),
-            gettable=expose.is_gettable,
         )
         result.append((button_id, button))
     return result
@@ -287,8 +272,8 @@ def _map_leaf_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
 def _map_color_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
     """Map a composite color expose (color_xy or color_hs) to a single RGB control.
 
-    z2m exposes color as composite with property "color" and nested x/y or hue/saturation.
-    We map it to a single WB "rgb" control. The state dict key is "color",
+    z2m exposes color as composite "color" (or per channel: "color_rgb", "color_l1") with nested
+    x/y or hue/saturation. We map it to a single WB "rgb" control keyed by that property,
     and format_value handles HS→RGB conversion.
 
     Example:
@@ -301,11 +286,11 @@ def _map_color_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
         # [("color", ControlMeta(type="rgb", readonly=True, title={"en": "Color"}))]
     """
     writable = any(sub.is_writable for sub in feature.features) if feature.features else False
-    meta = ControlMeta(
-        type=WbControlType.RGB,
-        readonly=not writable,
-        title={"en": "Color", "ru": "Цвет"},
+    channel = feature.property.removeprefix("color").lstrip("_").upper()
+    title = (
+        {"en": "Color", "ru": "Цвет"} if not channel else {"en": f"Color {channel}", "ru": f"Цвет {channel}"}
     )
+    meta = ControlMeta(type=WbControlType.RGB, readonly=not writable, title=title)
     return [(feature.property, meta)]
 
 

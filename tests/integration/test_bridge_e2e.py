@@ -1441,6 +1441,30 @@ class TestCompositeExposes:
 
         assert wb_observer.retained(f"{controls}/mode") == "stop"
 
+    def test_lock_pin_code_is_sent_without_reading_it(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        zhc pincode(): readable object, set-only fields; /get answers in `users`, never in pin_code
+        """
+        bridge.subscribe()
+        fields = [_numeric("user", access=0b010), _numeric("pin_code", access=0b010)]
+        z2m_emu.devices([_z2m_device("lock-1", [_composite("pin_code", fields)])])
+        controls = f"{DEVICES_PREFIX}/lock-1/controls"
+
+        fake_broker.inject(f"{controls}/user/on", "1")
+        fake_broker.inject(f"{controls}/pin_code/on", "1234")
+        fake_broker.inject(f"{controls}/pin_code_send/on", WbBoolValue.TRUE)
+
+        assert not wb_observer.has_publish_on(f"{BASE}/lock-1/get")
+        assert json.loads(wb_observer.last_payload_on(f"{BASE}/lock-1/set") or "{}") == {
+            "pin_code": {"user": 1, "pin_code": 1234}
+        }
+
     def test_write_only_fields_survive_rename(
         self,
         bridge: Bridge,

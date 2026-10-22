@@ -16,7 +16,6 @@ from wb.mqtt_zigbee.wb_converter.expose_mapper import (
     _map_color_feature,
     _map_leaf_feature,
     _resolve_wb_type,
-    gettable_composites,
     map_exposes_to_controls,
 )
 from wb.mqtt_zigbee.wb_converter.translations import ENUM_VALUE_TITLES, PROPERTY_TITLES
@@ -176,6 +175,7 @@ class TestFlattenExpose:
                 ),
                 make_expose(
                     type=ExposeType.COMPOSITE,
+                    name="color_xy",
                     property="color",
                     features=[
                         make_expose(property="x"),
@@ -188,9 +188,10 @@ class TestFlattenExpose:
         props = [p for p, _ in result]
         assert props == ["state", "color"]
 
-    def test_composite_with_color_property_becomes_single_rgb(self):
+    def test_color_composite_becomes_single_rgb(self):
         expose = make_expose(
             type=ExposeType.COMPOSITE,
+            name="color_hs",
             property="color",
             features=[
                 make_expose(property="hue"),
@@ -200,6 +201,18 @@ class TestFlattenExpose:
         [(prop, meta)] = _flatten_expose(expose)
         assert prop == "color"
         assert meta.type == WbControlType.RGB
+
+    def test_color_composite_of_a_channel_becomes_single_rgb(self):
+        expose = make_expose(
+            type=ExposeType.COMPOSITE,
+            name="color_xy",
+            property="color_rgb",
+            features=[make_expose(property="x_rgb"), make_expose(property="y_rgb")],
+        )
+        [(prop, meta)] = _flatten_expose(expose)
+        assert prop == "color_rgb"
+        assert meta.type == WbControlType.RGB
+        assert meta.title == {"en": "Color RGB", "ru": "Цвет RGB"}
 
     def test_composite_type_without_features_falls_through_to_leaf(self):
         # NESTED_TYPES check requires non-empty features — empty falls to leaf
@@ -238,7 +251,6 @@ class TestCompositeWithProperty:
         for name in ("reversed", "calibration", "maintenance", "led"):
             assert controls[name].path == ("cover_mode", name)
             assert not controls[name].deferred
-            assert controls[name].gettable
             assert not controls[name].readonly
         assert "cover_mode" not in controls
 
@@ -268,9 +280,22 @@ class TestCompositeWithProperty:
         button = controls["warning"]
         assert button.type == WbControlType.PUSHBUTTON
         assert button.path == ("warning",)
-        assert not button.gettable
         assert not button.readonly
         assert button.order > strobe.order
+
+    def test_readable_composite_without_get_gets_deferred_fields_and_send_button(self):
+        controls = map_exposes_to_controls([make_composite("away_setting", ["away_mode"], access=WRITABLE)])
+
+        assert controls["away_mode"].deferred
+        assert controls["away_setting"].type == WbControlType.PUSHBUTTON
+
+    def test_composite_with_get_but_set_only_fields_gets_deferred_fields_and_send_button(self):
+        composite = make_composite("detach_relay_mode", ["outlet1"])
+        composite.features[0].access = WRITE_ONLY
+        controls = map_exposes_to_controls([composite])
+
+        assert controls["outlet1"].deferred
+        assert controls["detach_relay_mode"].type == WbControlType.PUSHBUTTON
 
     def test_composite_with_mixed_access_is_treated_as_write_only(self):
         composite = make_composite("wifi_config", ["ssid", "password"])
@@ -335,28 +360,6 @@ class TestCompositeWithProperty:
         assert controls["color_options_execute_if_off"].deferred
 
 
-class TestGettableComposites:
-    """Tests for ``gettable_composites`` — composites whose state can be requested via /get."""
-
-    def test_readable_composite_with_get_is_listed(self):
-        exposes = [
-            make_expose(type=ExposeType.LIGHT, features=[make_composite("level_config", ["execute_if_off"])]),
-            make_composite("cover_mode", ["reversed"]),
-        ]
-        assert gettable_composites(exposes) == ["level_config", "cover_mode"]
-
-    def test_composite_without_get_is_skipped(self):
-        assert not gettable_composites([make_composite("cover_mode", ["reversed"], access=WRITABLE)])
-
-    def test_composite_with_get_and_set_only_fields_is_listed(self):
-        composite = make_composite("detach_relay_mode", ["outlet1"])
-        composite.features[0].access = WRITE_ONLY
-        assert gettable_composites([composite]) == ["detach_relay_mode"]
-
-    def test_color_composite_is_skipped(self):
-        assert not gettable_composites([make_composite("color", ["x", "y"])])
-
-
 class TestMapLeafFeature:
     """Tests for ``_map_leaf_feature`` — conversion of a single leaf expose into a control."""
 
@@ -369,6 +372,11 @@ class TestMapLeafFeature:
     def test_numeric_known_property_gets_typed_control(self):
         [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="temperature"))
         assert meta.type == WbControlType.TEMPERATURE
+
+    @pytest.mark.parametrize("prop", ["illuminance", "illuminance_lux"])
+    def test_illuminance_gets_conventions_lux_type(self, prop):
+        [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property=prop))
+        assert meta.type == "lux"
 
     def test_numeric_unknown_property_falls_back_to_value(self):
         [(_, meta)] = _map_leaf_feature(make_expose(type=ExposeType.NUMERIC, property="linkquality"))

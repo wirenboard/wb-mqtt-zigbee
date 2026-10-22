@@ -33,7 +33,8 @@ class CompositeState:
     ) -> Iterator[tuple[str, ControlMeta, Any]]:
         """Yield (id, meta, value) for controls in a z2m state message, except buttons and unsent edits.
 
-        `pending` ids have a command in flight: their received values are not stored yet either."""
+        `pending` ids have a command in flight: their received values are not stored yet either.
+        """
         keep = set(self.edits) | set(pending)
         for prop in {meta.path[0] for meta in controls.values() if meta.path}:
             if isinstance(state.get(prop), dict):
@@ -79,17 +80,21 @@ class CompositeState:
     ) -> Command:
         """Apply a WB command to a composite field or send button and tell what to do with it."""
         if meta.is_send_button:
-            if not self.values.get(meta.path[0]):
-                return Command()
-            return self._send_or_request(meta, controls)
+            # No /get first: the fields are not readable, so a read may never return the object.
+            prop = meta.path[0]
+            return Command(payload=self._send(prop, controls)) if self.values.get(prop) else Command()
         z2m_value = meta.parse_wb_value(wb_value)
         if not meta.path:
             return Command(payload={control_id: z2m_value})
         _set_path(self.values, meta.path, z2m_value)
         self.edits.add(control_id)
+        prop = meta.path[0]
         if meta.deferred:
             return Command()
-        return self._send_or_request(meta, controls)
+        if prop not in self.received:
+            self.send_on_receive.add(prop)
+            return Command(request=prop)
+        return Command(payload=self._send(prop, controls))
 
     def wb_values(self, controls: dict[str, ControlMeta]) -> dict[str, str]:
         """Return known composite field values formatted for WB."""
@@ -100,13 +105,6 @@ class CompositeState:
                 if found:
                     result[control_id] = meta.format_value(value)
         return result
-
-    def _send_or_request(self, meta: ControlMeta, controls: dict[str, ControlMeta]) -> Command:
-        prop = meta.path[0]
-        if meta.gettable and prop not in self.received:
-            self.send_on_receive.add(prop)
-            return Command(request=prop)
-        return Command(payload=self._send(prop, controls))
 
     def _send(self, prop: str, controls: dict[str, ControlMeta]) -> dict[str, Any]:
         """Build the whole-object payload of a composite and mark its edits as sent."""

@@ -4,19 +4,17 @@ from wb.mqtt_zigbee.wb_converter.composite import Command, CompositeState
 from wb.mqtt_zigbee.wb_converter.controls import ControlMeta, WbBoolValue, WbControlType
 
 
-def make_switch(path: tuple[str, ...] = (), deferred: bool = False, gettable: bool = False) -> ControlMeta:
-    return ControlMeta(
-        type=WbControlType.SWITCH, readonly=False, path=path, deferred=deferred, gettable=gettable
-    )
+def make_switch(path: tuple[str, ...] = (), deferred: bool = False) -> ControlMeta:
+    return ControlMeta(type=WbControlType.SWITCH, readonly=False, path=path, deferred=deferred)
 
 
-def make_button(path: tuple[str, ...], gettable: bool = False) -> ControlMeta:
-    return ControlMeta(type=WbControlType.PUSHBUTTON, readonly=False, path=path, gettable=gettable)
+def make_button(path: tuple[str, ...]) -> ControlMeta:
+    return ControlMeta(type=WbControlType.PUSHBUTTON, readonly=False, path=path)
 
 
 COVER_MODE = {
-    "reversed": make_switch(("cover_mode", "reversed"), gettable=True),
-    "led": make_switch(("cover_mode", "led"), gettable=True),
+    "reversed": make_switch(("cover_mode", "reversed")),
+    "led": make_switch(("cover_mode", "led")),
 }
 WARNING = {
     "strobe": make_switch(("warning", "strobe"), deferred=True),
@@ -107,13 +105,6 @@ class TestEdit:
         assert not composites.edits
         assert not composites.ready_payloads(COVER_MODE)
 
-    def test_field_of_composite_without_get_sends_known_fields(self):
-        controls = {"reversed": make_switch(("cover_mode", "reversed"))}
-
-        command = CompositeState().edit("reversed", controls["reversed"], WbBoolValue.TRUE, controls)
-
-        assert command == Command(payload={"cover_mode": {"reversed": True}})
-
     def test_deferred_field_is_only_stored(self):
         composites = CompositeState()
 
@@ -135,19 +126,20 @@ class TestEdit:
     def test_button_without_stored_fields_does_nothing(self):
         assert CompositeState().edit("warning", WARNING["warning"], WbBoolValue.TRUE, WARNING) == Command()
 
-    def test_button_of_gettable_composite_not_received_yet_requests_it(self):
+    def test_button_sends_known_fields_without_reading_the_composite(self):
+        """
+        A read may never return the object (pin_code), so the button sends what is known
+        """
         controls = {
-            "outlet1": make_switch(("relay", "outlet1"), deferred=True, gettable=True),
-            "relay": make_button(("relay",), gettable=True),
+            "outlet1": make_switch(("relay", "outlet1"), deferred=True),
+            "relay": make_button(("relay",)),
         }
-        composites = CompositeState()
+        composites = receive(CompositeState(), controls, {"relay": {"outlet1": False, "outlet2": True}})
         composites.edit("outlet1", controls["outlet1"], WbBoolValue.TRUE, controls)
 
-        assert composites.edit("relay", controls["relay"], WbBoolValue.TRUE, controls) == Command(
-            request="relay"
-        )
-        receive(composites, controls, {"relay": {"outlet1": False, "outlet2": True}})
-        assert composites.ready_payloads(controls) == [{"relay": {"outlet1": True, "outlet2": True}}]
+        command = composites.edit("relay", controls["relay"], WbBoolValue.TRUE, controls)
+
+        assert command == Command(payload={"relay": {"outlet1": True, "outlet2": True}})
 
     def test_field_command_and_button_touch_only_their_own_composite(self):
         controls = {**COVER_MODE, **WARNING}

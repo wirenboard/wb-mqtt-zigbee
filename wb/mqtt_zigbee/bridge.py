@@ -467,9 +467,11 @@ class Bridge:
                 )
             registered.composites.observe(meta, value)
             self._mqtt_driver.publish_device_control(registered.device_id, prop, wb_value)
-        for payload in registered.composites.ready_payloads(registered.controls):
+        for prop, payload in registered.composites.ready_payloads(registered.controls):
             logger.info("Device command: %s → %s", friendly_name, payload)
             self._z2m.set_device_state(friendly_name, payload)
+            for control_id, wb_value in registered.composites.wb_values(registered.controls, prop).items():
+                registered.pending_commands[control_id] = PendingCommand(wb_value=wb_value, timestamp=now)
         if ServiceControl.LAST_SEEN in state:
             formatted = _format_last_seen(state[ServiceControl.LAST_SEEN])
             if formatted:

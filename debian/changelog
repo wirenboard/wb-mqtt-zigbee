@@ -6,7 +6,7 @@ wb-mqtt-zigbee (1.5.1) stable; urgency=medium
   * Map color channels (color_rgb, color_l1) to one RGB control, as plain color
   * Publish illuminance with the lux control type, so the web UI shows it
 
- -- Victor Fedorov <victor.fedorov@wirenboard.com>  Thu, 22 Oct 2026 16:55:06 +0300
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Thu, 22 Oct 2026 17:20:07 +0300
 
 wb-mqtt-zigbee (1.5.0) stable; urgency=medium
 

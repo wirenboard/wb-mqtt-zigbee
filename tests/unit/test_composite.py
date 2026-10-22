@@ -88,14 +88,14 @@ class TestEdit:
     def test_top_level_control_sends_its_value(self):
         controls = {"state": make_switch()}
 
-        assert CompositeState().edit("state", controls["state"], WbBoolValue.TRUE, controls) == Command(
-            payload={"state": True}
-        )
+        assert CompositeState().edit(
+            "state", controls["state"], WbBoolValue.TRUE, controls, now=0.0
+        ) == Command(payload={"state": True})
 
     def test_field_of_received_composite_sends_whole_object(self):
         composites = receive(CompositeState(), COVER_MODE, {"cover_mode": {"reversed": False, "led": True}})
 
-        command = composites.edit("reversed", COVER_MODE["reversed"], WbBoolValue.TRUE, COVER_MODE)
+        command = composites.edit("reversed", COVER_MODE["reversed"], WbBoolValue.TRUE, COVER_MODE, now=0.0)
 
         assert command == Command(payload={"cover_mode": {"reversed": True, "led": True}})
         assert not composites.edits
@@ -103,7 +103,7 @@ class TestEdit:
     def test_field_of_composite_not_received_yet_requests_it(self):
         composites = CompositeState()
 
-        command = composites.edit("reversed", COVER_MODE["reversed"], WbBoolValue.TRUE, COVER_MODE)
+        command = composites.edit("reversed", COVER_MODE["reversed"], WbBoolValue.TRUE, COVER_MODE, now=0.0)
 
         assert command == Command(request="cover_mode")
         assert composites.edits == {"reversed"}
@@ -111,22 +111,26 @@ class TestEdit:
 
     def test_requested_composite_is_sent_with_the_edit_once_received(self):
         composites = CompositeState()
-        composites.edit("reversed", COVER_MODE["reversed"], WbBoolValue.TRUE, COVER_MODE)
+        composites.edit("reversed", COVER_MODE["reversed"], WbBoolValue.TRUE, COVER_MODE, now=0.0)
         receive(composites, COVER_MODE, {"cover_mode": {"reversed": False, "led": True}})
 
-        assert composites.ready_payloads(COVER_MODE) == [{"cover_mode": {"reversed": True, "led": True}}]
+        assert composites.ready_payloads(COVER_MODE) == [
+            ("cover_mode", {"cover_mode": {"reversed": True, "led": True}})
+        ]
         assert not composites.edits
         assert not composites.ready_payloads(COVER_MODE)
 
     def test_second_edit_while_waiting_for_the_composite_does_not_request_again(self):
         composites = CompositeState()
-        composites.edit("reversed", COVER_MODE["reversed"], WbBoolValue.TRUE, COVER_MODE)
+        composites.edit("reversed", COVER_MODE["reversed"], WbBoolValue.TRUE, COVER_MODE, now=0.0)
 
-        command = composites.edit("led", COVER_MODE["led"], WbBoolValue.FALSE, COVER_MODE)
+        command = composites.edit("led", COVER_MODE["led"], WbBoolValue.FALSE, COVER_MODE, now=0.0)
 
         assert command == Command()
         receive(composites, COVER_MODE, {"cover_mode": {"reversed": False, "led": True}})
-        assert composites.ready_payloads(COVER_MODE) == [{"cover_mode": {"reversed": True, "led": False}}]
+        assert composites.ready_payloads(COVER_MODE) == [
+            ("cover_mode", {"cover_mode": {"reversed": True, "led": False}})
+        ]
 
     def test_unanswered_request_is_repeated_on_a_later_edit(self):
         composites = CompositeState()
@@ -143,7 +147,7 @@ class TestEdit:
     def test_deferred_field_is_only_stored(self):
         composites = CompositeState()
 
-        command = composites.edit("strobe", WARNING["strobe"], WbBoolValue.TRUE, WARNING)
+        command = composites.edit("strobe", WARNING["strobe"], WbBoolValue.TRUE, WARNING, now=0.0)
 
         assert command == Command()
         assert composites.values == {"warning": {"strobe": True}}
@@ -151,15 +155,18 @@ class TestEdit:
 
     def test_button_sends_stored_fields_and_clears_their_edits(self):
         composites = CompositeState()
-        composites.edit("strobe", WARNING["strobe"], WbBoolValue.TRUE, WARNING)
+        composites.edit("strobe", WARNING["strobe"], WbBoolValue.TRUE, WARNING, now=0.0)
 
-        command = composites.edit("warning", WARNING["warning"], WbBoolValue.TRUE, WARNING)
+        command = composites.edit("warning", WARNING["warning"], WbBoolValue.TRUE, WARNING, now=0.0)
 
         assert command == Command(payload={"warning": {"strobe": True}})
         assert not composites.edits
 
     def test_button_without_stored_fields_does_nothing(self):
-        assert CompositeState().edit("warning", WARNING["warning"], WbBoolValue.TRUE, WARNING) == Command()
+        assert (
+            CompositeState().edit("warning", WARNING["warning"], WbBoolValue.TRUE, WARNING, now=0.0)
+            == Command()
+        )
 
     def test_button_sends_known_fields_without_reading_the_composite(self):
         """
@@ -170,22 +177,22 @@ class TestEdit:
             "relay": make_button(("relay",)),
         }
         composites = receive(CompositeState(), controls, {"relay": {"outlet1": False, "outlet2": True}})
-        composites.edit("outlet1", controls["outlet1"], WbBoolValue.TRUE, controls)
+        composites.edit("outlet1", controls["outlet1"], WbBoolValue.TRUE, controls, now=0.0)
 
-        command = composites.edit("relay", controls["relay"], WbBoolValue.TRUE, controls)
+        command = composites.edit("relay", controls["relay"], WbBoolValue.TRUE, controls, now=0.0)
 
         assert command == Command(payload={"relay": {"outlet1": True, "outlet2": True}})
 
     def test_field_command_and_button_touch_only_their_own_composite(self):
         controls = {**COVER_MODE, **WARNING}
         composites = receive(CompositeState(), controls, {"cover_mode": {"reversed": False, "led": True}})
-        composites.edit("strobe", WARNING["strobe"], WbBoolValue.TRUE, controls)
+        composites.edit("strobe", WARNING["strobe"], WbBoolValue.TRUE, controls, now=0.0)
 
-        command = composites.edit("led", COVER_MODE["led"], WbBoolValue.FALSE, controls)
+        command = composites.edit("led", COVER_MODE["led"], WbBoolValue.FALSE, controls, now=0.0)
 
         assert command == Command(payload={"cover_mode": {"reversed": False, "led": False}})
         assert composites.edits == {"strobe"}
-        assert composites.edit("warning", WARNING["warning"], WbBoolValue.TRUE, controls) == Command(
+        assert composites.edit("warning", WARNING["warning"], WbBoolValue.TRUE, controls, now=0.0) == Command(
             payload={"warning": {"strobe": True}}
         )
 
@@ -195,9 +202,17 @@ class TestWbValues:
 
     def test_formats_known_fields_and_skips_buttons(self):
         composites = CompositeState()
-        composites.edit("strobe", WARNING["strobe"], WbBoolValue.TRUE, WARNING)
+        composites.edit("strobe", WARNING["strobe"], WbBoolValue.TRUE, WARNING, now=0.0)
 
         assert composites.wb_values(WARNING) == {"strobe": WbBoolValue.TRUE}
+
+    def test_values_of_one_composite(self):
+        controls = {**COVER_MODE, **WARNING}
+        composites = receive(
+            CompositeState(), controls, {"cover_mode": {"led": True}, "warning": {"strobe": False}}
+        )
+
+        assert composites.wb_values(controls, "warning") == {"strobe": WbBoolValue.FALSE}
 
     def test_composite_object_that_is_not_a_dict_is_skipped(self):
         assert not CompositeState(values={"cover_mode": None}).wb_values(COVER_MODE)

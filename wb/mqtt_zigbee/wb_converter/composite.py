@@ -73,13 +73,13 @@ class CompositeState:
                 _set_path(self.values, (prop, *path), value)
         self.received.add(prop)
 
-    def ready_payloads(self, controls: dict[str, ControlMeta]) -> list[dict[str, Any]]:
-        """Return payloads of composites that waited for their object and have received it."""
+    def ready_payloads(self, controls: dict[str, ControlMeta]) -> list[tuple[str, dict[str, Any]]]:
+        """Return (composite, payload) of composites that waited for their object and have received it."""
         ready = [prop for prop in self.send_on_receive if prop in self.received]
         self.send_on_receive.difference_update(ready)
         for prop in ready:
             self.requested.pop(prop, None)
-        return [self._send(prop, controls) for prop in ready]
+        return [(prop, self._send(prop, controls)) for prop in ready]
 
     def edit(
         self,
@@ -87,7 +87,7 @@ class CompositeState:
         meta: ControlMeta,
         wb_value: str,
         controls: dict[str, ControlMeta],
-        now: float = 0.0,
+        now: float,
     ) -> Command:
         """Apply a WB command to a composite field or send button and tell what to do with it."""
         if meta.is_send_button:
@@ -110,11 +110,11 @@ class CompositeState:
             return Command(request=prop)
         return Command(payload=self._send(prop, controls))
 
-    def wb_values(self, controls: dict[str, ControlMeta]) -> dict[str, str]:
-        """Return known composite field values formatted for WB."""
+    def wb_values(self, controls: dict[str, ControlMeta], prop: Optional[str] = None) -> dict[str, str]:
+        """Return known composite field values formatted for WB, of one composite if `prop` is given."""
         result = {}
         for control_id, meta in controls.items():
-            if meta.is_composite_field:
+            if meta.is_composite_field and prop in (None, meta.path[0]):
                 found, value = _get_path(self.values, meta.path)
                 if found:
                     result[control_id] = meta.format_value(value)

@@ -208,7 +208,7 @@ make_expose(
 |---|---|---|
 | `state_values` | `TestStateValues` | Вложенные и плоские значения; кнопки, служебные ключи и неотправленные правки пропускаются; объект не-словарь пропускается. |
 | `edit` | `TestEdit` | Поле известного composite отправляет весь объект, неизвестного — запрашивает `/get` и отправляет по ответу, без ответа повторяет `/get` через 30 с; отложенное поле только запоминается; кнопка без `/get` отправляет известные поля или ничего; чужой composite не затрагивается. |
-| `wb_values` | `TestWbValues` | Известные значения полей в формате WB. |
+| `wb_values` | `TestWbValues` | Известные значения полей в формате WB, всех composite или одного. |
 
 ### `tests/unit/test_controls.py`
 
@@ -328,7 +328,7 @@ End-to-end проверки [`wb/mqtt_zigbee/bridge.py`](../wb/mqtt_zigbee/bridg
 | Z2M → WB | `TestDeviceStatePropagation` | `<base>/<name>` (state) обновляет соответствующий контрол; `<base>/<name>/availability` обновляет `available`. |
 | WB → Z2M | `TestWbToZ2mCommands` | Команда на `/devices/<id>/controls/<c>/on` транслируется в `<base>/<name>/set` с правильным JSON; оптимистичное значение публикуется на сам контрол сразу. |
 | Pending command debounce | `TestPendingCommandDebounce` | В пределах 5с входящий state с расхождением подавляется; после истечения окна — публикуется; подтверждающий state очищает pending. |
-| Composite | `TestCompositeExposes` | Первая команда по полю читает composite через `/get` и отправляет объект по ответу, кнопка отправляет правки без `/get`; правки не откатываются до отправки. |
+| Composite | `TestCompositeExposes` | Первая команда по полю читает composite через `/get` и отправляет объект по ответу, кнопка отправляет правки без `/get`; правки не откатываются ни до отправки, ни запоздалым ответом на `/get`. |
 | Stats throttling | `TestStatsThrottling` | `Messages received` обновляется не чаще 1 раза в секунду (контролируется через `fake_clock`). |
 | События устройств | `TestDeviceEvents` | `device_leave` и `bridge/response/device/remove` удаляют устройство из WB и обновляют `Last left`; `device_renamed` переносит retained-состояние со старого `device_id` на новый. |
 | Stale cleanup | `TestStaleDeviceCleanup` | Устройство, пропавшее из нового списка `bridge/devices`, удаляется; пустой `bridge/devices` удаляет все устройства, `Device count` обнуляется. |

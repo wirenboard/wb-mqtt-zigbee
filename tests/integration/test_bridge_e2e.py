@@ -1198,6 +1198,39 @@ class TestCompositeExposes:
             "cover_mode": {**self.COVER_MODE, "reversed": True, "led": False, "calibration": True}
         }
 
+    def test_late_answer_to_the_first_read_does_not_undo_the_sent_edits(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+        fake_clock: "list[float]",
+    ) -> None:
+        """
+        z2m answers a read even after its own timeout, so a repeated read may bring two answers
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1")])
+        controls = f"{DEVICES_PREFIX}/curtain-1/controls"
+
+        fake_clock[0] = 100.0
+        fake_broker.inject(f"{controls}/reversed/on", WbBoolValue.TRUE)
+        fake_clock[0] = 140.0
+        fake_broker.inject(f"{controls}/led/on", WbBoolValue.FALSE)
+        fake_clock[0] = 141.0
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+        fake_clock[0] = 142.0
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+
+        assert len(wb_observer.messages_on(f"{BASE}/curtain-1/set")) == 1
+        assert wb_observer.retained(f"{controls}/reversed") == WbBoolValue.TRUE
+        assert wb_observer.retained(f"{controls}/led") == WbBoolValue.FALSE
+        fake_broker.inject(f"{controls}/calibration/on", WbBoolValue.TRUE)
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/set") or "{}")
+        assert sent == {
+            "cover_mode": {**self.COVER_MODE, "reversed": True, "led": False, "calibration": True}
+        }
+
     def test_send_button_is_published_without_a_value(
         self,
         bridge: Bridge,

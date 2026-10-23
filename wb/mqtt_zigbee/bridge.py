@@ -258,6 +258,7 @@ class Bridge:
                 logger.exception("Failed to register device '%s'", device.friendly_name)
         if self._retained_scan_active:
             self._remove_ghost_devices(device_ids)
+            self._remove_stale_controls()
             self._mqtt_driver.stop_retained_scan()
             self._retained_scan_active = False
 
@@ -668,6 +669,16 @@ class Bridge:
             control_ids = self._mqtt_driver.get_scanned_controls(device_id)
             self._mqtt_driver.remove_retained_device(device_id, control_ids)
             logger.info("Removed ghost WB device '%s' (%d controls)", device_id, len(control_ids))
+
+    def _remove_stale_controls(self) -> None:
+        """
+        Remove retained controls of registered devices that a previous version published under other ids
+        """
+        for registered in self._known_devices.values():
+            stale = self._mqtt_driver.get_scanned_controls(registered.device_id) - set(registered.controls)
+            if stale:
+                self._mqtt_driver.remove_retained_controls(registered.device_id, stale)
+                logger.info("Removed stale controls of '%s': %s", registered.device_id, sorted(stale))
 
     def _find_old_name(self, ieee_address: str) -> Optional[str]:
         """Find friendly_name of a known device by ieee_address, or None. O(1) lookup."""

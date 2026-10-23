@@ -1798,6 +1798,28 @@ class TestGhostCleanup:
 
         assert wb_observer.retained(f"{DEVICES_PREFIX}/ghost/meta") is None
 
+    def test_controls_of_a_previous_version_are_cleaned_up(
+        self,
+        bridge: Bridge,
+        fake_broker: FakeMqttBroker,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        An older version published some fields under other ids; they must not stay next to the new ones
+        """
+        controls = f"{DEVICES_PREFIX}/sensor-1/controls"
+        fake_broker.inject(f"{controls}/execute_if_off/meta", "{}", retain=True)
+        fake_broker.inject(f"{controls}/execute_if_off", "0", retain=True)
+        fake_broker.inject(f"{controls}/temperature/meta", "{}", retain=True)
+
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("sensor-1")])
+
+        assert wb_observer.retained(f"{controls}/execute_if_off/meta") is None
+        assert wb_observer.retained(f"{controls}/execute_if_off") is None
+        assert wb_observer.retained(f"{controls}/temperature/meta") is not None
+
     def test_present_but_skipped_device_is_not_ghosted(
         self,
         bridge: Bridge,

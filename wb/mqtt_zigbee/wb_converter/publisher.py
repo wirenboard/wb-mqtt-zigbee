@@ -108,13 +108,17 @@ class WbMqttDriver:
         """
         Remove a ghost device discovered via retained scan (no ControlMeta needed)
         """
+        self.remove_retained_controls(device_id, control_ids)
+        self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", "")
+        self._clear_device_meta_subtopics(device_id)
+        self._last_values.pop(device_id, None)
+
+    def remove_retained_controls(self, device_id: str, control_ids: set[str]) -> None:
+        """Remove controls discovered via retained scan (no ControlMeta needed)."""
         for control_id in control_ids:
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}/meta", "")
             self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/controls/{control_id}", "")
             self._clear_control_meta_subtopics(device_id, control_id)
-        self._publish_retain(f"{DEVICES_PREFIX}/{device_id}/meta", "")
-        self._clear_device_meta_subtopics(device_id)
-        self._last_values.pop(device_id, None)
 
     def publish_device_control(self, device_id: str, control_id: str, value: str) -> None:
         self._last_values.setdefault(device_id, {})[control_id] = value

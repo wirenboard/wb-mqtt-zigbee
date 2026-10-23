@@ -5,8 +5,9 @@ wb-mqtt-zigbee (1.5.1) stable; urgency=medium
   * Keep composite fields with a taken name under a prefixed name (cover_mode_led)
   * Map color channels (color_rgb, color_l1) to one RGB control, as plain color
   * Publish illuminance with the lux control type, so the web UI shows it
+  * Remove at start the controls an older version published under other names
 
- -- Victor Fedorov <victor.fedorov@wirenboard.com>  Thu, 22 Oct 2026 17:20:07 +0300
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Fri, 23 Oct 2026 10:46:58 +0300
 
 wb-mqtt-zigbee (1.5.0) stable; urgency=medium
 

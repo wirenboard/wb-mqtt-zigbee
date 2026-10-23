@@ -332,7 +332,7 @@ End-to-end проверки [`wb/mqtt_zigbee/bridge.py`](../wb/mqtt_zigbee/bridg
 | Stats throttling | `TestStatsThrottling` | `Messages received` обновляется не чаще 1 раза в секунду (контролируется через `fake_clock`). |
 | События устройств | `TestDeviceEvents` | `device_leave` и `bridge/response/device/remove` удаляют устройство из WB и обновляют `Last left`; `device_renamed` переносит retained-состояние со старого `device_id` на новый. |
 | Stale cleanup | `TestStaleDeviceCleanup` | Устройство, пропавшее из нового списка `bridge/devices`, удаляется; пустой `bridge/devices` удаляет все устройства, `Device count` обнуляется. |
-| Ghost cleanup | `TestGhostCleanup` | Retained устройства с прошлого запуска (наш `driver`, но не в текущем `bridge/devices`) затираются после первого `bridge/devices`. |
+| Ghost cleanup | `TestGhostCleanup` | Retained устройства с прошлого запуска (наш `driver`, но не в текущем `bridge/devices`) и чужие контролы живых устройств затираются после первого `bridge/devices`. |
 | Reconnect | `TestReconnectFlow` | `republish()` инкрементит `Reconnects`; `set_all_unavailable()` переводит все известные устройства в `available=0`; `republish()` возвращает последние значения контролов, но оставляет `available=0` и ошибку до свежих данных от z2m; `remove_all()` снимает все retained-топики бриджа и устройств. |
 
 ### `tests/integration/test_app_lifecycle.py`

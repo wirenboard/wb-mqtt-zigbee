@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Sequence, Union
 
 from paho.mqtt.client import Client, MQTTMessage
 from wb_common.mqtt_client import MQTTClient
@@ -128,12 +128,13 @@ class Z2MClient:
         self._client.message_callback_remove(topic)
         self._subscribed_devices.discard(friendly_name)
 
-    def request_device_state(self, friendly_name: str) -> None:
-        """Request current state from a device via zigbee2mqtt/{device}/get"""
+    def request_device_state(self, friendly_name: str, properties: Sequence[str] = ()) -> None:
+        """Ask z2m to read the listed properties from a device via zigbee2mqtt/{device}/get"""
         if not is_safe_topic_name(friendly_name):
             logger.warning("Refusing state request for device with unsafe name '%s'", friendly_name)
             return
-        self._client.publish(f"{self._base_topic}/{friendly_name}/get", "{}")
+        payload = {prop: "" for prop in properties}
+        self._client.publish(f"{self._base_topic}/{friendly_name}/get", json.dumps(payload))
 
     def set_device_state(self, friendly_name: str, payload: dict) -> None:
         """Send command to a device via zigbee2mqtt/{device}/set"""

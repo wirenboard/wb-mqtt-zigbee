@@ -3,7 +3,7 @@ import re
 from typing import Optional
 
 from ..z2m.model import ExposeFeature, ExposeProperty, ExposeType
-from .controls import ControlMeta, WbControlType
+from .controls import ControlMeta, ServiceControl, WbControlType
 from .translations import ENUM_VALUE_TITLES, POWER_SOURCE_LABELS, PROPERTY_TITLES
 
 logger = logging.getLogger(__name__)
@@ -47,8 +47,17 @@ NESTED_TYPES = {
     ExposeType.COMPOSITE,  # generic multi-property exposes
 }
 
+# Names of color composites (any property: color, color_rgb, ...) mapped to a single RGB control
+COLOR_COMPOSITE_NAMES = {"color_xy", "color_hs"}
+
 # Service controls always added by map_exposes_to_controls regardless of exposes
-SERVICE_CONTROLS = {"available", "device_type", "model", "power_source", "last_seen"}
+SERVICE_CONTROLS = {
+    ServiceControl.AVAILABLE,
+    ServiceControl.DEVICE_TYPE,
+    ServiceControl.MODEL,
+    ServiceControl.POWER_SOURCE,
+    ServiceControl.LAST_SEEN,
+}
 
 
 def map_exposes_to_controls(
@@ -56,8 +65,8 @@ def map_exposes_to_controls(
 ) -> dict[str, ControlMeta]:
     """Convert a list of z2m expose features into a flat dict of WB controls.
 
-    Recursively flattens all exposes, deduplicates by property name,
-    assigns sequential order, and appends service controls (available, device_type, last_seen).
+    Recursively flattens all exposes, deduplicates top-level properties, prefixes taken composite
+    field names with their path, assigns order, and appends the service controls (SERVICE_CONTROLS).
 
     Example:
 
@@ -76,13 +85,22 @@ def map_exposes_to_controls(
     """
     controls: dict[str, ControlMeta] = {}
     order = 1
-    for expose in exposes:
-        for prop, meta in _flatten_expose(expose):
-            if prop not in controls:
-                meta.order = order
-                controls[prop] = meta
-                order += 1
-    controls["available"] = ControlMeta(
+    flat = [pair for expose in exposes for pair in _flatten_expose(expose)]
+    # Top-level properties, send buttons and service controls keep their names; fields yield.
+    # A field name shared by several composites is prefixed in each, whatever their order.
+    reserved = {prop for prop, meta in flat if not meta.is_composite_field} | SERVICE_CONTROLS
+    field_names = [prop for prop, meta in flat if meta.is_composite_field]
+    shared = {prop for prop in field_names if field_names.count(prop) > 1}
+    for prop, meta in flat:
+        control_id = prop
+        if meta.is_composite_field and (prop in reserved or prop in shared or prop in controls):
+            control_id = "_".join(meta.path)
+            meta.title = _localized_title(control_id)
+        if control_id not in controls:
+            meta.order = order
+            controls[control_id] = meta
+            order += 1
+    controls[ServiceControl.AVAILABLE] = ControlMeta(
         type=WbControlType.SWITCH,
         readonly=True,
         order=order,
@@ -90,7 +108,7 @@ def map_exposes_to_controls(
     )
     order += 1
     if device_type:
-        controls["device_type"] = ControlMeta(
+        controls[ServiceControl.DEVICE_TYPE] = ControlMeta(
             type=WbControlType.TEXT,
             readonly=True,
             order=order,
@@ -103,7 +121,7 @@ def map_exposes_to_controls(
         )
         order += 1
     if model:
-        controls["model"] = ControlMeta(
+        controls[ServiceControl.MODEL] = ControlMeta(
             type=WbControlType.TEXT,
             readonly=True,
             order=order,
@@ -111,7 +129,7 @@ def map_exposes_to_controls(
         )
         order += 1
     if power_source:
-        controls["power_source"] = ControlMeta(
+        controls[ServiceControl.POWER_SOURCE] = ControlMeta(
             type=WbControlType.TEXT,
             readonly=True,
             order=order,
@@ -119,7 +137,7 @@ def map_exposes_to_controls(
             enum=POWER_SOURCE_LABELS,
         )
         order += 1
-    controls["last_seen"] = ControlMeta(
+    controls[ServiceControl.LAST_SEEN] = ControlMeta(
         type=WbControlType.TEXT,
         readonly=True,
         order=order,
@@ -153,13 +171,48 @@ def _flatten_expose(expose: ExposeFeature) -> list[tuple[str, ControlMeta]]:
     """
     if expose.type in NESTED_TYPES and expose.features:
         # Composite "color" expose (color_xy/color_hs) → single RGB control
-        if expose.type == ExposeType.COMPOSITE and expose.property == "color":
+        if expose.type == ExposeType.COMPOSITE and expose.name in COLOR_COMPOSITE_NAMES and expose.property:
             return _map_color_feature(expose)
+        if expose.type == ExposeType.COMPOSITE and expose.property:
+            return _map_composite_with_property(expose)
         result = []
         for sub in expose.features:
             result.extend(_flatten_expose(sub))
         return result
     return _map_leaf_feature(expose)
+
+
+def _map_composite_with_property(expose: ExposeFeature) -> list[tuple[str, ControlMeta]]:
+    """
+    Map fields nested under the composite's property, each with the path to its value.
+
+    A composite z2m cannot read back whole via /get gets deferred fields and a pushbutton to send them.
+    """
+    deferred = not (expose.is_gettable and _fully_readable(expose))
+    result = []
+    for sub in expose.features:
+        for prop, meta in _flatten_expose(sub):
+            meta.path = (expose.property, *(meta.path or (prop,)))
+            meta.deferred = meta.deferred or deferred
+            result.append((prop, meta))
+    if deferred and any(not meta.readonly for _prop, meta in result if not meta.is_send_button):
+        button_id = expose.property
+        if any(prop == expose.property for prop, _meta in result):
+            button_id = f"{expose.property}_send"
+        button = ControlMeta(
+            type=WbControlType.PUSHBUTTON,
+            readonly=False,
+            title=_localized_title(button_id),
+            path=(expose.property,),
+        )
+        result.append((button_id, button))
+    return result
+
+
+def _fully_readable(expose: ExposeFeature) -> bool:
+    if not expose.features:
+        return expose.is_readable
+    return all(_fully_readable(sub) for sub in expose.features)
 
 
 def _map_leaf_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
@@ -221,8 +274,8 @@ def _map_leaf_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
 def _map_color_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
     """Map a composite color expose (color_xy or color_hs) to a single RGB control.
 
-    z2m exposes color as composite with property "color" and nested x/y or hue/saturation.
-    We map it to a single WB "rgb" control. The state dict key is "color",
+    z2m exposes color as composite "color" (or per channel: "color_rgb", "color_l1") with nested
+    x/y or hue/saturation. We map it to a single WB "rgb" control keyed by that property,
     and format_value handles HS→RGB conversion.
 
     Example:
@@ -235,12 +288,19 @@ def _map_color_feature(feature: ExposeFeature) -> list[tuple[str, ControlMeta]]:
         # [("color", ControlMeta(type="rgb", readonly=True, title={"en": "Color"}))]
     """
     writable = any(sub.is_writable for sub in feature.features) if feature.features else False
-    meta = ControlMeta(
-        type=WbControlType.RGB,
-        readonly=not writable,
-        title={"en": "Color", "ru": "Цвет"},
-    )
+    label = _color_channel_label(feature.property)
+    title = {"en": "Color", "ru": "Цвет"} if not label else {"en": f"Color {label}", "ru": f"Цвет {label}"}
+    meta = ControlMeta(type=WbControlType.RGB, readonly=not writable, title=title)
     return [(feature.property, meta)]
+
+
+def _color_channel_label(property_name: str) -> str:
+    """Title suffix of a color channel: 'color' -> '', 'color_l1' -> 'L1', 'color_button_1' -> 'Button 1'."""
+    base, endpoint = _split_endpoint_suffix(property_name)
+    if base == "color":
+        return endpoint
+    channel = property_name.removeprefix("color").lstrip("_")
+    return "RGB" if channel == "rgb" else _make_title(channel)
 
 
 def _make_enum(feature: ExposeFeature) -> Optional[dict]:

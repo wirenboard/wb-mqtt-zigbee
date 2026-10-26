@@ -42,6 +42,18 @@ class TestExposeFeatureIsWritable:
         assert feat.is_writable is False
 
 
+class TestExposeFeatureIsReadableAndGettable:
+    """``is_readable`` / ``is_gettable`` check the READ / GET bits."""
+
+    def test_bits(self):
+        feat = ExposeFeature(type="numeric", name="x", property="x", access=ExposeAccess.READ)
+        assert feat.is_readable is True
+        assert feat.is_gettable is False
+        feat.access = ExposeAccess.GET
+        assert feat.is_readable is False
+        assert feat.is_gettable is True
+
+
 class TestExposeFeatureFromDict:
     def test_full_leaf_feature(self):
         feat = ExposeFeature.from_dict(

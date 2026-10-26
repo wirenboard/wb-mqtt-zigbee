@@ -30,7 +30,7 @@ class WbControlType:
     VOLTAGE = "voltage"
     CURRENT = "current"
     POWER_CONSUMPTION = "power_consumption"
-    ILLUMINANCE = "illuminance"
+    ILLUMINANCE = "lux"  # the conventions name the illuminance type "lux"
     RANGE = "range"
     RGB = "rgb"
 
@@ -51,6 +51,16 @@ class WbControlError:
     WRITE = "w"  # write to device error
     PERIOD = "p"  # read period miss
     READ_WRITE = READ + WRITE  # device fully unreachable: neither read nor write
+
+
+class ServiceControl:
+    """Control IDs of service controls added to every Zigbee device"""
+
+    AVAILABLE = "available"
+    DEVICE_TYPE = "device_type"
+    MODEL = "model"
+    POWER_SOURCE = "power_source"
+    LAST_SEEN = "last_seen"
 
 
 class BridgeControl:
@@ -92,6 +102,19 @@ class ControlMeta:
     # commands). Used to convert z2m milli-units (mV, mA) to the base SI units the
     # WB voltage/current control types display. 1.0 = no conversion.
     scale: float = 1.0
+    # Path to the value in z2m messages for fields of a composite with its own property,
+    # e.g. ("cover_mode", "reversed"); a send button carries the composite's own (property,).
+    path: tuple[str, ...] = ()
+    # Field of a composite z2m cannot read back whole via /get: kept locally, sent by its button.
+    deferred: bool = False
+
+    @property
+    def is_send_button(self) -> bool:
+        return self.type == WbControlType.PUSHBUTTON and bool(self.path)
+
+    @property
+    def is_composite_field(self) -> bool:
+        return bool(self.path) and self.type != WbControlType.PUSHBUTTON
 
     def format_value(self, value: object) -> str:
         """Convert a z2m value to WB control string representation"""

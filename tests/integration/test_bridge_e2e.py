@@ -120,6 +120,81 @@ def _z2m_switch(friendly_name: str, ieee: str = "0x0002") -> dict[str, Any]:
     }
 
 
+def _binary(name: str, access: int = 0b111) -> dict[str, Any]:
+    return {
+        "type": "binary",
+        "name": name,
+        "property": name,
+        "access": access,
+        "value_on": True,
+        "value_off": False,
+    }
+
+
+def _numeric(name: str, access: int = 0b111, **extra: Any) -> dict[str, Any]:
+    return {"type": "numeric", "name": name, "property": name, "access": access, **extra}
+
+
+def _enum(name: str, values: list[str], access: int = 0b111) -> dict[str, Any]:
+    return {"type": "enum", "name": name, "property": name, "access": access, "values": values}
+
+
+def _composite(name: str, features: list[dict], access: int = 0b111) -> dict[str, Any]:
+    return {"type": "composite", "name": name, "property": name, "access": access, "features": features}
+
+
+def _z2m_device(friendly_name: str, exposes: list[dict], ieee: str = "0x0003") -> dict[str, Any]:
+    return {
+        "ieee_address": ieee,
+        "friendly_name": friendly_name,
+        "type": "Router",
+        "definition": {"model": "MODEL-3", "vendor": "Vendor", "description": "", "exposes": exposes},
+    }
+
+
+def _z2m_curtain(friendly_name: str) -> dict[str, Any]:
+    """
+    Yandex YNDX-00591 curtain: cover plus readable composite cover_mode (zhc 26.105.0)
+    """
+    cover = {
+        "type": "cover",
+        "features": [
+            _enum("state", ["OPEN", "CLOSE", "STOP"], access=0b011),
+            _numeric("position", unit="%", value_min=0, value_max=100),
+        ],
+    }
+    fields = [_binary(name) for name in ("reversed", "calibration", "maintenance", "led")]
+    return _z2m_device(friendly_name, [cover, _composite("cover_mode", fields)])
+
+
+def _z2m_dimmer(friendly_name: str) -> dict[str, Any]:
+    """
+    Dimmer with composite level_config inside light (part of 552-72201 exposes, zhc 26.105.0)
+    """
+    state = {
+        "type": "binary",
+        "name": "state",
+        "property": "state",
+        "access": 0b111,
+        "value_on": "ON",
+        "value_off": "OFF",
+    }
+    level_config = _composite("level_config", [_numeric("on_off_transition_time"), _binary("execute_if_off")])
+    return _z2m_device(friendly_name, [{"type": "light", "features": [state, level_config]}], ieee="0x0004")
+
+
+def _z2m_siren(friendly_name: str) -> dict[str, Any]:
+    """
+    Siren with write-only composite warning (part of LDSENK07 exposes, zhc 26.105.0)
+    """
+    fields = [
+        _enum("mode", ["stop", "burglar", "fire", "emergency"], access=0b010),
+        _binary("strobe", access=0b010),
+        _numeric("duration", access=0b010, unit="s"),
+    ]
+    return _z2m_device(friendly_name, [_composite("warning", fields, access=0b010)], ieee="0x0005")
+
+
 class TestBridgeInitialization:
     """
     `Bridge.subscribe()` initial publishes and bridge/state, bridge/info, bridge/log handling
@@ -583,8 +658,6 @@ class TestDeviceRegistration:
         # Not silently "healthy": marked unavailable with the matching device error.
         assert wb_observer.retained(f"{moved}/controls/available") == WbBoolValue.FALSE
         assert wb_observer.retained(f"{moved}/meta/error") == WbControlError.READ
-        # And a fresh state request went out, so real values come back at once.
-        assert wb_observer.has_publish_on(f"{BASE}/lamp.1/get")
         # A later availability update is still honoured after the move.
         z2m_emu.device_availability("lamp.1", online=True)
         assert wb_observer.retained(f"{moved}/controls/available") == WbBoolValue.TRUE
@@ -1037,6 +1110,488 @@ class TestPendingCommandDebounce:
         assert wb_observer.retained(state_topic) == WbBoolValue.FALSE
 
 
+class TestCompositeExposes:
+    """
+    Composite exposes with their own property: state and commands nest fields under it.
+    """
+
+    COVER_MODE = {"reversed": False, "calibration": False, "maintenance": False, "led": True}
+
+    def test_first_field_command_reads_the_composite_and_sends_it_with_the_edit(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        zhc builds one bitmask from all cover_mode fields, so an unknown object is read first
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1")])
+        assert not wb_observer.has_publish_on(f"{BASE}/curtain-1/get")
+
+        fake_broker.inject(f"{DEVICES_PREFIX}/curtain-1/controls/reversed/on", WbBoolValue.TRUE)
+
+        assert json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/get") or "null") == {
+            "cover_mode": ""
+        }
+        assert not wb_observer.has_publish_on(f"{BASE}/curtain-1/set")
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/curtain-1/controls/reversed") == WbBoolValue.TRUE
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/set") or "{}")
+        assert sent == {"cover_mode": {**self.COVER_MODE, "reversed": True}}
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/curtain-1/controls/reversed") == WbBoolValue.TRUE
+
+    def test_edits_made_while_reading_the_composite_go_out_together(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        A second /get would answer with the old values and undo the edits already sent
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1")])
+
+        fake_broker.inject(f"{DEVICES_PREFIX}/curtain-1/controls/reversed/on", WbBoolValue.TRUE)
+        fake_broker.inject(f"{DEVICES_PREFIX}/curtain-1/controls/led/on", WbBoolValue.FALSE)
+
+        assert len(wb_observer.messages_on(f"{BASE}/curtain-1/get")) == 1
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/curtain-1/controls/led") == WbBoolValue.FALSE
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+        assert len(wb_observer.messages_on(f"{BASE}/curtain-1/set")) == 1
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/set") or "{}")
+        assert sent == {"cover_mode": {**self.COVER_MODE, "reversed": True, "led": False}}
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/curtain-1/controls/led") == WbBoolValue.FALSE
+
+    def test_unanswered_read_is_repeated_on_a_later_edit(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+        fake_clock: "list[float]",
+    ) -> None:
+        """
+        A sleeping device may never answer the first /get, so a later edit asks again
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1")])
+        controls = f"{DEVICES_PREFIX}/curtain-1/controls"
+
+        fake_clock[0] = 100.0
+        fake_broker.inject(f"{controls}/reversed/on", WbBoolValue.TRUE)
+        fake_clock[0] = 110.0
+        fake_broker.inject(f"{controls}/led/on", WbBoolValue.FALSE)
+        assert len(wb_observer.messages_on(f"{BASE}/curtain-1/get")) == 1
+        fake_clock[0] = 140.0
+        fake_broker.inject(f"{controls}/calibration/on", WbBoolValue.TRUE)
+
+        assert len(wb_observer.messages_on(f"{BASE}/curtain-1/get")) == 2
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+        assert len(wb_observer.messages_on(f"{BASE}/curtain-1/set")) == 1
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/set") or "{}")
+        assert sent == {
+            "cover_mode": {**self.COVER_MODE, "reversed": True, "led": False, "calibration": True}
+        }
+
+    def test_late_answer_to_the_first_read_does_not_undo_the_sent_edits(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+        fake_clock: "list[float]",
+    ) -> None:
+        """
+        z2m answers a read even after its own timeout, so a repeated read may bring two answers
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1")])
+        controls = f"{DEVICES_PREFIX}/curtain-1/controls"
+
+        fake_clock[0] = 100.0
+        fake_broker.inject(f"{controls}/reversed/on", WbBoolValue.TRUE)
+        fake_clock[0] = 140.0
+        fake_broker.inject(f"{controls}/led/on", WbBoolValue.FALSE)
+        fake_clock[0] = 141.0
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+        fake_clock[0] = 142.0
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+
+        assert len(wb_observer.messages_on(f"{BASE}/curtain-1/set")) == 1
+        assert wb_observer.retained(f"{controls}/reversed") == WbBoolValue.TRUE
+        assert wb_observer.retained(f"{controls}/led") == WbBoolValue.FALSE
+        fake_broker.inject(f"{controls}/calibration/on", WbBoolValue.TRUE)
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/set") or "{}")
+        assert sent == {
+            "cover_mode": {**self.COVER_MODE, "reversed": True, "led": False, "calibration": True}
+        }
+
+    def test_send_button_is_published_without_a_value(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_siren("siren-1")])
+
+        controls = f"{DEVICES_PREFIX}/siren-1/controls"
+        assert json.loads(wb_observer.retained(f"{controls}/warning/meta") or "{}")["type"] == "pushbutton"
+        assert wb_observer.retained(f"{controls}/warning") is None
+        assert wb_observer.retained(f"{controls}/strobe") == " "
+
+    def test_nested_state_reaches_field_controls(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1")])
+
+        z2m_emu.device_state("curtain-1", {"position": 30, "cover_mode": self.COVER_MODE})
+
+        controls = f"{DEVICES_PREFIX}/curtain-1/controls"
+        assert wb_observer.retained(f"{controls}/position") == "30"
+        assert wb_observer.retained(f"{controls}/reversed") == WbBoolValue.FALSE
+        assert wb_observer.retained(f"{controls}/led") == WbBoolValue.TRUE
+
+    def test_field_command_sends_whole_object_with_known_fields(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        zhc builds one bitmask from all cover_mode fields: a missing field is sent as false
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1")])
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+
+        fake_broker.inject(f"{DEVICES_PREFIX}/curtain-1/controls/reversed/on", WbBoolValue.TRUE)
+
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/set") or "{}")
+        assert sent == {"cover_mode": {**self.COVER_MODE, "reversed": True}}
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/curtain-1/controls/reversed") == WbBoolValue.TRUE
+
+    def test_consecutive_field_commands_keep_earlier_change(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        A second command before z2m reports state must not undo the first one
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1")])
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+
+        fake_broker.inject(f"{DEVICES_PREFIX}/curtain-1/controls/reversed/on", WbBoolValue.TRUE)
+        fake_broker.inject(f"{DEVICES_PREFIX}/curtain-1/controls/led/on", WbBoolValue.FALSE)
+
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/set") or "{}")
+        assert sent == {"cover_mode": {**self.COVER_MODE, "reversed": True, "led": False}}
+
+    def test_stale_nested_state_during_debounce_is_suppressed(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+        fake_clock: "list[float]",
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1")])
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+        reversed_topic = f"{DEVICES_PREFIX}/curtain-1/controls/reversed"
+
+        fake_clock[0] = 100.0
+        fake_broker.inject(f"{reversed_topic}/on", WbBoolValue.TRUE)
+        fake_clock[0] = 101.0
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+        fake_clock[0] = 102.0
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+
+        assert wb_observer.retained(reversed_topic) == WbBoolValue.TRUE
+        # The next field command still carries the suppressed field's new value.
+        fake_broker.inject(f"{DEVICES_PREFIX}/curtain-1/controls/led/on", WbBoolValue.FALSE)
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/set") or "{}")
+        assert sent == {"cover_mode": {**self.COVER_MODE, "reversed": True, "led": False}}
+
+    def test_composite_inside_light(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_dimmer("dimmer-1")])
+        level_config = {"on_off_transition_time": 2, "execute_if_off": True}
+        z2m_emu.device_state("dimmer-1", {"state": "ON", "level_config": level_config})
+
+        controls = f"{DEVICES_PREFIX}/dimmer-1/controls"
+        assert wb_observer.retained(f"{controls}/on_off_transition_time") == "2"
+        assert wb_observer.retained(f"{controls}/execute_if_off") == WbBoolValue.TRUE
+
+        fake_broker.inject(f"{controls}/on_off_transition_time/on", "5")
+
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/dimmer-1/set") or "{}")
+        assert sent == {"level_config": {**level_config, "on_off_transition_time": 5}}
+
+    def test_field_with_parent_prefix_reads_and_writes_its_own_value(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_device("dev-1", [_binary("led"), _composite("cover_mode", [_binary("led")])])])
+
+        z2m_emu.device_state("dev-1", {"led": True, "cover_mode": {"led": False}})
+
+        controls = f"{DEVICES_PREFIX}/dev-1/controls"
+        assert wb_observer.retained(f"{controls}/led") == WbBoolValue.TRUE
+        assert wb_observer.retained(f"{controls}/cover_mode_led") == WbBoolValue.FALSE
+
+        fake_broker.inject(f"{controls}/cover_mode_led/on", WbBoolValue.TRUE)
+
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/dev-1/set") or "{}")
+        assert sent == {"cover_mode": {"led": True}}
+
+    def test_republish_and_rename_do_not_read_composites(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1"), _z2m_dimmer("dimmer-1")])
+
+        bridge.republish()
+        z2m_emu.device_renamed("curtain-1", "curtain-2")
+
+        assert not wb_observer.has_publish_on(f"{BASE}/dimmer-1/get")
+        assert not wb_observer.has_publish_on(f"{BASE}/curtain-2/get")
+
+    def test_exposes_change_forgets_composite_values(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_curtain("curtain-1")])
+        z2m_emu.device_state("curtain-1", {"cover_mode": self.COVER_MODE})
+        updated = _z2m_curtain("curtain-1")
+        updated["definition"]["exposes"].append(_binary("child_lock"))
+
+        z2m_emu.devices([updated])
+        fake_broker.inject(f"{DEVICES_PREFIX}/curtain-1/controls/reversed/on", WbBoolValue.TRUE)
+
+        # The object is read again instead of being sent from values of the old exposes.
+        assert json.loads(wb_observer.last_payload_on(f"{BASE}/curtain-1/get") or "null") == {
+            "cover_mode": ""
+        }
+
+    def test_composite_field_published_top_level_is_read(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        Legacy converters (Lidl TRV away_setting) expose a composite but publish its fields top-level
+        """
+        bridge.subscribe()
+        away_setting = _composite("away_setting", [_numeric("away_preset_days", access=0b011)], access=0b011)
+        z2m_emu.devices([_z2m_device("trv-1", [away_setting])])
+
+        z2m_emu.device_state("trv-1", {"away_preset_days": 3})
+
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/trv-1/controls/away_preset_days") == "3"
+
+    def test_write_only_field_change_is_not_sent(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        Changing a siren parameter must not start the siren
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_siren("siren-1")])
+
+        fake_broker.inject(f"{DEVICES_PREFIX}/siren-1/controls/mode/on", "burglar")
+
+        assert not wb_observer.has_publish_on(f"{BASE}/siren-1/set")
+        assert wb_observer.retained(f"{DEVICES_PREFIX}/siren-1/controls/mode") == "burglar"
+
+    def test_send_button_sends_fields_set_so_far(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        Fields never set are left out, so z2m applies its own defaults to them
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_siren("siren-1")])
+        controls = f"{DEVICES_PREFIX}/siren-1/controls"
+
+        fake_broker.inject(f"{controls}/mode/on", "burglar")
+        fake_broker.inject(f"{controls}/duration/on", "5")
+        button_messages = len(wb_observer.messages_on(f"{controls}/warning"))
+        fake_broker.inject(f"{controls}/warning/on", WbBoolValue.TRUE)
+
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/siren-1/set") or "{}")
+        assert sent == {"warning": {"mode": "burglar", "duration": 5}}
+        assert len(wb_observer.messages_on(f"{controls}/warning")) == button_messages
+
+    def test_send_button_keeps_fields_known_from_state(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        SONOFF detach_relay_mode: readable object, set-only fields, one bitmask from all fields
+        """
+        bridge.subscribe()
+        outlets = [
+            {**_binary(f"detach_relay_outlet{i}", access=0b010), "value_on": "ENABLE", "value_off": "DISABLE"}
+            for i in (1, 2)
+        ]
+        z2m_emu.devices([_z2m_device("relay-1", [_composite("detach_relay_mode", outlets)])])
+        device_state = {
+            "detach_relay_mode": {"detach_relay_outlet1": "DISABLE", "detach_relay_outlet2": "ENABLE"}
+        }
+        z2m_emu.device_state("relay-1", device_state)
+        controls = f"{DEVICES_PREFIX}/relay-1/controls"
+        assert wb_observer.retained(f"{controls}/detach_relay_outlet2") == WbBoolValue.TRUE
+
+        fake_broker.inject(f"{controls}/detach_relay_outlet1/on", WbBoolValue.TRUE)
+        z2m_emu.device_state("relay-1", device_state)  # an unrelated report must not undo the local edit
+        assert wb_observer.retained(f"{controls}/detach_relay_outlet1") == WbBoolValue.TRUE
+        fake_broker.inject(f"{controls}/detach_relay_mode/on", WbBoolValue.TRUE)
+
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/relay-1/set") or "{}")
+        assert sent == {
+            "detach_relay_mode": {"detach_relay_outlet1": "ENABLE", "detach_relay_outlet2": "ENABLE"}
+        }
+        z2m_emu.device_state("relay-1", device_state)  # once sent, the device state applies again
+        assert wb_observer.retained(f"{controls}/detach_relay_outlet1") == WbBoolValue.FALSE
+
+    def test_commands_touch_only_their_own_composite(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        exposes = (
+            _z2m_curtain("dev-1")["definition"]["exposes"] + _z2m_siren("dev-1")["definition"]["exposes"]
+        )
+        z2m_emu.devices([_z2m_device("dev-1", exposes)])
+        z2m_emu.device_state("dev-1", {"cover_mode": self.COVER_MODE})
+        controls = f"{DEVICES_PREFIX}/dev-1/controls"
+        fake_broker.inject(f"{controls}/mode/on", "burglar")
+
+        fake_broker.inject(f"{controls}/led/on", WbBoolValue.FALSE)
+        assert json.loads(wb_observer.last_payload_on(f"{BASE}/dev-1/set") or "{}") == {
+            "cover_mode": {**self.COVER_MODE, "led": False}
+        }
+        z2m_emu.device_state("dev-1", {"cover_mode": self.COVER_MODE, "warning": {"mode": "stop"}})
+        assert wb_observer.retained(f"{controls}/mode") == "burglar"  # the unsent edit survived
+        fake_broker.inject(f"{controls}/warning/on", WbBoolValue.TRUE)
+
+        assert json.loads(wb_observer.last_payload_on(f"{BASE}/dev-1/set") or "{}") == {
+            "warning": {"mode": "burglar"}
+        }
+
+    def test_exposes_change_forgets_unsent_edits(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_siren("siren-1")])
+        controls = f"{DEVICES_PREFIX}/siren-1/controls"
+        fake_broker.inject(f"{controls}/mode/on", "burglar")
+        updated = _z2m_siren("siren-1")
+        updated["definition"]["exposes"].append(_binary("tamper", access=0b001))
+
+        z2m_emu.devices([updated])
+        z2m_emu.device_state("siren-1", {"warning": {"mode": "stop"}})
+
+        assert wb_observer.retained(f"{controls}/mode") == "stop"
+
+    def test_lock_pin_code_is_sent_without_reading_it(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        zhc pincode(): readable object, set-only fields; /get answers in `users`, never in pin_code
+        """
+        bridge.subscribe()
+        fields = [_numeric("user", access=0b010), _numeric("pin_code", access=0b010)]
+        z2m_emu.devices([_z2m_device("lock-1", [_composite("pin_code", fields)])])
+        controls = f"{DEVICES_PREFIX}/lock-1/controls"
+
+        fake_broker.inject(f"{controls}/user/on", "1")
+        fake_broker.inject(f"{controls}/pin_code/on", "1234")
+        fake_broker.inject(f"{controls}/pin_code_send/on", WbBoolValue.TRUE)
+
+        assert not wb_observer.has_publish_on(f"{BASE}/lock-1/get")
+        assert json.loads(wb_observer.last_payload_on(f"{BASE}/lock-1/set") or "{}") == {
+            "pin_code": {"user": 1, "pin_code": 1234}
+        }
+
+    def test_write_only_fields_survive_rename(
+        self,
+        bridge: Bridge,
+        z2m_emu: Z2mEmulator,
+        fake_broker: FakeMqttBroker,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        After a rename the fields still show what the send button will send
+        """
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_siren("siren-1")])
+        fake_broker.inject(f"{DEVICES_PREFIX}/siren-1/controls/mode/on", "burglar")
+
+        z2m_emu.device_renamed("siren-1", "siren-2")
+
+        controls = f"{DEVICES_PREFIX}/siren-2/controls"
+        assert wb_observer.retained(f"{controls}/mode") == "burglar"
+        fake_broker.inject(f"{controls}/warning/on", WbBoolValue.TRUE)
+        sent = json.loads(wb_observer.last_payload_on(f"{BASE}/siren-2/set") or "{}")
+        assert sent == {"warning": {"mode": "burglar"}}
+
+
 class TestStatsThrottling:
     """
     1Hz throttling of bridge stats counters
@@ -1242,6 +1797,28 @@ class TestGhostCleanup:
         z2m_emu.devices([_z2m_sensor("sensor-1")])
 
         assert wb_observer.retained(f"{DEVICES_PREFIX}/ghost/meta") is None
+
+    def test_controls_of_a_previous_version_are_cleaned_up(
+        self,
+        bridge: Bridge,
+        fake_broker: FakeMqttBroker,
+        z2m_emu: Z2mEmulator,
+        wb_observer: WbObserver,
+    ) -> None:
+        """
+        An older version published some fields under other ids; they must not stay next to the new ones
+        """
+        controls = f"{DEVICES_PREFIX}/sensor-1/controls"
+        fake_broker.inject(f"{controls}/execute_if_off/meta", "{}", retain=True)
+        fake_broker.inject(f"{controls}/execute_if_off", "0", retain=True)
+        fake_broker.inject(f"{controls}/temperature/meta", "{}", retain=True)
+
+        bridge.subscribe()
+        z2m_emu.devices([_z2m_sensor("sensor-1")])
+
+        assert wb_observer.retained(f"{controls}/execute_if_off/meta") is None
+        assert wb_observer.retained(f"{controls}/execute_if_off") is None
+        assert wb_observer.retained(f"{controls}/temperature/meta") is not None
 
     def test_present_but_skipped_device_is_not_ghosted(
         self,

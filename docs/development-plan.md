@@ -116,7 +116,7 @@ Re-subscribe на `zigbee2mqtt/bridge/devices` (unsubscribe + subscribe) — б�
 - Парсинг `bridge/devices`: `Z2MDevice.from_dict()` с `ExposeFeature` (рекурсивный парсинг вложенных features)
 - Маппинг `exposes` → WB-контролы: `expose_mapper.py` с 12 numeric-маппингами, binary, enum, text, rgb (color picker), range (слайдер для writable numerics с min/max)
 - Динамическое создание WB-устройств с JSON `/meta` и en/ru переводами
-- Запрос актуального состояния через `{device}/get` при регистрации
+- Чтение composite через `{device}/get` перед первой командой по его полю
 - Подписка на `zigbee2mqtt/{friendly_name}` для обновления состояния в реальном времени
 - Конвертация значений z2m → WB: `ControlMeta.format_value()` (bool, binary value_on/value_off, HS→RGB для цветных ламп, dict→JSON)
 - Обработка `last_seen` в трёх форматах: epoch ms, epoch s, ISO строка (конвертация в локальное время)
@@ -248,7 +248,8 @@ wb-mqtt-zigbee/
 │       │   └── model.py         — Z2MDevice, ExposeFeature, ExposeType, ExposeProperty, BridgeInfo, ...
 │       └── wb_converter/
 │           ├── publisher.py     — WbMqttDriver: публикация/удаление WB-устройств и JSON /meta
-│           ├── controls.py      — WbControlType, BridgeControl, ControlMeta (с format_value)
+│           ├── composite.py     — CompositeState: значения composite и сборка команды
+│           ├── controls.py      — WbControlType, BridgeControl, ServiceControl, ControlMeta (с format_value)
 │           ├── expose_mapper.py — маппинг z2m exposes → WB ControlMeta
 │           (subscriber.py удалён — подписка на команды в publisher.py)
 ├── bin/
@@ -312,8 +313,9 @@ wb-mqtt-zigbee/
 | `registered_device.py` | `RegisteredDevice`: кеш z2m-устройства с WB controls и device_id | ✅ |
 | `z2m/client.py` | `Z2MClient`: подписка на 6 z2m-топиков + устройства, парсинг → типизированные коллбэки | ✅ |
 | `z2m/model.py` | `BridgeInfo`, `BridgeState`, `DeviceEvent`, `BridgeLogLevel`, `Z2MDevice`, `ExposeFeature`, `ExposeType`, `ExposeProperty`, `ExposeAccess` | ✅ |
-| `wb_converter/controls.py` | `WbControlType` (16 типов, вкл. RANGE, RGB), `BridgeControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` (13 контролов с en/ru) | ✅ |
+| `wb_converter/controls.py` | `WbControlType` (16 типов, вкл. RANGE, RGB), `BridgeControl`, `ServiceControl`, `ControlMeta` (с `format_value`, `parse_wb_value` и HS↔RGB), `BRIDGE_CONTROLS` (13 контролов с en/ru) | ✅ |
 | `wb_converter/expose_mapper.py` | Маппинг z2m exposes → WB `ControlMeta` (12 numeric типов, binary, enum, text, rgb для color); двуязычные `title` через `PROPERTY_TITLES` + `_localized_title`; перевод значений enum через `ENUM_VALUE_TITLES` | ✅ |
+| `wb_converter/composite.py` | `CompositeState`: значения composite, неотправленные правки, сборка команды `/set` | ✅ |
 | `wb_converter/translations.py` | Таблицы переводов: `PROPERTY_TITLES` (названия контролов), `ENUM_VALUE_TITLES` (значения enum), `POWER_SOURCE_LABELS` | ✅ |
 | `wb_converter/publisher.py` | `WbMqttDriver`: публикация/удаление WB-устройств, JSON `/meta` с driver-маркером, подписка на команды, retained-сканирование ghost-устройств | ✅ |
 | ~~`wb_converter/subscriber.py`~~ | Удалён — подписка на команды реализована в `publisher.py` | — |
@@ -377,11 +379,11 @@ wb-mqtt-zigbee/
 
 В v1 цвет отображался как JSON-строка `{"x":0.3,"y":0.4}` — бесполезно для пользователя.
 
-## Синхронизация состояния при старте
+## Чтение composite через `/get`
 
-При старте сервиса список устройств известен из `bridge/devices`, но текущее состояние каждого устройства неизвестно — оно придёт только при следующем изменении на устройстве. Чтобы сразу отобразить актуальные значения, при инициализации каждого устройства делается запрос через MQTT:
+При старте сервиса список устройств известен из `bridge/devices`, а состояние приходит при изменениях на устройстве. Composite нужны командам целиком, поэтому их объект читается по требованию:
 
-Публикация в `zigbee2mqtt/{device_name}/get` с payload `{}` → z2m опрашивает физическое устройство → ответ приходит в обычный топик `zigbee2mqtt/{device_name}`.
+Публикация в `zigbee2mqtt/{device_name}/get` с перечнем свойств (`{"cover_mode": ""}`) → z2m читает их с физического устройства → ответ приходит в обычный топик `zigbee2mqtt/{device_name}`. Мост так читает composite перед первой командой по его полю.
 
 ## OTA
 

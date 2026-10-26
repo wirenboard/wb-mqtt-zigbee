@@ -365,6 +365,15 @@ class TestOutgoingCommands:
         assert msg is not None
         assert msg.payload == b"{}"
 
+    def test_request_device_state_asks_for_given_properties(
+        self, fake_mqtt_client: FakeMqttClient, wb_observer: WbObserver
+    ) -> None:
+        client, _rec = _make_client(fake_mqtt_client)
+        client.request_device_state("lamp", ["level_config"])
+        msg = wb_observer.last_on(f"{BASE}/lamp/get")
+        assert msg is not None
+        assert json.loads(msg.payload.decode("utf-8")) == {"level_config": ""}
+
     def test_set_device_state_publishes_payload_json(
         self, fake_mqtt_client: FakeMqttClient, wb_observer: WbObserver
     ) -> None:

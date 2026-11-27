@@ -15,7 +15,7 @@ setup(
     url="https://github.com/wirenboard/wb-mqtt-zigbee",
     packages=["wb.mqtt_zigbee", "wb.mqtt_zigbee.z2m", "wb.mqtt_zigbee.wb_converter"],
     scripts=["bin/wb-mqtt-zigbee"],
-    license="MIT",
+    license="MIT-WB",
 )
 # Other file (configuration):
 # - Installed by debian/install file
